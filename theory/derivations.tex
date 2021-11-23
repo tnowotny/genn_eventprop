@@ -896,7 +896,7 @@ variables do not experience jumps. The gradient
 simply samples the neuron’s $\lambda_I$ at the times of spike arrival,
 \begin{align}
   \frac{d \cal L}{d w_{\text{input},j}} = - \tau_{\text{syn}}
-  \sum_{t \in \text{input spikes}} (\lambda_I)_j(t) . \tag{56}
+  \sum_{t \in \text{input spikes}} (\lambda_I^+)_j(t) . \tag{56}
 \end{align}
 \subsection{Coincident spikes}
 The derivation above assumes that only a single neuron of the
@@ -929,7 +929,7 @@ Table 1: \\[0.2cm]
   {\bf Free dynamics} & {\bf Transition condition} & {\bf Jumps at
     transition} \\
   \hline
-$\tau_{\text{mem}} \frac{d}{dt} V = -V + I$ & $(V)_n = \vartheta = 0$,
+$\tau_{\text{mem}} \frac{d}{dt} V = -V + I$ & $(V)_n - \vartheta = 0$,
   $\big(\dot{V}\big)_n \neq 0$ &
   $(V^+)_n = 0$ \\
   $\tau_{\text{syn}} \frac{d}{dt} I= -I$ & for any $n$ & $I^+= I^- + W
@@ -959,7 +959,7 @@ The gradient is then calculated as
 \begin{align}
   \frac{d \cal L}{d w_{ji}} = - \tau_{\text{syn}} \sum_{t \in
     \text{spikes of neuron }
-    i} (\lambda_I)_j (t) 
+    i} (\lambda_I^+)_j (t) 
 \end{align}
 Similar for input spikes (see \blue{(56})).
 
