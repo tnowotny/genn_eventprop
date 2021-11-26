@@ -3,10 +3,13 @@ import numpy as np
 from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
 from Dataset import YinYangDataset
+from models import *
 
 # ----------------------------------------------------------------------------
 # Parameters
 # ----------------------------------------------------------------------------
+output_dir= "."
+TRAIN= True
 TIMESTEP_MS = 0.1
 BUILD = True
 TIMING = True
@@ -14,6 +17,7 @@ DATA_SEED= 123
 
 # Experiment parameters
 TRIAL_MS= 30.0
+N_MAX_SPIKE= 20    # make buffers for maximally 20 spikes (10 in a 30 ms trial) - should be safe
 DATA_SEED= 123
 N_BATCH= 32
 N_TRAIN= N_BATCH*1000
@@ -29,12 +33,17 @@ NUM_HIDDEN = 200
 # Model parameters
 TAU_SYN = 5.0
 TAU_MEM = 20.0
+V_THRESH = 1.0
+V_RESET = 0.0
+TAU_0= 0.5
+TAU_1= 6.4
+ALPHA= 3e-3
 
 # Learning parameters
 ETA= 5e-3
-BETA1= 0.9
-BETA2= 0.999
-EPS= 1e-8
+ADAM_BETA1= 0.9      # TODO: implement Adam optimizer
+ADAM_BETA2= 0.999    # TODO: implement Adam optimizer
+ADAM_EPS= 1e-8       # TODO: implement Adam optimizer
 # applied every epoch
 ETA_DECAY= 0.95
 
@@ -56,6 +65,16 @@ def get_input_start(input_end):
         input_start[:,1:] = input_end[:,:-1]
 
     return input_start
+
+def update_adam(learning_rate, adam_step, optimiser_custom_updates):
+    first_moment_scale = 1.0 / (1.0 - (ADAM_BETA1 ** adam_step))
+    second_moment_scale = 1.0 / (1.0 - (ADAM_BETA2 ** adam_step))
+
+    # Loop through optimisers and set
+    for o in optimiser_custom_updates:
+        o.extra_global_params["alpha"].view[:] = learning_rate
+        o.extra_global_params["firstMomentScale"].view[:] = first_moment_scale
+        o.extra_global_params["secondMomentScale"].view[:] = second_moment_scale
 
 # ----------------------------------------------------------------------------
 # Input and output preparation
@@ -104,13 +123,49 @@ input_start_test = get_input_start(input_end_test)
 # ----------------------------------------------------------------------------
 
 input_params= {}
-input_init_vars= {"startSpike": input_start_train, "endSpike": input_end_train}
+if TRAIN:
+    input_init_vars= {"startSpike": input_start_train, "endSpike": input_end_train}
+else:
+    input_init_vars= {"startSpike": input_start_test, "endSpike": input_end_test}
+    
+hidden_params= {"tau_m": TAU_MEM,
+                "V_thresh": V_THRESH,
+                "V_reset": V_RESET,
+                "N_max_spike": N_MAX_SPIKE,
+                "tau_syn": TAU_SYN,
+                }
+hidden_init_vars= {"V": V_RESET,
+                   "lambda_V": 0.0,
+                   "lambda_I": 0.0,
+                   "rev_t": 0.0,
+                   "rp_ImV": 0,
+                   "wp_ImV": 0,
+                   "back_spike": False,
+                   }
 
-hidden_params= {}
-hidden_init_vars= {}
+output_params= {"tau_m": TAU_MEM,
+                "V_thresh": V_THRESH,
+                "V_reset": V_RESET,
+                "N_max_spike": N_MAX_SPIKE,
+                "tau_syn": TAU_SYN,
+                "trial_t": TRIAL_MS,
+                "tau0": TAU_0,
+                "tau1": TAU_1,
+                "alpha": ALPHA,
+                "N_batch": N_BATCH,
+                }
 
-output_params= {}
-output_init_vars= {}
+output_init_vars= {"V": V_RESET,
+                   "lambda_V": 0.0,
+                   "lambda_I": 0.0,
+                   "rev_t": 0.0,
+                   "rp_ImV": 0,
+                   "wp_ImV": 0,
+                   "back_spike": False,
+                   "first_spike_t": -1e5,
+                   "new_first_spike_t": -1e5,
+                   "expsum": 1.0,
+                   }
 
 # ----------------------------------------------------------------------------
 # Synapse initialisation
@@ -118,16 +173,21 @@ output_init_vars= {}
 
 INPUT_HIDDEN_MEAN= 1.5
 INPUT_HIDDEN_STD= 0.78
-input_hidden_weight_dist_params = {"mean": INPUT_HIDDEN_MEAN, "sd": INPUT_HIDDEN_STD,
-                                   "min": INPUT_HIDDEN_MEAN-3*INPUT_HIDDEN_STD,
-                                   "max": INPUT_HIDDEN_MEAN+3*INPUT_HIDDEN_STD}
+
+in_to_hid_init_vars= {"dw": 0}
+in_to_hid_init_vars["w"]= genn_model.init_var("Normal", {"mean": INPUT_HIDDEN_MEAN, "sd": INPUT_HIDDEN_STD})
 
 HIDDEN_OUTPUT_MEAN= 0.93
 HIDDEN_OUTPUT_STD= 0.1
-hidden_output_weight_dist_params = {"mean": HIDDEN_OUTPUT_MEAN, "sd": HIDDEN_OUTPUT_STD,
-                                   "min": HIDDEN_OUTPUT_MEAN-3*HIDDEN_OUTPUT_STD,
-                                   "max": HIDDEN_OUTPUT_MEAN+3*HIDDEN_OUTPUT_STD}
+hid_to_out_init_vars= {"dw": 0}
+hid_to_out_init_vars["w"]= genn_model.init_var("Normal", {"mean": HIDDEN_OUTPUT_MEAN, "sd": HIDDEN_OUTPUT_STD})
 
+# ----------------------------------------------------------------------------
+# Optimiser initialisation
+# ----------------------------------------------------------------------------
+
+adam_params = {"beta1": ADAM_BETA1, "beta2": ADAM_BETA2, "epsilon": 1E-8, "tau_syn": TAU_SYN, "N_batch": N_BATCH}
+adam_init_vars = {"m": 0.0, "v": 0.0}
 
 # ----------------------------------------------------------------------------
 # Model description
@@ -137,17 +197,122 @@ model = genn_model.GeNNModel("float", "eventprop_yingyang", generateLineInfo=Tru
 model.dT = TIMESTEP_MS
 model.timing_enabled = TIMING
 
-
-
 # Add neuron populations
 input = model.add_neuron_population("Input", NUM_INPUT, "SpikeSourceArray", 
                                     {}, input_init_vars)
-input.set_extra_global_parameter("spikeTimes", X_train)
+if TRAIN:
+    input.set_extra_global_param("spikeTimes", X_train)
+else:
+    input.set_extra_global_param("spikeTimes", X_test)
                                     
-hidden= genn_model.add_neuron_population("hidden", n_hidden, EVP_LIF, hidden_params, hidden_init_vars) 
-output= genn_model.add_neuron_population("output", n_output, EVP_LIF_output, output_params, output_init_vars)
+hidden= model.add_neuron_population("hidden", NUM_HIDDEN, EVP_LIF, hidden_params, hidden_init_vars) 
+hidden.set_extra_global_param("t_k",-1e5*np.ones(NUM_HIDDEN*N_MAX_SPIKE,dtype=np.float32))
+hidden.set_extra_global_param("ImV",np.zeros(NUM_HIDDEN*N_MAX_SPIKE,dtype=np.float32))
+
+output= model.add_neuron_population("output", NUM_OUTPUT, EVP_LIF_output, output_params, output_init_vars)
+output.set_extra_global_param("t_k",-1e5*np.ones(NUM_OUTPUT*N_MAX_SPIKE,dtype=np.float32))
+output.set_extra_global_param("ImV",np.zeros(NUM_OUTPUT*N_MAX_SPIKE,dtype=np.float32))
+output.set_extra_global_param("label", 0)
+
+hidden_var_refs= {"rp_ImV": genn_model.create_var_ref(hidden, "rp_ImV"),
+                  "wp_ImV": genn_model.create_var_ref(hidden, "wp_ImV"),
+                  "V": genn_model.create_var_ref(hidden, "V"),
+                  "lambda_V": genn_model.create_var_ref(hidden, "lambda_V"),
+                  "lambda_I": genn_model.create_var_ref(hidden, "lambda_I"),
+                  "rev_t": genn_model.create_var_ref(hidden, "rev_t"),
+                  "back_spike": genn_model.create_var_ref(hidden, "back_spike")
+                  }
+hidden_reset=  model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": V_RESET, "N_max_spike": N_MAX_SPIKE}, {}, hidden_var_refs)
+
+output_reset_params= {"V_reset": V_RESET,
+                      "N_max_spike": N_MAX_SPIKE,
+                      "tau0": TAU_0,
+                      "tau1": TAU_1
+                      }
+output_var_refs= {"rp_ImV": genn_model.create_var_ref(output, "rp_ImV"),
+                  "wp_ImV": genn_model.create_var_ref(output, "wp_ImV"),
+                  "V": genn_model.create_var_ref(output, "V"),
+                  "lambda_V": genn_model.create_var_ref(output, "lambda_V"),
+                  "lambda_I": genn_model.create_var_ref(output, "lambda_I"),
+                  "rev_t": genn_model.create_var_ref(output, "rev_t"),
+                  "back_spike": genn_model.create_var_ref(output, "back_spike"),
+                  "first_spike_t": genn_model.create_var_ref(output, "first_spike_t"),
+                  "new_first_spike_t": genn_model.create_var_ref(output, "new_first_spike_t"),
+                  "expsum": genn_model.create_var_ref(output, "expsum")
+                  }
+output_reset=  model.add_custom_update("output_reset","neuronResetOutput", EVP_neuron_reset_output, output_reset_params, {}, output_var_refs)
+
 
 # synapse populations
-in_to_hid= genn_model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, input, hidden, EVP_synapse,
-                                             {}, {"w": 0, "dw": 0.0}, "ExpCurr", {"tau_syn": tau_syn}, {}
+in_to_hid= model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, input, hidden, EVP_input_synapse,
+                                             {}, in_to_hid_init_vars, {}, {}, "ExpCurr", {"tau": TAU_SYN}, {}
                                             )
+hid_to_out= model.add_synapse_population("hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, hidden, output, EVP_synapse,
+                                              {}, hid_to_out_init_vars, {}, {}, "ExpCurr", {"tau": TAU_SYN}, {}
+                                            )
+
+var_refs = {"dw": genn_model.create_wu_var_ref(in_to_hid, "dw")}
+in_to_hid_reduce= model.add_custom_update("in_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
+var_refs = {"gradient": genn_model.create_wu_var_ref(in_to_hid_reduce, "reduced_dw"),
+            "variable": genn_model.create_wu_var_ref(in_to_hid, "w")}
+in_to_hid_learn= model.add_custom_update("in_to_hid_learn","EVPLearn", adam_optimizer_model, adam_params, adam_init_vars, var_refs)
+
+var_refs = {"dw": genn_model.create_wu_var_ref(hid_to_out, "dw")}
+hid_to_out_reduce= model.add_custom_update("hid_to_out_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
+var_refs = {"gradient": genn_model.create_wu_var_ref(hid_to_out_reduce, "reduced_dw"),
+            "variable": genn_model.create_wu_var_ref(hid_to_out, "w")}
+hid_to_out_learn= model.add_custom_update("hid_to_out_learn","EVPLearn", adam_optimizer_model, adam_params, adam_init_vars, var_refs)
+
+optimisers= [in_to_hid_learn, hid_to_out_learn]
+
+model.build()
+model.load()
+
+if TRAIN:
+    in_to_hid.pull_var_from_device("w")
+    hid_to_out.pull_var_from_device("w")
+    np.save(os.path.join(output_dir, "g_input_hidden_0.npy"), in_to_hid.vars["w"].view.copy())
+    np.save(os.path.join(output_dir, "g_hidden_output_0.npy"), hid_to_out.vars["w"].view.copy())
+else:
+    in_to_hid.vars["w"].view[:]= np.load(os.path.join(output_dir, "g_input_hidden_1.npy"))
+    hid_to_out.vars["w"].view[:]= np.load(os.path.join(output_dir, "g_hidden_output_1.npy"))
+    in_to_hid.push_var_to_device("w")
+    hid_to_out.push_var_to_device("w")
+    
+if TRAIN:
+    N_trial= (N_TRAIN * N_CLASS) // N_BATCH
+else:
+    N_trial= (N_TEST * N_CLASS) // N_BATCH
+
+good= 0.0    
+fst= output.vars["first_spike_t"].view
+adam_step= 0
+
+for trial in range(N_trial):
+    if TRAIN:
+        output.set_extra_global_param("label", int(Y_train[trial]))
+    else:
+        output.set_extra_global_param("label", int(Y_test[trial]))
+    trial_end= (trial+1)*TRIAL_MS
+    while (model.t <  trial_end-1e-3*TIMESTEP_MS):
+        model.step_time()
+
+    if TRAIN:
+        update_adam(learning_rate, adam_step, optimisers)
+        adam_step += 1
+        model.custom_update("EVPReduce")
+        model.custom_uodate("EVPLearn")
+    else:
+        output.pull_var_from_device("first_spike_t");
+        pred= np.argmin(fst[:])
+        if pred == Y_test[trial]:
+            good += 1.0
+    model.custom_update("neuronReset")
+    model.custom_update("neuronResetOutput")
+
+print("Correct: {}".format(good))
+    
+in_to_hid.pull_var_from_device("w")
+hid_to_out.pull_var_from_device("w")
+np.save(os.path.join(output_dir, "g_input_hidden_1.npy"), in_to_hid.vars["w"].view.copy())
+np.save(os.path.join(output_dir, "g_hidden_output_1.npy"), hid_to_out.vars["w"].view.copy())

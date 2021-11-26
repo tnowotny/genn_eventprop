@@ -891,13 +891,25 @@ is removed except the term with the $\delta$'s.
 
   \subsection{Fixed Input Spikes}
   If a given neuron $j$ is subjected to a fixed pre-synaptic spike train across a synapse with
-weight $w_{\text{input},j}$, the transition times are fixed and the adjoint
+weight $w_{j,\text{input}}$, the transition times are fixed and the adjoint
 variables do not experience jumps. The gradient 
 simply samples the neuron’s $\lambda_I$ at the times of spike arrival,
 \begin{align}
-  \frac{d \cal L}{d w_{\text{input},j}} = - \tau_{\text{syn}}
+  \frac{d \cal L}{d w_{j,\text{input}}} = - \tau_{\text{syn}}
   \sum_{t \in \text{input spikes}} (\lambda_I^+)_j(t) . \tag{56}
 \end{align}
+}
+This is confusing and I am not sure entirely right. Jumps in $\lambda$
+variables are caused by the integration boundaries of the piece-wise
+integral in the loss function, broken at spike times. The jumps come
+about if those spike times depend on the weight wrt which we are
+taking a partial derivative. In this case, the spikes of the receiving
+neuron $j$ depend on $w_{j,\text{input}}$ and hence should experience
+jumps as normal when they spike. And their contribution to the
+gradient is as described. The input spikes themselves do not cause
+jumps -- but they also don't really have a neuron model attached or
+any $\lambda$ adjoint variables. 
+\blue{
 \subsection{Coincident spikes}
 The derivation above assumes that only a single neuron of the
 recurrent network spikes at a given $t_k^{\text{post}}$. In general,
@@ -962,6 +974,46 @@ The gradient is then calculated as
     i} (\lambda_I^+)_j (t) 
 \end{align}
 Similar for input spikes (see \blue{(56})).
+
+\newcommand{\liexp}{\exp\left(-t^{\text{post}}_{i,l(i)}/\tau_0\right)}
+\newcommand{\liexpb}{\exp\left(t^{\text{post}}_{i,l(i)}/\tau_1\right)}
+\newcommand{\smexp}{\sum_{k=1}^3 \exp\left(-t^{\text{post}}_{i,k}/\tau_0\right)}
+\subsection{Ying-Yang experiment}
+For the Ying-Yang experiment, Pehle et al. use the loss function:
+\begin{align}
+  {\cal L}= - \frac{1}{N_{\text{batch}}}
+  \left[\sum_{i=1}^{N_{\text{batch}}} \log \left[
+      \frac{\liexp}{\smexp}\right] - \alpha
+    \left[\liexp2 -1 \right] \right]
+\end{align} 
+This is a loss function that is of the form $\sum l_p(t_k)$. For the
+backwards jumps, we need
+\begin{align}
+  \frac{\partial \cal L}{\partial t_{i,l(i)}} &= -
+  \frac{1}{N_{\text{batch}}} \left[\frac{\smexp}{\liexp}
+    \left(\frac{-\frac{1}{\tau_0} \liexp}{\smexp} \right. \right.\\
+   & \hphantom{= -\frac{1}{N_{\text{batch}}}} \left. \left.
+    -\frac{\liexp}{\left(\smexp\right)^2}
+    \left(-\frac{1}{\tau_0}\liexp\right)\right) - \alpha
+    \frac{1}{\tau_1} \liexpb \right] \\
+  &= -
+  \frac{1}{N_{\text{batch}}} \left[ -\frac{1}{\tau_0} +
+    \frac{1}{\tau_0}\frac{\liexp}{\smexp} -\frac{\alpha}{\tau_1}\liexpb
+    \right] \\
+  &= 
+  \frac{1}{N_{\text{batch}}} \left[\frac{1}{\tau_0} \left(1 -
+    \frac{\liexp}{\smexp} \right) + \frac{\alpha}{\tau_1}\liexpb
+    \right] \label{eq:lyy1} \\
+  \frac{\partial \cal L}{\partial t_{i,j}} &= -
+  \frac{1}{N_{\text{batch}}} \left[\frac{\smexp}{\liexp} \left(-\frac{\liexp}{\left(\smexp\right)^2}\right)
+    \left(-\frac{1}{\tau_0}\exp\left(-t^{\text{post}}_{i,j}/\tau_0\right)
+    \right)\right] \\
+  &=  
+  \frac{1}{N_{\text{batch}}} \left[ - \frac{1}{\tau_0}
+    \frac{\exp\left(-t^{\text{post}}_{i,j}/\tau_0\right)}{\smexp} \right]\label{eq:lyy2} 
+\end{align}
+We will use (\ref{eq:lyy1}) and (\ref{eq:lyy2}) to update $\lambda_V$
+at jump points of output neurons.
 
 \section{GeNN Implementation Notes}
 \begin{itemize}
