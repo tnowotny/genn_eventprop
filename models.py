@@ -53,7 +53,7 @@ Note that V_reset should be the correct initial value for V as used to initialis
 EVP_neuron_reset= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset",
     param_names=["V_reset","N_max_spike"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","bool")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t")],
     update_code= """
         $(rp_ImV)= $(wp_ImV)-1;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
@@ -61,7 +61,7 @@ EVP_neuron_reset= genn_model.create_custom_custom_update_class(
         $(lambda_V)= 0.0;
         $(lambda_I)= 0.0;
         $(V)= $(V_reset);
-        $(back_spike)= false;
+        $(back_spike)= 0;
     """
 )
 
@@ -69,7 +69,7 @@ EVP_neuron_reset= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output",
     param_names=["V_reset","N_max_spike","tau0","tau1"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","bool"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar")],
     update_code= """
         scalar mexp= exp(-($(new_first_spike_t)-$(rev_t))/$(tau0));
         scalar sum= __shfl_sync(0x7, mexp, 0);
@@ -82,7 +82,7 @@ EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
         $(lambda_V)= 0.0;
         $(lambda_I)= 0.0;
         $(V)= $(V_reset);
-        $(back_spike)= false;
+        $(back_spike)= 0;
         $(first_spike_t)= $(new_first_spike_t);
         $(new_first_spike_t)= -1e5;
     """
@@ -129,7 +129,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     "EVP_LIF",
     param_names=["tau_m","V_thresh","V_reset","N_max_spike","tau_syn"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","bool")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
@@ -142,10 +142,10 @@ EVP_LIF = genn_model.create_custom_neuron_class(
         // decrease read pointer (on ring buffer)
         $(rp_ImV)--;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
-        $(back_spike)= false;
+        $(back_spike)= 0;
     }    
     if (abs(back_t - $(t_k)[$(id)*((int) $(N_max_spike))+$(rp_ImV)]) < 1e-3*DT) {
-        $(back_spike)= true;
+        $(back_spike)= 1;
     }
     // forward pass
     $(V) += ($(Isyn)-$(V))/$(tau_m)*DT;
@@ -169,7 +169,7 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     "EVP_LIF_output",
     param_names=["tau_m","V_thresh","V_reset","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","bool"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int")], # note: label is set from CPU - TODO: better to upload the full label information for the epoch?
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
@@ -187,13 +187,14 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
             else {
                 $(lambda_V) -= (exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
             }
+        }
         // decrease read pointer (on ring buffer)
         $(rp_ImV)--;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
-        $(back_spike)= false;
+        $(back_spike)= 0;
     }    
     if (abs(back_t - $(t_k)[$(id)*((int) $(N_max_spike))+$(rp_ImV)]) < 1e-3*DT) {
-        $(back_spike)= true;
+        $(back_spike)= 1;
     }
     // forward pass
     $(V) += ($(Isyn)-$(V))/$(tau_m)*DT;

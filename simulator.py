@@ -4,12 +4,13 @@ from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
 from Dataset import YinYangDataset
 from models import *
+import os
 
 # ----------------------------------------------------------------------------
 # Parameters
 # ----------------------------------------------------------------------------
 output_dir= "."
-TRAIN= True
+TRAIN= False
 TIMESTEP_MS = 0.1
 BUILD = True
 TIMING = True
@@ -94,6 +95,7 @@ X_train= X_train*TRIAL_MS+offset
 X_train= X_train.flatten()
 
 Y_train= np.vstack([ Y_train[i*chunk:(i+1)*chunk] for i in range(N_BATCH)])
+Y_train= Y_train.flatten()
 
 input_end_train = np.arange(chunk,NUM_INPUT*N_BATCH*chunk+1, chunk)
 input_end_train = np.reshape(input_end_train, (N_BATCH, NUM_INPUT))
@@ -112,6 +114,7 @@ X_test= X_test*TRIAL_MS+offset
 X_test= X_test.flatten()
 
 Y_test= np.vstack([ Y_test[i*chunk:(i+1)*chunk] for i in range(N_BATCH)])
+Y_test= Y_test.flatten()
 
 input_end_test = np.arange(chunk,NUM_INPUT*N_BATCH*chunk+1, chunk)
 input_end_test = np.reshape(input_end_test, (N_BATCH, NUM_INPUT))
@@ -140,7 +143,7 @@ hidden_init_vars= {"V": V_RESET,
                    "rev_t": 0.0,
                    "rp_ImV": 0,
                    "wp_ImV": 0,
-                   "back_spike": False,
+                   "back_spike": 0,
                    }
 
 output_params= {"tau_m": TAU_MEM,
@@ -161,7 +164,7 @@ output_init_vars= {"V": V_RESET,
                    "rev_t": 0.0,
                    "rp_ImV": 0,
                    "wp_ImV": 0,
-                   "back_spike": False,
+                   "back_spike": 0,
                    "first_spike_t": -1e5,
                    "new_first_spike_t": -1e5,
                    "expsum": 1.0,
@@ -196,6 +199,7 @@ adam_init_vars = {"m": 0.0, "v": 0.0}
 model = genn_model.GeNNModel("float", "eventprop_yingyang", generateLineInfo=True)
 model.dT = TIMESTEP_MS
 model.timing_enabled = TIMING
+model.batch_size = N_BATCH
 
 # Add neuron populations
 input = model.add_neuron_population("Input", NUM_INPUT, "SpikeSourceArray", 
@@ -268,14 +272,19 @@ optimisers= [in_to_hid_learn, hid_to_out_learn]
 model.build()
 model.load()
 
+# ----------------------------------------------------------------------------
+# Simulation loop
+# ----------------------------------------------------------------------------
+
+
 if TRAIN:
     in_to_hid.pull_var_from_device("w")
     hid_to_out.pull_var_from_device("w")
-    np.save(os.path.join(output_dir, "g_input_hidden_0.npy"), in_to_hid.vars["w"].view.copy())
-    np.save(os.path.join(output_dir, "g_hidden_output_0.npy"), hid_to_out.vars["w"].view.copy())
+    np.save(os.path.join(output_dir, "w_input_hidden_0.npy"), in_to_hid.vars["w"].view.copy())
+    np.save(os.path.join(output_dir, "w_hidden_output_0.npy"), hid_to_out.vars["w"].view.copy())
 else:
-    in_to_hid.vars["w"].view[:]= np.load(os.path.join(output_dir, "g_input_hidden_1.npy"))
-    hid_to_out.vars["w"].view[:]= np.load(os.path.join(output_dir, "g_hidden_output_1.npy"))
+    in_to_hid.vars["w"].view[:]= np.load(os.path.join(output_dir, "w_input_hidden_1.npy"))
+    hid_to_out.vars["w"].view[:]= np.load(os.path.join(output_dir, "w_hidden_output_1.npy"))
     in_to_hid.push_var_to_device("w")
     hid_to_out.push_var_to_device("w")
     
@@ -286,7 +295,9 @@ else:
 
 good= 0.0    
 fst= output.vars["first_spike_t"].view
-adam_step= 0
+adam_step= 1
+learning_rate= ETA
+cnt= np.ones(N_BATCH)
 
 for trial in range(N_trial):
     if TRAIN:
@@ -301,18 +312,20 @@ for trial in range(N_trial):
         update_adam(learning_rate, adam_step, optimisers)
         adam_step += 1
         model.custom_update("EVPReduce")
-        model.custom_uodate("EVPLearn")
+        model.custom_update("EVPLearn")
     else:
         output.pull_var_from_device("first_spike_t");
-        pred= np.argmin(fst[:])
-        if pred == Y_test[trial]:
-            good += 1.0
+        print(fst.shape)
+        pred= np.argmin(fst[:,:],axis=1)
+        print(pred.shape)
+        good += np.sum(cnt[pred == Y_test[trial*N_BATCH:(trial+1)*N_BATCH]])
+        print(good) 
     model.custom_update("neuronReset")
     model.custom_update("neuronResetOutput")
 
-print("Correct: {}".format(good))
+print("Correct: {}".format(good/(N_trial*N_BATCH)))
     
 in_to_hid.pull_var_from_device("w")
 hid_to_out.pull_var_from_device("w")
-np.save(os.path.join(output_dir, "g_input_hidden_1.npy"), in_to_hid.vars["w"].view.copy())
-np.save(os.path.join(output_dir, "g_hidden_output_1.npy"), hid_to_out.vars["w"].view.copy())
+np.save(os.path.join(output_dir, "w_input_hidden_1.npy"), in_to_hid.vars["w"].view.copy())
+np.save(os.path.join(output_dir, "w_hidden_output_1.npy"), hid_to_out.vars["w"].view.copy())
