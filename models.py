@@ -72,10 +72,15 @@ EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
     var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar")],
     update_code= """
         scalar mexp= exp(-($(new_first_spike_t)-$(rev_t))/$(tau0));
+        #ifdef __CUDA__
         scalar sum= __shfl_sync(0x7, mexp, 0);
         sum+= __shfl_sync(0x7, mexp, 1);
         sum+= __shfl_sync(0x7, mexp, 2);
         $(expsum)= sum;
+        #else
+        if ($(id) == 0) $(expsum)= 0.0;
+        $(expsum)+= mexp;
+        #endif
         $(rp_ImV)= $(wp_ImV)-1;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         $(rev_t)= $(t);

@@ -55,6 +55,8 @@ p["ETA_DECAY"]= 0.95      # UNUSED - presumably a decay in learning rate
 # spike recording
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["REC_SPIKES"] = []
+p["REC_NEURONS"] = {}
+p["REC_SYNAPSES"] = {}
 p["WRITE_TO_DISK"]= True
 
 # ----------------------------------------------------------------------------
@@ -315,7 +317,15 @@ def run_yingyang(p):
     for pop in p["REC_SPIKES"]:
         spike_t[pop]= []
         spike_ID[pop]= []
-    
+
+    rec_vars_n= {}
+    for pop, var in p["REC_NEURONS"].items():
+        rec_vars_n[var+pop]= []
+
+    rec_vars_s= {}
+    for pop, var in p["REC_SYNAPSES"].items():
+        rec_vars_s[var+pop]= []
+        
     for trial in range(N_trial):
         if p["TRAIN"]:
             output.set_extra_global_param("label", int(Y_train[trial]))
@@ -334,6 +344,16 @@ def run_yingyang(p):
                         spike_t[pop].append(the_pop.spike_recording_data[0][0])
                         spike_ID[pop].append(the_pop.spike_recording_data[0][1])
 
+            for pop, var in p["REC_NEURONS"].items():
+                the_pop= model.neuron_populations[pop]
+                the_pop.pull_var_from_device[var]
+                rec_vars_n[var+pop].append(the_pop.vars[var].view.copy())
+
+            for pop, var in p["REC_SYNAPSES"].items():
+                the_pop= model.synapse_populations[pop]
+                the_pop.pull_var_from_device[var]
+                rec_vars_n[var+pop].append(the_pop.vars[var].view.copy())
+                                           
         if p["TRAIN"]:
             update_adam(learning_rate, adam_step, optimisers)
             adam_step += 1
@@ -353,11 +373,23 @@ def run_yingyang(p):
         spike_t[pop]= np.hstack(spike_t[pop])
         spike_ID[pop]= np.hstack(spike_ID[pop])
 
+    for pop, var in p["REC_NEURONS"].items():
+        rec_var_n[var+pop]= np.vstack[rec_var_n[var+pop]]
+        
+    for pop, var in p["REC_SYNAPSES"].items():
+        rec_var_s[var+pop]= np.vstack[rec_var_s[var+pop]]
+        
     if p["WRITE_TO_DISK"]:            # Saving results
         for pop in p["REC_SPIKES"]:
             np.save(p["OUT_DIR"]+"/"+pop+"_spike_t", spike_t[pop])
             np.save(p["OUT_DIR"]+"/"+pop+"_spike_ID", spike_ID[pop])
 
+        for pop, var in p["REC_NEURONS"].items():
+            np.save(p["OUT_DIR"]+"/"+var+pop, rec_vars_n[var+pop])
+
+        for pop, var in p["REC_SYNAPSES"].items():
+            np.save(p["OUT_DIR"]+"/"+var+pop, rec_vars_n[var+pop])
+            
     if not p["TRAIN"]:
         print("Correct: {}".format(good/(N_trial*p["N_BATCH"])))
     
@@ -365,7 +397,7 @@ def run_yingyang(p):
     hid_to_out.pull_var_from_device("w")
     np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_1.npy"), in_to_hid.vars["w"].view.copy())
     np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_1.npy"), hid_to_out.vars["w"].view.copy())
-    return (spike_t, spike_ID)
+    return (spike_t, spike_ID, rec_vars_n, rec_vars_s)
 
 if __name__ == "__main__":
     run_yingyang(p)
