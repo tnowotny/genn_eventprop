@@ -2,10 +2,13 @@ from simulator import *
 import matplotlib.pyplot as plt
 import numpy as np
 
+p["N_BATCH"]= 1
 p["N_TRAIN"]= 10*p["N_BATCH"]
 p["REC_SPIKES"]= ["input","hidden","output"]
-p["REC_NEURONS"]= [("hidden", "lambda_V"),
+p["REC_NEURONS"]= [("hidden","V"),
+                   ("hidden", "lambda_V"),
                    ("hidden", "lambda_I"),
+                   ("output", "V"),
                    ("output", "lambda_V"),
                    ("output", "lambda_I")
                    ]
@@ -18,14 +21,17 @@ p["REC_SYNAPSES"]= [("in_to_hid", "w"),
 spike_t, spike_ID, rec_vars_n, rec_vars_s= run_yingyang(p)
 
 plt.figure()
-plt.scatter(spike_t["input"], spike_ID["input"])
-plt.scatter(spike_t["hidden"], spike_ID["hidden"]+6,"r")
-plt.scatter(spike_t["output"], spike_ID["output"]+207,"g")
-print(rec_vars_n)
+plt.scatter(spike_t["input"], spike_ID["input"],s=0.2)
+plt.scatter(spike_t["hidden"], spike_ID["hidden"]+6.0,s=0.2)
+plt.scatter(spike_t["output"], spike_ID["output"]+207,s=0.2)
+plt.figure()
+plt.plot(rec_vars_n["Vhidden"])
 plt.figure()
 plt.plot(rec_vars_n["lambda_Vhidden"])
 plt.figure()
 plt.plot(rec_vars_n["lambda_Ihidden"])
+plt.figure()
+plt.plot(rec_vars_n["Voutput"])
 plt.figure()
 plt.plot(rec_vars_n["lambda_Voutput"])
 plt.figure()
