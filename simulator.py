@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
@@ -117,6 +118,7 @@ def run_yingyang(p):
     
     X_test, Y_test = YinYangDataset(size=p["N_TEST"] * N_CLASS, 
                                     flipped_coords=True, seed=None)[:]
+    X_t_orig= X_test[:,0:2]
     X_test= X_test.T
     z= np.zeros(p["N_TEST"] * N_CLASS)
     X_test= np.vstack([z, X_test])
@@ -428,7 +430,14 @@ def run_yingyang(p):
             
     if not p["TRAIN"]:
         print("Correct: {}".format(good/(N_trial*p["N_BATCH"])))
-    
+        Predict= np.hstack(Predict)
+        print(Predict.shape)
+        plt.figure()
+        plt.scatter(X_t_orig[:,0],X_t_orig[:,1],c=Y_test,s=0.5)
+        plt.figure()
+        plt.scatter(X_t_orig[:,0],X_t_orig[:,1],c=Predict,s=0.5)
+        plt.show()
+        
     in_to_hid.pull_var_from_device("w")
     hid_to_out.pull_var_from_device("w")
     np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_last.npy"), in_to_hid.vars["w"].view.copy())

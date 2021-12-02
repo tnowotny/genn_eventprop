@@ -95,6 +95,7 @@ EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
             mexp= exp(-($(new_first_spike_t)-$(rev_t))/$(tau0));}
         else
             mexp= 0.0;
+        #define __CUDA__
         #ifdef __CUDA__
         scalar sum= __shfl_sync(0x7, mexp, 0);
         sum+= __shfl_sync(0x7, mexp, 1);
