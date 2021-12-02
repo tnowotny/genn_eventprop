@@ -348,60 +348,61 @@ def run_yingyang(p):
     for pop, var in p["REC_SYNAPSES"]:
         rec_vars_s[var+pop]= []
     print(rec_vars_s)        
-    for trial in range(N_trial):
-        if p["TRAIN"]:
-            output.set_extra_global_param("label", int(Y_train[trial]))
-        else:
-            output.set_extra_global_param("label", int(Y_test[trial]))
-        trial_end= (trial+1)*p["TRIAL_MS"]
-        int_t= 0
-        while (model.t <  trial_end-1e-3*p["DT_MS"]):
-            model.step_time()
-            int_t += 1
-            if len(p["REC_SPIKES"]) > 0:
-                if int_t%p["SPK_REC_STEPS"] == 0:
-                    model.pull_recording_buffers_from_device()
-                    for pop in p["REC_SPIKES"]:
-                        the_pop= model.neuron_populations[pop]
-                        if p["N_BATCH"] > 1:
-                            spike_t[pop].append(the_pop.spike_recording_data[0][0])
-                            spike_ID[pop].append(the_pop.spike_recording_data[0][1])
-                        else:
-                            spike_t[pop].append(the_pop.spike_recording_data[0])
-                            spike_ID[pop].append(the_pop.spike_recording_data[1])
+    for epoch in range(p["N_EPOCH"]):
+        for trial in range(N_trial):
+            if p["TRAIN"]:
+                output.set_extra_global_param("label", int(Y_train[trial]))
+            else:
+                output.set_extra_global_param("label", int(Y_test[trial]))
+                trial_end= (trial+1)*p["TRIAL_MS"]
+            int_t= 0
+            while (model.t <  trial_end-1e-3*p["DT_MS"]):
+                model.step_time()
+                int_t += 1
+                if len(p["REC_SPIKES"]) > 0:
+                    if int_t%p["SPK_REC_STEPS"] == 0:
+                        model.pull_recording_buffers_from_device()
+                        for pop in p["REC_SPIKES"]:
+                            the_pop= model.neuron_populations[pop]
+                            if p["N_BATCH"] > 1:
+                                spike_t[pop].append(the_pop.spike_recording_data[0][0])
+                                spike_ID[pop].append(the_pop.spike_recording_data[0][1])
+                            else:
+                                spike_t[pop].append(the_pop.spike_recording_data[0])
+                                spike_ID[pop].append(the_pop.spike_recording_data[1])
 
-            for pop, var in p["REC_NEURONS"]:
-                the_pop= model.neuron_populations[pop]
-                the_pop.pull_var_from_device(var)
-                rec_vars_n[var+pop].append(the_pop.vars[var].view.copy())
+                for pop, var in p["REC_NEURONS"]:
+                    the_pop= model.neuron_populations[pop]
+                    the_pop.pull_var_from_device(var)
+                    rec_vars_n[var+pop].append(the_pop.vars[var].view.copy())
 
-            for pop, var in p["REC_SYNAPSES"]:
-                the_pop= model.synapse_populations[pop]
-                the_pop.pull_var_from_device(var)
-                rec_vars_s[var+pop].append(the_pop.vars[var].view.copy())
+                for pop, var in p["REC_SYNAPSES"]:
+                    the_pop= model.synapse_populations[pop]
+                    the_pop.pull_var_from_device(var)
+                    rec_vars_s[var+pop].append(the_pop.vars[var].view.copy())
                                            
-        if p["TRAIN"]:
-            update_adam(learning_rate, adam_step, optimisers)
-            adam_step += 1
-            model.custom_update("EVPReduce")
-            model.custom_update("EVPLearn")
-        else:
-            output.pull_var_from_device("first_spike_t");
-            print(fst.shape)
-            pred= np.argmin(fst[:,:],axis=1)
-            print(pred.shape)
-            good += np.sum(cnt[pred == Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
-            print(good) 
-        model.custom_update("neuronReset")
-        in_to_hid.in_syn[:]= 0.0
-        in_to_hid.push_in_syn_to_device()
-        hid_to_out.in_syn[:]= 0.0
-        hid_to_out.push_in_syn_to_device()
-        model.custom_update("neuronResetOutput")
+            if p["TRAIN"]:
+                update_adam(learning_rate, adam_step, optimisers)
+                adam_step += 1
+                model.custom_update("EVPReduce")
+                model.custom_update("EVPLearn")
+            else:
+                output.pull_var_from_device("first_spike_t");
+                print(fst.shape)
+                pred= np.argmin(fst[:,:],axis=1)
+                print(pred.shape)
+                good += np.sum(cnt[pred == Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
+                print(good) 
+            model.custom_update("neuronReset")
+            in_to_hid.in_syn[:]= 0.0
+            in_to_hid.push_in_syn_to_device()
+            hid_to_out.in_syn[:]= 0.0
+            hid_to_out.push_in_syn_to_device()
+            model.custom_update("neuronResetOutput")
 
-        if trial % p["W_REPORT_INTERVAL"] == 0:
-            np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_{}.npy".format(trial)), in_to_hid.vars["w"].view.copy())
-            np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_{}.npy".format(trial)), hid_to_out.vars["w"].view.copy())
+            if trial % p["W_REPORT_INTERVAL"] == 0:
+                np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_{}.npy".format(trial)), in_to_hid.vars["w"].view.copy())
+                np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_{}.npy".format(trial)), hid_to_out.vars["w"].view.copy())
 
         
     for pop in p["REC_SPIKES"]:
