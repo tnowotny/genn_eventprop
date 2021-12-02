@@ -257,7 +257,7 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
         //if ($(id) == 0) printf(\"%f, %f\\n\",back_t,$(first_spike_t));
         if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
             scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
-            if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch_id)]) {
+            if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
             //if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)]) {
                 scalar old_lambda= $(lambda_V);
                 $(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
