@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
@@ -117,6 +118,7 @@ def run_yingyang(p):
     
     X_test, Y_test = YinYangDataset(size=p["N_TEST"] * N_CLASS, 
                                     flipped_coords=True, seed=None)[:]
+    X_t_orig= X_test[:,0:2]
     X_test= X_test.T
     z= np.zeros(p["N_TEST"] * N_CLASS)
     X_test= np.vstack([z, X_test])
@@ -348,6 +350,7 @@ def run_yingyang(p):
     for pop, var in p["REC_SYNAPSES"]:
         rec_vars_s[var+pop]= []
     print(rec_vars_s)        
+    Predict= []
     for trial in range(N_trial):
         if p["TRAIN"]:
             output.set_extra_global_param("label", int(Y_train[trial]))
@@ -391,6 +394,7 @@ def run_yingyang(p):
             pred= np.argmin(fst[:,:],axis=1)
             print(pred.shape)
             good += np.sum(cnt[pred == Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
+            Predict.append(pred)
             print(good) 
         model.custom_update("neuronReset")
         in_to_hid.in_syn[:]= 0.0
@@ -404,6 +408,7 @@ def run_yingyang(p):
             np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_{}.npy".format(trial)), hid_to_out.vars["w"].view.copy())
 
         
+
     for pop in p["REC_SPIKES"]:
         spike_t[pop]= np.hstack(spike_t[pop])
         spike_ID[pop]= np.hstack(spike_ID[pop])
@@ -427,7 +432,14 @@ def run_yingyang(p):
             
     if not p["TRAIN"]:
         print("Correct: {}".format(good/(N_trial*p["N_BATCH"])))
-    
+        Predict= np.hstack(Predict)
+        print(Predict.shape)
+        plt.figure()
+        plt.scatter(X_t_orig[:,0],X_t_orig[:,1],c=Y_test,s=0.5)
+        plt.figure()
+        plt.scatter(X_t_orig[:,0],X_t_orig[:,1],c=Predict,s=0.5)
+        plt.show()
+        
     in_to_hid.pull_var_from_device("w")
     hid_to_out.pull_var_from_device("w")
     np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_last.npy"), in_to_hid.vars["w"].view.copy())
