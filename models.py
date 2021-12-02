@@ -34,7 +34,7 @@ adam_optimizer_model = genn_model.create_custom_custom_update_class(
                          ("secondMomentScale", "scalar")],
     var_refs=[("gradient", "scalar", VarAccessMode_READ_ONLY), ("variable", "scalar")],
     update_code="""
-    scalar grad= $(tau_syn)*$(gradient)/$(N_batch);
+    scalar grad= -$(tau_syn)*$(gradient);
     // Update biased first moment estimate
     $(m) = ($(beta1) * $(m)) + ((1.0 - $(beta1)) * grad);
     // Update biased second moment estimate
@@ -88,13 +88,14 @@ EVP_neuron_reset= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output",
     param_names=["V_reset","N_max_spike","tau0","tau1"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),("trial","unsigned int")],
     update_code= """
         scalar mexp;
         if ($(new_first_spike_t) > 0.0) {
             mexp= exp(-($(new_first_spike_t)-$(rev_t))/$(tau0));}
         else
             mexp= 0.0;
+        //printf(\"%g, %d, %g, %g\\n\",$(t),$(id),$(new_first_spike_t),$(rev_t));
         #define __CUDA__
         #ifdef __CUDA__
         scalar sum= __shfl_sync(0x7, mexp, 0);
@@ -114,8 +115,10 @@ EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
            $(expsum)= group->expsum[0];
         }
         #endif
+        //printf(\"%g\\n\",$(expsum));
+        //printf(\"ID: %d, rp: %d, wp: %d\\n\",$(id),$(rp_ImV),$(wp_ImV)); 
         $(rp_ImV)= $(wp_ImV)-1;
-        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        if ($(rp_ImV) < 0) $(rp_ImV)= ((int) $(N_max_spike))-1;
         $(rev_t)= $(t);
         $(lambda_V)= 0.0;
         $(lambda_I)= 0.0;
@@ -123,6 +126,7 @@ EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
         $(back_spike)= 0;
         $(first_spike_t)= $(new_first_spike_t);
         $(new_first_spike_t)= -1e5;
+        $(trial)++;
     """
 )
 
@@ -239,8 +243,8 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     "EVP_LIF_output",
     param_names=["tau_m","V_thresh","V_reset","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar")],
-    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int")], # note: label is set from CPU - TODO: better to upload the full label information for the epoch?
+                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),("trial","unsigned int")],
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
     // backward pass
@@ -251,17 +255,18 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[$(id)*((int) $(N_max_spike))+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         //if ($(id) == 0) printf(\"%f, %f\\n\",back_t,$(first_spike_t));
-        if (abs(back_t - $(first_spike_t)) < 1e-3*DT) {
+        if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
             scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
-            if ($(id) == $(label)) {
+            if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch_id)]) {
+            //if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)]) {
                 scalar old_lambda= $(lambda_V);
                 $(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
-                //printf(\"expsum: %g, old: %g, new: %g\\n\",$(expsum),old_lambda,$(lambda_V));
+                //printf(\"%g POS: Trial: %d, label: %d, ID: %d, expsum: %g, old: %g, new: %g\\n\",$(t),$(trial),$(label)[($(trial)-1)*(int)$(N_batch)],$(id),$(expsum),old_lambda,$(lambda_V));
             }
             else {
                 scalar old_lambda= $(lambda_V);
                 $(lambda_V) -= (exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
-                //printf(\"NEG: expsum: %g, old: %g, new: %g\\n\",$(expsum),old_lambda,$(lambda_V));
+                //printf(\"%g NEG: Trial: %d, label: %d, ID: %d, expsum: %g, old: %g, new: %g\\n\",$(t),$(trial),$(label)[($(trial)-1)*(int)$(N_batch)],$(id),$(expsum),old_lambda,$(lambda_V));
             }
         }
         // decrease read pointer (on ring buffer)
