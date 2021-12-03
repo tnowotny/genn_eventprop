@@ -2,7 +2,8 @@ from simulator import *
 import matplotlib.pyplot as plt
 import numpy as np
 
-p["ETA"]= 5e-4
+p["DT_MS"]= 0.1
+p["ETA"]= 5e-3
 p["N_BATCH"]= 64
 p["N_TRAIN"]= 1000*p["N_BATCH"]
 p["W_REPORT_INTERVAL"]= 3000

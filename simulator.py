@@ -89,6 +89,9 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
 
 
 def run_yingyang(p):
+    X= []
+    Y= []
+    LB= []
     # Convert parameters to timesteps
     TRIAL_TIMESTEPS = int(p["TRIAL_MS"] / p["DT_MS"])
 
@@ -102,16 +105,14 @@ def run_yingyang(p):
     X_train= X_train.T
     z= np.zeros(p["N_TRAIN"] * N_CLASS)
     X_train= np.vstack([z, X_train])
+    X_train= np.vstack([ X_train[:,i:p["N_TRAIN"] * N_CLASS:p["N_BATCH"]] for i in range(p["N_BATCH"])])
     chunk= (p["N_TRAIN"] * N_CLASS) // p["N_BATCH"]
-    X_train= np.vstack([ X_train[:,i*chunk:(i+1)*chunk] for i in range(p["N_BATCH"])])
     offset= np.reshape(np.arange(0,chunk * p["TRIAL_MS"], p["TRIAL_MS"]),(1,chunk))
     offset= np.repeat(offset,NUM_INPUT*p["N_BATCH"],axis=0)
     X_train= X_train*p["TRIAL_MS"]+offset
     X_train= X_train.flatten()
-
-    Y_train= np.vstack([ Y_train[i*chunk:(i+1)*chunk] for i in range(p["N_BATCH"])])
-    Y_train= Y_train.flatten()
-
+    #print(X_train)
+    #print(Y_train)
     input_end_train = np.arange(chunk,NUM_INPUT*p["N_BATCH"]*chunk+1, chunk)
     input_end_train = np.reshape(input_end_train, (p["N_BATCH"], NUM_INPUT))
     input_start_train = get_input_start(input_end_train)
@@ -128,9 +129,6 @@ def run_yingyang(p):
     offset= np.repeat(offset,NUM_INPUT*p["N_BATCH"],axis=0)
     X_test= X_test*p["TRIAL_MS"]+offset
     X_test= X_test.flatten()
-
-    Y_test= np.vstack([ Y_test[i*chunk:(i+1)*chunk] for i in range(p["N_BATCH"])])
-    Y_test= Y_test.flatten()
     
     input_end_test = np.arange(chunk,NUM_INPUT*p["N_BATCH"]*chunk+1, chunk)
     input_end_test = np.reshape(input_end_test, (p["N_BATCH"], NUM_INPUT))
@@ -353,7 +351,6 @@ def run_yingyang(p):
     rec_vars_s= {}
     for pop, var in p["REC_SYNAPSES"]:
         rec_vars_s[var+pop]= []
-    print(rec_vars_s)
     Predict= []
     for epoch in range(p["N_EPOCH"]):
         #print(output.extra_global_params["label"].view[:])
@@ -401,13 +398,29 @@ def run_yingyang(p):
                 adam_step += 1
                 model.custom_update("EVPReduce")
                 model.custom_update("EVPLearn")
+                # do some checks and measure training error
+                output.pull_var_from_device("first_spike_t")
+                model.pull_recording_buffers_from_device()
+                if (p["N_BATCH"] > 1):
+                    tt= np.vstack([x[0] for x in input.spike_recording_data])
+                    ii= np.vstack([x[1] for x in input.spike_recording_data])
+                else:
+                    tt= input.spike_recording_data[0]
+                    ii= input.spike_recording_data[1]
+                #print(tt)
+                #print(ii)
+                xspkt= tt[ii == 1]
+                X.append(xspkt-trial*p["TRIAL_MS"])
+                yspkt= tt[ii == 2]
+                Y.append(yspkt-trial*p["TRIAL_MS"])
+                LB.append(Y_train[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]])
             else:
                 output.pull_var_from_device("first_spike_t");
-                print(fst.shape)
+                #print(fst.shape)
                 pred= np.argmin(fst,axis=-1)
-                print(pred.shape)
+                #print(pred.shape)
                 good += np.sum(cnt[pred == Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
-                print(good)
+                #print(good)
                 Predict.append(pred)
             model.custom_update("neuronReset")
             in_to_hid.in_syn[:]= 0.0
@@ -422,7 +435,14 @@ def run_yingyang(p):
                 hid_to_out.pull_var_from_device("w")
                 np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_e{}_t{}.npy".format(epoch,trial)), hid_to_out.vars["w"].view.copy())
 
-        
+    """
+    print(X)
+    print(Y)
+    print(LB)
+    plt.figure()
+    plt.scatter(X,Y,c=LB,s=0.5)
+    plt.show()
+    """
     for pop in p["REC_SPIKES"]:
         spike_t[pop]= np.hstack(spike_t[pop])
         spike_ID[pop]= np.hstack(spike_ID[pop])
