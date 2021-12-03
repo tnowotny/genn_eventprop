@@ -123,8 +123,8 @@ def run_yingyang(p):
     X_test= X_test.T
     z= np.zeros(p["N_TEST"] * N_CLASS)
     X_test= np.vstack([z, X_test])
+    X_test= np.vstack([ X_test[:,i:p["N_TEST"]*N_CLASS:p["N_BATCH"]] for i in range(p["N_BATCH"])])
     chunk= (p["N_TEST"] * N_CLASS) // p["N_BATCH"]
-    X_test= np.vstack([ X_test[:,i*chunk:(i+1)*chunk] for i in range(p["N_BATCH"])])
     offset= np.reshape(np.arange(0,chunk * p["TRIAL_MS"], p["TRIAL_MS"]),(1,chunk))
     offset= np.repeat(offset,NUM_INPUT*p["N_BATCH"],axis=0)
     X_test= X_test*p["TRIAL_MS"]+offset
@@ -399,6 +399,7 @@ def run_yingyang(p):
                 model.custom_update("EVPReduce")
                 model.custom_update("EVPLearn")
                 # do some checks and measure training error
+                """
                 output.pull_var_from_device("first_spike_t")
                 model.pull_recording_buffers_from_device()
                 if (p["N_BATCH"] > 1):
@@ -414,6 +415,7 @@ def run_yingyang(p):
                 yspkt= tt[ii == 2]
                 Y.append(yspkt-trial*p["TRIAL_MS"])
                 LB.append(Y_train[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]])
+                """
             else:
                 output.pull_var_from_device("first_spike_t");
                 #print(fst.shape)
