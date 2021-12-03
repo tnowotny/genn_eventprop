@@ -404,7 +404,7 @@ def run_yingyang(p):
             else:
                 output.pull_var_from_device("first_spike_t");
                 print(fst.shape)
-                pred= np.argmin(fst[:,:],axis=1)
+                pred= np.argmin(fst,axis=-1)
                 print(pred.shape)
                 good += np.sum(cnt[pred == Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
                 print(good)
@@ -417,7 +417,9 @@ def run_yingyang(p):
             model.custom_update("neuronResetOutput")
 
             if trial % p["W_REPORT_INTERVAL"] == 0:
+                in_to_hid.pull_var_from_device("w")
                 np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_e{}_t{}.npy".format(epoch,trial)), in_to_hid.vars["w"].view.copy())
+                hid_to_out.pull_var_from_device("w")
                 np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_e{}_t{}.npy".format(epoch,trial)), hid_to_out.vars["w"].view.copy())
 
         
