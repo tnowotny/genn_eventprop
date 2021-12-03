@@ -109,7 +109,7 @@ def run_yingyang(p):
     chunk= (p["N_TRAIN"] * N_CLASS) // p["N_BATCH"]
     offset= np.reshape(np.arange(0,chunk * p["TRIAL_MS"], p["TRIAL_MS"]),(1,chunk))
     offset= np.repeat(offset,NUM_INPUT*p["N_BATCH"],axis=0)
-    X_train= X_train*p["TRIAL_MS"]+offset
+    X_train= X_train*(p["TRIAL_MS"]-p["DT_MS"])+offset
     X_train= X_train.flatten()
     #print(X_train)
     #print(Y_train)
@@ -127,7 +127,7 @@ def run_yingyang(p):
     chunk= (p["N_TEST"] * N_CLASS) // p["N_BATCH"]
     offset= np.reshape(np.arange(0,chunk * p["TRIAL_MS"], p["TRIAL_MS"]),(1,chunk))
     offset= np.repeat(offset,NUM_INPUT*p["N_BATCH"],axis=0)
-    X_test= X_test*p["TRIAL_MS"]+offset
+    X_test= X_test*(p["TRIAL_MS"]-p["DT_MS"])+offset
     X_test= X_test.flatten()
     
     input_end_test = np.arange(chunk,NUM_INPUT*p["N_BATCH"]*chunk+1, chunk)
@@ -334,7 +334,7 @@ def run_yingyang(p):
         N_trial= (p["N_TEST"] * N_CLASS) // p["N_BATCH"]
 
     good= 0.0    
-    fst= output.vars["first_spike_t"].view
+    nfst= output.vars["new_first_spike_t"].view
     adam_step= 1
     learning_rate= p["ETA"]
     cnt= np.ones(p["N_BATCH"])
@@ -397,33 +397,39 @@ def run_yingyang(p):
                 update_adam(learning_rate, adam_step, optimisers)
                 adam_step += 1
                 model.custom_update("EVPReduce")
-                model.custom_update("EVPLearn")
-                # do some checks and measure training error
-                """
-                output.pull_var_from_device("first_spike_t")
-                model.pull_recording_buffers_from_device()
-                if (p["N_BATCH"] > 1):
-                    tt= np.vstack([x[0] for x in input.spike_recording_data])
-                    ii= np.vstack([x[1] for x in input.spike_recording_data])
-                else:
-                    tt= input.spike_recording_data[0]
-                    ii= input.spike_recording_data[1]
-                #print(tt)
-                #print(ii)
-                xspkt= tt[ii == 1]
-                X.append(xspkt-trial*p["TRIAL_MS"])
-                yspkt= tt[ii == 2]
-                Y.append(yspkt-trial*p["TRIAL_MS"])
-                LB.append(Y_train[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]])
-                """
+                model.custom_update("EVPLearn")                
             else:
-                output.pull_var_from_device("first_spike_t");
-                #print(fst.shape)
-                pred= np.argmin(fst,axis=-1)
-                #print(pred.shape)
+                output.pull_var_from_device("new_first_spike_t");
+                print(nfst)
+                pred= np.argmin(nfst,axis=-1)
+                print(pred)
+                print(Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]])
                 good += np.sum(cnt[pred == Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
                 #print(good)
                 Predict.append(pred)
+            """
+            # do some checks and measure training error
+            output.pull_var_from_device("first_spike_t")
+            model.pull_recording_buffers_from_device()
+            print(input.spike_recording_data)
+            if (p["N_BATCH"] > 1):
+                tt= np.vstack([x[0] for x in input.spike_recording_data])
+                ii= np.vstack([x[1] for x in input.spike_recording_data])
+            else:
+                tt= input.spike_recording_data[0]
+                ii= input.spike_recording_data[1]
+            print(tt)
+            print(ii)
+            xspkt= tt[ii == 1]
+            X.append(xspkt-trial*p["TRIAL_MS"])
+            yspkt= tt[ii == 2]
+            Y.append(yspkt-trial*p["TRIAL_MS"])
+            if p["TRAIN"]:
+                LB.append(Y_train[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]])
+            else:
+                LB.append(Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]])
+            """
+            
             model.custom_update("neuronReset")
             in_to_hid.in_syn[:]= 0.0
             in_to_hid.push_in_syn_to_device()
@@ -445,6 +451,7 @@ def run_yingyang(p):
     plt.scatter(X,Y,c=LB,s=0.5)
     plt.show()
     """
+    
     for pop in p["REC_SPIKES"]:
         spike_t[pop]= np.hstack(spike_t[pop])
         spike_ID[pop]= np.hstack(spike_ID[pop])
