@@ -354,6 +354,7 @@ def run_yingyang(p):
     for pop, var in p["REC_SYNAPSES"]:
         rec_vars_s[var+pop]= []
     print(rec_vars_s)
+    Predict= []
     for epoch in range(p["N_EPOCH"]):
         #print(output.extra_global_params["label"].view[:])
         model.t= 0.0
@@ -406,7 +407,8 @@ def run_yingyang(p):
                 pred= np.argmin(fst[:,:],axis=1)
                 print(pred.shape)
                 good += np.sum(cnt[pred == Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
-                print(good) 
+                print(good)
+                Predict.append(pred)
             model.custom_update("neuronReset")
             in_to_hid.in_syn[:]= 0.0
             in_to_hid.push_in_syn_to_device()

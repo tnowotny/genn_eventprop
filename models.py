@@ -210,7 +210,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
     if ($(back_spike)) {
-        //printf(\"%f\\n",$(revIsyn));
+        printf(\"%f\\n",$(revIsyn));
         $(lambda_V) += 1.0/$(ImV)[$(id)*((int) $(N_max_spike))+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         // decrease read pointer (on ring buffer)
         $(rp_ImV)--;
