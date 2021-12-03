@@ -100,16 +100,16 @@ def run_yingyang(p):
     # ----------------------------------------------------------------------------
 
     np.random.seed(p["DATA_SEED"])
-    X_train, Y_train = YinYangDataset(size=p["N_TRAIN"] * N_CLASS, 
+    X_train, Y_train = YinYangDataset(size=p["N_TRAIN"]*N_CLASS, 
                                       flipped_coords=True, seed=p["DATA_SEED"])[:]
     X_train= X_train.T
     z= np.zeros(p["N_TRAIN"] * N_CLASS)
     X_train= np.vstack([z, X_train])
-    X_train= np.vstack([ X_train[:,i:p["N_TRAIN"] * N_CLASS:p["N_BATCH"]] for i in range(p["N_BATCH"])])
+    X_train= np.vstack([ X_train[:,i:p["N_TRAIN"]*N_CLASS:p["N_BATCH"]] for i in range(p["N_BATCH"])])
     chunk= (p["N_TRAIN"] * N_CLASS) // p["N_BATCH"]
     offset= np.reshape(np.arange(0,chunk * p["TRIAL_MS"], p["TRIAL_MS"]),(1,chunk))
     offset= np.repeat(offset,NUM_INPUT*p["N_BATCH"],axis=0)
-    X_train= X_train*(p["TRIAL_MS"]-p["DT_MS"])+offset
+    X_train= X_train*(p["TRIAL_MS"]-5*p["DT_MS"])+offset
     X_train= X_train.flatten()
     #print(X_train)
     #print(Y_train)
@@ -117,7 +117,7 @@ def run_yingyang(p):
     input_end_train = np.reshape(input_end_train, (p["N_BATCH"], NUM_INPUT))
     input_start_train = get_input_start(input_end_train)
     
-    X_test, Y_test = YinYangDataset(size=p["N_TEST"] * N_CLASS, 
+    X_test, Y_test = YinYangDataset(size=p["N_TEST"]*N_CLASS, 
                                     flipped_coords=True, seed=None)[:]
     X_t_orig= X_test[:,0:2]
     X_test= X_test.T
@@ -127,7 +127,7 @@ def run_yingyang(p):
     chunk= (p["N_TEST"] * N_CLASS) // p["N_BATCH"]
     offset= np.reshape(np.arange(0,chunk * p["TRIAL_MS"], p["TRIAL_MS"]),(1,chunk))
     offset= np.repeat(offset,NUM_INPUT*p["N_BATCH"],axis=0)
-    X_test= X_test*(p["TRIAL_MS"]-p["DT_MS"])+offset
+    X_test= X_test*(p["TRIAL_MS"]-5*p["DT_MS"])+offset
     X_test= X_test.flatten()
     
     input_end_test = np.arange(chunk,NUM_INPUT*p["N_BATCH"]*chunk+1, chunk)
