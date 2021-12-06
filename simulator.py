@@ -400,10 +400,10 @@ def run_yingyang(p):
                 model.custom_update("EVPLearn")                
             else:
                 output.pull_var_from_device("new_first_spike_t");
-                print(nfst)
+                #print(nfst)
                 pred= np.argmin(nfst,axis=-1)
-                print(pred)
-                print(Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]])
+                #print(pred)
+                #print(Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]])
                 good += np.sum(cnt[pred == Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
                 #print(good)
                 Predict.append(pred)
@@ -476,7 +476,7 @@ def run_yingyang(p):
     if not p["TRAIN"]:
         print("Correct: {}".format(good/(N_trial*p["N_BATCH"])))
         Predict= np.hstack(Predict)
-        print(Predict.shape)
+        #print(Predict.shape)
         plt.figure()
         plt.scatter(X_t_orig[:,0],X_t_orig[:,1],c=Y_test,s=0.5)
         plt.figure()
