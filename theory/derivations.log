@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.14159265-2.6-1.40.15 (TeX Live 2014) (preloaded format=pdflatex 2014.5.25)  25 NOV 2021 19:29
+This is pdfTeX, Version 3.14159265-2.6-1.40.15 (TeX Live 2014) (preloaded format=pdflatex 2014.5.25)  6 DEC 2021 10:24
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -303,13 +303,13 @@ Missing character: There is no â in font cmr10!
 Missing character: There is no € in font cmr10!
 Missing character: There is no € in font cmr10!
  [10]
-LaTeX Font Info:    Try loading font information for OMS+cmr on input line 1022
+LaTeX Font Info:    Try loading font information for OMS+cmr on input line 1020
 .
  (/usr/local/texlive/2014/texmf-dist/tex/latex/base/omscmr.fd
 File: omscmr.fd 1999/05/25 v2.5h Standard LaTeX font definitions
 )
 LaTeX Font Info:    Font shape `OMS/cmr/m/n' in size <10> not available
-(Font)              Font shape `OMS/cmsy/m/n' tried instead on input line 1022.
+(Font)              Font shape `OMS/cmsy/m/n' tried instead on input line 1020.
 
  [11]
 [12] (./derivations.aux) ) 
@@ -335,7 +335,7 @@ sy10.pfb></usr/local/texlive/2014/texmf-dist/fonts/type1/public/amsfonts/cm/cms
 y5.pfb></usr/local/texlive/2014/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7
 .pfb></usr/local/texlive/2014/texmf-dist/fonts/type1/public/amsfonts/symbols/ms
 bm10.pfb>
-Output written on derivations.pdf (12 pages, 1426879 bytes).
+Output written on derivations.pdf (12 pages, 1426562 bytes).
 PDF statistics:
  98 PDF objects out of 1000 (max. 8388607)
  68 compressed objects within 1 object stream
