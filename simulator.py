@@ -50,9 +50,9 @@ p["HIDDEN_OUTPUT_STD"]= 0.1
 p["ETA"]= 5e-3
 p["ADAM_BETA1"]= 0.9      
 p["ADAM_BETA2"]= 0.999    
-p["ADAM_EPS"]= 1e-8       # UNUSED - what is its intended use?
+p["ADAM_EPS"]= 1e-8       
 # applied every epoch
-p["ETA_DECAY"]= 0.95      # UNUSED - presumably a decay in learning rate
+p["ETA_DECAY"]= 0.95      
 
 # spike recording
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
@@ -97,7 +97,7 @@ def loss_func(nfst, Y, trial):
     pred= np.argmin(t,axis=-1)
     selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
     #print("expsum: {}, pred: {}, selected: {}".format(expsum,pred,selected))
-    loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
+    loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)+p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
     #print(loss)
     loss/= p["N_BATCH"]
     return loss
@@ -150,7 +150,7 @@ def run_yingyang(p):
     chunk= (p["N_TEST"] * N_CLASS) // p["N_BATCH"]
     offset= np.reshape(np.arange(0,chunk * p["TRIAL_MS"], p["TRIAL_MS"]),(1,chunk))
     offset= np.repeat(offset,NUM_INPUT*p["N_BATCH"],axis=0)
-    X_test= X_test*(p["TRIAL_MS"]-5*p["DT_MS"])+offset
+    X_test= X_test*(p["TRIAL_MS"]-4*p["DT_MS"])+offset+2*p["DT_MS"]
     X_test= X_test.flatten()
     
     input_end_test = np.arange(chunk,NUM_INPUT*p["N_BATCH"]*chunk+1, chunk)
@@ -374,7 +374,7 @@ def run_yingyang(p):
         rec_vars_s[var+pop]= []
     all_nfst= []
     for epoch in range(p["N_EPOCH"]):
-        learning_rate *= 0.99
+        learning_rate *= p["ETA_DECAY"]
         predict= []
         the_loss= []
         good= 0.0    

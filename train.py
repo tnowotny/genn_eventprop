@@ -10,6 +10,6 @@ p["N_TEST"]= 100*p["N_BATCH"]
 p["W_REPORT_INTERVAL"]= 3000
 p["N_EPOCH"]= 100
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
-p["TRAINING_PLOT"]= False
+p["TRAINING_PLOT"]= True
 p["TRAINING_PLOT_INTERVAL"]= 10
 spike_t, spike_ID, rec_vars_n, rec_vars_s= run_yingyang(p)
