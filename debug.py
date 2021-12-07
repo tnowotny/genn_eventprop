@@ -4,7 +4,7 @@ import numpy as np
 
 p["N_BATCH"]= 1
 p["N_TRAIN"]= 1
-p["N_EPOCH"]= 30
+p["N_EPOCH"]= 100
 p["REC_SPIKES"]= ["input","hidden","output"]
 p["REC_NEURONS"]= [("hidden","V"),
                    ("hidden", "lambda_V"),
@@ -43,8 +43,18 @@ plt.plot(rec_vars_s["win_to_hid"])
 plt.figure()
 plt.plot(rec_vars_s["dwin_to_hid"])
 plt.figure()
+print(rec_vars_s["whid_to_out"].shape)
 plt.plot(rec_vars_s["whid_to_out"])
 plt.figure()
+plt.plot(np.mean(rec_vars_s["whid_to_out"][:,0:-2:3],axis=1))
+plt.plot(np.mean(rec_vars_s["whid_to_out"][:,1:-1:3],axis=1))
+plt.plot(np.mean(rec_vars_s["whid_to_out"][:,2::3],axis=1))
+plt.figure()
+print(rec_vars_s["dwhid_to_out"].shape)
 plt.plot(rec_vars_s["dwhid_to_out"])
+plt.figure()
+plt.plot(np.mean(rec_vars_s["dwhid_to_out"][:,0:-2:3],axis=1))
+plt.plot(np.mean(rec_vars_s["dwhid_to_out"][:,1:-1:3],axis=1))
+plt.plot(np.mean(rec_vars_s["dwhid_to_out"][:,2::3],axis=1))
 
 plt.show()

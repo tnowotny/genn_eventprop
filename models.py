@@ -260,12 +260,14 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
             if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
             //if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)]) {
                 scalar old_lambda= $(lambda_V);
-                $(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
+                if ($(expsum) > 0.0)
+                    $(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
                 //printf(\"%g POS: Trial: %d, label: %d, ID: %d, expsum: %g, old: %g, new: %g\\n\",$(t),$(trial),$(label)[($(trial)-1)*(int)$(N_batch)],$(id),$(expsum),old_lambda,$(lambda_V));
             }
             else {
                 scalar old_lambda= $(lambda_V);
-                $(lambda_V) -= (exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
+                if ($(expsum) > 0.0)
+                    $(lambda_V) -= (exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
                 //printf(\"%g NEG: Trial: %d, label: %d, ID: %d, expsum: %g, old: %g, new: %g\\n\",$(t),$(trial),$(label)[($(trial)-1)*(int)$(N_batch)],$(id),$(expsum),old_lambda,$(lambda_V));
             }
         }
@@ -313,7 +315,7 @@ EVP_synapse= genn_model.create_custom_weight_update_class(
 )
 
 EVP_input_synapse= genn_model.create_custom_weight_update_class(
-    "EVP_synapse",
+    "EVP_input_synapse",
     var_name_types=[("w","scalar", VarAccessDuplication_SHARED),("dw","scalar")],
     sim_code="""
         $(addToInSyn, $(w));
