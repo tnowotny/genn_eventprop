@@ -109,7 +109,7 @@ def run_yingyang(p):
     chunk= (p["N_TRAIN"] * N_CLASS) // p["N_BATCH"]
     offset= np.reshape(np.arange(0,chunk * p["TRIAL_MS"], p["TRIAL_MS"]),(1,chunk))
     offset= np.repeat(offset,NUM_INPUT*p["N_BATCH"],axis=0)
-    X_train= X_train*(p["TRIAL_MS"]-5*p["DT_MS"])+offset
+    X_train= X_train*(p["TRIAL_MS"]-4*p["DT_MS"])+offset+2*p["DT_MS"]
     X_train= X_train.flatten()
     #print(X_train)
     #print(Y_train)
