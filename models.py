@@ -7,7 +7,7 @@ can compute exact gradients for spiking neural networks, Scientific Reports (202
 We use "EVP" in naming to indicate "eventprop".
 """
 from pygenn import genn_model 
-from pygenn.genn_wrapper.Models import VarAccessDuplication_SHARED, VarAccess_REDUCE_BATCH_SUM, VarAccessMode_READ_ONLY, VarAccess_READ_ONLY_DUPLICATE
+from pygenn.genn_wrapper.Models import VarAccessDuplication_SHARED, VarAccess_REDUCE_BATCH_SUM, VarAccessMode_READ_ONLY, VarAccess_READ_ONLY, VarAccess_READ_ONLY_DUPLICATE
 
 # ----------------------------------------------------------------------------
 # Custom models
@@ -186,6 +186,7 @@ tau_m - membrane potential time constant
 tau_syn - synaptic times constant
 V_thresh - spiking threshold
 trial_t - times for a trial (input presentation) = duration of a pass
+N_neurons - number of neurons in population
 N_max_spike - maximum number of spikes
 
 Extra Global Parameters:
@@ -199,26 +200,29 @@ revIsyn - gets the reverse input from postsynaptic neurons
 # LIF neuron model for internal neurons (no dl_p/dt_k cost function term)
 EVP_LIF = genn_model.create_custom_neuron_class(
     "EVP_LIF",
-    param_names=["tau_m","V_thresh","V_reset","N_max_spike","tau_syn"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("lambda_jump","scalar")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
     if ($(back_spike)) {
         //printf(\"%f\\n",$(revIsyn));
-        $(lambda_V) += 1.0/$(ImV)[$(id)*((int) $(N_max_spike))+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+    
+        $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
+        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         // decrease read pointer (on ring buffer)
         $(rp_ImV)--;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         $(back_spike)= 0;
     }   
     // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
-    if (abs(back_t - $(t_k)[$(id)*((int) $(N_max_spike))+$(rp_ImV)] - DT) < 1e-3*DT) {
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
         $(back_spike)= 1;
     }
     // forward pass
@@ -229,8 +233,8 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     """,
     reset_code="""
     // this is after a forward spike
-    $(t_k)[$(id)*((int) $(N_max_spike))+$(wp_ImV)]= $(t);
-    $(ImV)[$(id)*((int) $(N_max_spike))+$(wp_ImV)]= $(Isyn)-$(V);
+    $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+    $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
     $(wp_ImV)++;
     if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
     $(V)= $(V_reset);
@@ -241,19 +245,25 @@ EVP_LIF = genn_model.create_custom_neuron_class(
 # LIF neuron model for output neurons (includes contribution from dl_p/dt_k loss function term at jumps)
 EVP_LIF_output = genn_model.create_custom_neuron_class(
     "EVP_LIF_output",
-    param_names=["tau_m","V_thresh","V_reset","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),("trial","unsigned int")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
+                    ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),
+                    ("trial","unsigned int"),("lambda_jump","scalar")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));    
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    //if ($(id) == 0) printf(\"%f:%f,%f,%f\\n\",$(t),$(first_spike_t),$(t_k)[$(id)*((int) $(N_max_spike))+$(rp_ImV)],back_t);
+    //if ($(id) == 0) printf(\"%f:%f,%f,%f\\n\",$(t),$(first_spike_t),$(t_k)[buf_idx+$(rp_ImV)],back_t);
     if ($(back_spike)) {
-        $(lambda_V) += 1.0/$(ImV)[$(id)*((int) $(N_max_spike))+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+        $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
+        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+        if (back_t - $(first_spike_t) <= -1e-2*DT) printf(\"%g, %g\\n\", back_t, $(first_spike_t));
+        //assert(back_t - $(first_spike_t) > -1e-2*DT);
         //if ($(id) == 0) printf(\"%f, %f\\n\",back_t,$(first_spike_t));
         if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
             scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
@@ -277,7 +287,7 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
         $(back_spike)= 0;
     }    
     // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
-    if (abs(back_t - $(t_k)[$(id)*((int) $(N_max_spike))+$(rp_ImV)]-DT) < 1e-3*DT) {
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)]-DT) < 1e-3*DT) {
         $(back_spike)= 1;
     }
     // forward pass
@@ -288,8 +298,8 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     """,
     reset_code="""
     // this is after a forward spike
-    $(t_k)[$(id)*((int) $(N_max_spike))+$(wp_ImV)]= $(t);
-    $(ImV)[$(id)*((int) $(N_max_spike))+$(wp_ImV)]= $(Isyn)-$(V);
+    $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+    $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
     $(wp_ImV)++;
     if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
     if ($(new_first_spike_t) < 0.0) $(new_first_spike_t)= $(t);
@@ -301,7 +311,7 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
 # synapses
 EVP_synapse= genn_model.create_custom_weight_update_class(
     "EVP_synapse",
-    var_name_types=[("w","scalar", VarAccessDuplication_SHARED),("dw","scalar")],
+    var_name_types=[("w","scalar", VarAccess_READ_ONLY),("dw","scalar")],
     sim_code="""
         $(addToInSyn, $(w));
     """,
@@ -316,7 +326,7 @@ EVP_synapse= genn_model.create_custom_weight_update_class(
 
 EVP_input_synapse= genn_model.create_custom_weight_update_class(
     "EVP_input_synapse",
-    var_name_types=[("w","scalar", VarAccessDuplication_SHARED),("dw","scalar")],
+    var_name_types=[("w","scalar", VarAccess_READ_ONLY),("dw","scalar")],
     sim_code="""
         $(addToInSyn, $(w));
     """,

@@ -27,7 +27,7 @@ p["N_EPOCH"]= 10
 p["N_TEST"]= p["N_BATCH"]*100
 N_CLASS= 3
 p["W_REPORT_INTERVAL"] = 100
-
+p["W_EPOCH_INTERVAL"] = 10
 # Network structure
 NUM_INPUT = 5
 NUM_OUTPUT = N_CLASS
@@ -93,11 +93,12 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
 def loss_func(nfst, Y, trial):
     #print("new first spikes: {}".format(nfst))
     t= nfst-trial*p["TRIAL_MS"]
+    t[t < 0.0]= p["TRIAL_MS"]
     expsum= np.sum(np.exp(-t/p["TAU_0"]),axis=-1)
     pred= np.argmin(t,axis=-1)
     selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
     #print("expsum: {}, pred: {}, selected: {}".format(expsum,pred,selected))
-    loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)+p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
+    loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
     #print(loss)
     loss/= p["N_BATCH"]
     return loss
@@ -183,6 +184,7 @@ def run_yingyang(p):
     hidden_params= {"tau_m": p["TAU_MEM"],
                     "V_thresh": p["V_THRESH"],
                     "V_reset": p["V_RESET"],
+                    "N_neurons": p["NUM_HIDDEN"],
                     "N_max_spike": p["N_MAX_SPIKE"],
                     "tau_syn": p["TAU_SYN"],
     }
@@ -193,11 +195,13 @@ def run_yingyang(p):
                        "rp_ImV": 0,
                        "wp_ImV": 0,
                        "back_spike": 0,
+                       "lambda_jump": 0.0,
     }
 
     output_params= {"tau_m": p["TAU_MEM"],
                     "V_thresh": p["V_THRESH"],
                     "V_reset": p["V_RESET"],
+                    "N_neurons": NUM_OUTPUT,
                     "N_max_spike": p["N_MAX_SPIKE"],
                     "tau_syn": p["TAU_SYN"],
                     "trial_t": p["TRIAL_MS"],
@@ -217,7 +221,8 @@ def run_yingyang(p):
                        "first_spike_t": -1e5,
                        "new_first_spike_t": -1e5,
                        "expsum": 1.0,
-                       "trial": 0
+                       "trial": 0,
+                       "lambda_jump": 0.0,
     }
 
     # ----------------------------------------------------------------------------
@@ -250,12 +255,12 @@ def run_yingyang(p):
                                         {}, input_init_vars)
                                     
     hidden= model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, hidden_init_vars) 
-    hidden.set_extra_global_param("t_k",-1e5*np.ones(p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
-    hidden.set_extra_global_param("ImV",np.zeros(p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
+    hidden.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
+    hidden.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
 
     output= model.add_neuron_population("output", NUM_OUTPUT, EVP_LIF_output, output_params, output_init_vars)
-    output.set_extra_global_param("t_k",-1e5*np.ones(NUM_OUTPUT*p["N_MAX_SPIKE"],dtype=np.float32))
-    output.set_extra_global_param("ImV",np.zeros(NUM_OUTPUT*p["N_MAX_SPIKE"],dtype=np.float32))
+    output.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*NUM_OUTPUT*p["N_MAX_SPIKE"],dtype=np.float32))
+    output.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*NUM_OUTPUT*p["N_MAX_SPIKE"],dtype=np.float32))
 
     if p["TRAIN"]:
         input.set_extra_global_param("spikeTimes", X_train)
@@ -315,7 +320,7 @@ def run_yingyang(p):
     in_to_hid_reduce= model.add_custom_update("in_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
     var_refs = {"gradient": genn_model.create_wu_var_ref(in_to_hid_reduce, "reduced_dw"),
                 "variable": genn_model.create_wu_var_ref(in_to_hid, "w")}
-    in_to_hid_learn= model.add_custom_update("in_to_hid_learn","EVPLearn", adam_optimizer_model, adam_params, adam_init_vars, var_refs)
+    #in_to_hid_learn= model.add_custom_update("in_to_hid_learn","EVPLearn", adam_optimizer_model, adam_params, adam_init_vars, var_refs)
 
     var_refs = {"dw": genn_model.create_wu_var_ref(hid_to_out, "dw")}
     hid_to_out_reduce= model.add_custom_update("hid_to_out_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
@@ -324,8 +329,8 @@ def run_yingyang(p):
     hid_to_out_learn= model.add_custom_update("hid_to_out_learn","EVPLearn", adam_optimizer_model, adam_params, adam_init_vars, var_refs)
     hid_to_out.pre_target_var= "revIsyn"
 
-    optimisers= [in_to_hid_learn, hid_to_out_learn]
-
+    #optimisers= [in_to_hid_learn, hid_to_out_learn]
+    optimisers= [hid_to_out_learn]
     # enable buffered spike recording where desired
     for pop in p["REC_SPIKES"]:
         model.neuron_populations[pop].spike_recording_enabled= True
@@ -373,6 +378,10 @@ def run_yingyang(p):
     for pop, var in p["REC_SYNAPSES"]:
         rec_vars_s[var+pop]= []
     all_nfst= []
+    lmbj_view_h= hidden.vars["lambda_jump"].view
+    lmbj_view_o= output.vars["lambda_jump"].view
+    lmbj_h= []
+    lmbj_o= []
     for epoch in range(p["N_EPOCH"]):
         learning_rate *= p["ETA_DECAY"]
         predict= []
@@ -396,6 +405,10 @@ def run_yingyang(p):
             while (model.t < trial_end-1e-3*p["DT_MS"]):
                 model.step_time()
                 int_t += 1
+                #hidden.pull_var_from_device("lambda_jump")
+                #output.pull_var_from_device("lambda_jump")
+                #lmbj_h.append(lmbj_view_h.copy())
+                #lmbj_o.append(lmbj_view_o.copy())
                 if len(p["REC_SPIKES"]) > 0:
                     if int_t%p["SPK_REC_STEPS"] == 0:
                         model.pull_recording_buffers_from_device()
@@ -468,7 +481,7 @@ def run_yingyang(p):
             hid_to_out.push_in_syn_to_device()
             model.custom_update("neuronReset")
 
-            if trial % p["W_REPORT_INTERVAL"] == 0:
+            if (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
                 in_to_hid.pull_var_from_device("w")
                 np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_e{}_t{}.npy".format(epoch,trial)), in_to_hid.vars["w"].view.copy())
                 hid_to_out.pull_var_from_device("w")
@@ -500,6 +513,21 @@ def run_yingyang(p):
     print(LB)
     plt.figure()
     plt.scatter(X,Y,c=LB,s=0.5)
+    plt.show()
+    
+    print(lmbj_view_h.shape)
+    lmbj_h= np.vstack(lmbj_h)
+    print(lmbj_h.shape)
+    lmbj_h= lmbj_h[lmbj_h != 0.0].flatten()
+    lmbj_o= np.vstack(lmbj_o)
+    print(lmbj_o.shape)
+    lmbj_o= lmbj_o[lmbj_o != 0.0].flatten()
+
+    plt.figure()
+    plt.hist(lmbj_h,100)
+    plt.yscale("log")
+    plt.figure()
+    plt.hist(lmbj_o,100)
     plt.show()
     """
     
