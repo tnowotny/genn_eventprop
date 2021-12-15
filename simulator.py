@@ -320,7 +320,7 @@ def run_yingyang(p):
     in_to_hid_reduce= model.add_custom_update("in_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
     var_refs = {"gradient": genn_model.create_wu_var_ref(in_to_hid_reduce, "reduced_dw"),
                 "variable": genn_model.create_wu_var_ref(in_to_hid, "w")}
-    #in_to_hid_learn= model.add_custom_update("in_to_hid_learn","EVPLearn", adam_optimizer_model, adam_params, adam_init_vars, var_refs)
+    in_to_hid_learn= model.add_custom_update("in_to_hid_learn","EVPLearn", adam_optimizer_model, adam_params, adam_init_vars, var_refs)
 
     var_refs = {"dw": genn_model.create_wu_var_ref(hid_to_out, "dw")}
     hid_to_out_reduce= model.add_custom_update("hid_to_out_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
@@ -329,8 +329,8 @@ def run_yingyang(p):
     hid_to_out_learn= model.add_custom_update("hid_to_out_learn","EVPLearn", adam_optimizer_model, adam_params, adam_init_vars, var_refs)
     hid_to_out.pre_target_var= "revIsyn"
 
-    #optimisers= [in_to_hid_learn, hid_to_out_learn]
-    optimisers= [hid_to_out_learn]
+    optimisers= [in_to_hid_learn, hid_to_out_learn]
+    #optimisers= [hid_to_out_learn]
     # enable buffered spike recording where desired
     for pop in p["REC_SPIKES"]:
         model.neuron_populations[pop].spike_recording_enabled= True
@@ -378,10 +378,10 @@ def run_yingyang(p):
     for pop, var in p["REC_SYNAPSES"]:
         rec_vars_s[var+pop]= []
     all_nfst= []
-    lmbj_view_h= hidden.vars["lambda_jump"].view
-    lmbj_view_o= output.vars["lambda_jump"].view
-    lmbj_h= []
-    lmbj_o= []
+    #lmbj_view_h= hidden.vars["lambda_jump"].view
+    #lmbj_view_o= output.vars["lambda_jump"].view
+    #lmbj_h= []
+    #lmbj_o= []
     for epoch in range(p["N_EPOCH"]):
         learning_rate *= p["ETA_DECAY"]
         predict= []
@@ -405,8 +405,8 @@ def run_yingyang(p):
             while (model.t < trial_end-1e-3*p["DT_MS"]):
                 model.step_time()
                 int_t += 1
-                #hidden.pull_var_from_device("lambda_jump")
-                #output.pull_var_from_device("lambda_jump")
+                hidden.pull_var_from_device("lambda_jump")
+                output.pull_var_from_device("lambda_jump")
                 #lmbj_h.append(lmbj_view_h.copy())
                 #lmbj_o.append(lmbj_view_o.copy())
                 if len(p["REC_SPIKES"]) > 0:
@@ -435,6 +435,7 @@ def run_yingyang(p):
             all_nfst.append(nfst.copy())
             if p["TRAIN"]:
                 # record training loss and error
+                nfst[nfst < 0.0]= model.t+p["TRIAL_MS"]  # neurons that did not spike set to spike time in the future
                 pred= np.argmin(nfst,axis=-1)
                 good += np.sum(cnt[pred == Y_train[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
                 predict.append(pred)
@@ -442,7 +443,8 @@ def run_yingyang(p):
                 update_adam(learning_rate, adam_step, optimisers)
                 adam_step += 1
                 model.custom_update("EVPReduce")
-                model.custom_update("EVPLearn")                
+                if trial%2 == 1:
+                    model.custom_update("EVPLearn")                
             else:
                 #print(nfst)
                 pred= np.argmin(nfst,axis=-1)
@@ -452,6 +454,7 @@ def run_yingyang(p):
                 the_loss.append(loss_func(nfst,Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]],trial))
                 #print(good)
                 predict.append(pred)
+            
             """
             # do some checks and measure training error
             output.pull_var_from_device("first_spike_t")
@@ -514,8 +517,9 @@ def run_yingyang(p):
     plt.figure()
     plt.scatter(X,Y,c=LB,s=0.5)
     plt.show()
-    
-    print(lmbj_view_h.shape)
+
+    lmbj_h= np.array(lmbj_h)
+    print(lmbj_h.shape)
     lmbj_h= np.vstack(lmbj_h)
     print(lmbj_h.shape)
     lmbj_h= lmbj_h[lmbj_h != 0.0].flatten()
@@ -529,8 +533,7 @@ def run_yingyang(p):
     plt.figure()
     plt.hist(lmbj_o,100)
     plt.show()
-    """
-    
+    """    
     for pop in p["REC_SPIKES"]:
         spike_t[pop]= np.hstack(spike_t[pop])
         spike_ID[pop]= np.hstack(spike_ID[pop])

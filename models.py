@@ -41,6 +41,7 @@ adam_optimizer_model = genn_model.create_custom_custom_update_class(
     $(v) = ($(beta2) * $(v)) + ((1.0 - $(beta2)) * grad * grad);
     // Add gradient to variable, scaled by learning rate
     $(variable) -= ($(alpha) * $(m) * $(firstMomentScale)) / (sqrt($(v) * $(secondMomentScale)) + $(epsilon));
+    //$(variable) -= 1e-4*grad;
     """
 )
 
@@ -209,8 +210,10 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
-    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
-    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
         //printf(\"%f\\n",$(revIsyn));
     
@@ -256,8 +259,10 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));    
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
-    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
-    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     //if ($(id) == 0) printf(\"%f:%f,%f,%f\\n\",$(t),$(first_spike_t),$(t_k)[buf_idx+$(rp_ImV)],back_t);
     if ($(back_spike)) {
         $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
@@ -270,14 +275,14 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
             if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
             //if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)]) {
                 //scalar old_lambda= $(lambda_V);
-                if ($(expsum) > 0.0)
-                    $(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
+                //if ($(expsum) > 0.0)
+                $(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
                 //printf(\"%g POS: Trial: %d, label: %d, ID: %d, expsum: %g, old: %g, new: %g\\n\",$(t),$(trial),$(label)[($(trial)-1)*(int)$(N_batch)],$(id),$(expsum),old_lambda,$(lambda_V));
             }
             else {
                 //scalar old_lambda= $(lambda_V);
-                if ($(expsum) > 0.0)
-                    $(lambda_V) -= (exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
+                //if ($(expsum) > 0.0)
+                $(lambda_V) -= (exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
                 //printf(\"%g NEG: Trial: %d, label: %d, ID: %d, expsum: %g, old: %g, new: %g\\n\",$(t),$(trial),$(label)[($(trial)-1)*(int)$(N_batch)],$(id),$(expsum),old_lambda,$(lambda_V));
             }
         }
@@ -294,7 +299,7 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     $(V) += ($(Isyn)-$(V))/$(tau_m)*DT;
     """,
     threshold_condition_code="""
-    $(V) >= $(V_thresh)
+    (($(V) >= $(V_thresh)) || ((fabs($(t)-$(rev_t)-$(trial_t)-DT) < 1e-2*DT) && ($(new_first_spike_t) < 0.0) && ($(id) == $(label)[$(trial)*(int)$(N_batch)+$(batch)])))
     """,
     reset_code="""
     // this is after a forward spike
