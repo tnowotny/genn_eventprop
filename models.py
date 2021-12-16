@@ -151,6 +151,7 @@ EVP_SSA = genn_model.create_custom_neuron_class(
             $(back_spike)= 1;
             $(back_startSpike)--;
         }
+        else $(back_spike)= 0;
     """,
     threshold_condition_code= """
         $(startSpike) != $(endSpike) && 
@@ -267,23 +268,14 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     if ($(back_spike)) {
         $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
-        if (back_t - $(first_spike_t) <= -1e-2*DT) printf(\"%g, %g\\n\", back_t, $(first_spike_t));
-        //assert(back_t - $(first_spike_t) > -1e-2*DT);
-        //if ($(id) == 0) printf(\"%f, %f\\n\",back_t,$(first_spike_t));
+        assert(back_t - $(first_spike_t) > -1e-2*DT);
         if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
             scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
             if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            //if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)]) {
-                //scalar old_lambda= $(lambda_V);
-                //if ($(expsum) > 0.0)
                 $(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
-                //printf(\"%g POS: Trial: %d, label: %d, ID: %d, expsum: %g, old: %g, new: %g\\n\",$(t),$(trial),$(label)[($(trial)-1)*(int)$(N_batch)],$(id),$(expsum),old_lambda,$(lambda_V));
             }
             else {
-                //scalar old_lambda= $(lambda_V);
-                //if ($(expsum) > 0.0)
                 $(lambda_V) -= (exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
-                //printf(\"%g NEG: Trial: %d, label: %d, ID: %d, expsum: %g, old: %g, new: %g\\n\",$(t),$(trial),$(label)[($(trial)-1)*(int)$(N_batch)],$(id),$(expsum),old_lambda,$(lambda_V));
             }
         }
         // decrease read pointer (on ring buffer)

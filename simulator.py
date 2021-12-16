@@ -249,6 +249,7 @@ def run_yingyang(p):
     model.dT = p["DT_MS"]
     model.timing_enabled = p["TIMING"]
     model.batch_size = p["N_BATCH"]
+    model._model.set_seed(p["DATA_SEED"])
 
     # Add neuron populations
     input = model.add_neuron_population("input", NUM_INPUT, EVP_SSA, 
@@ -405,8 +406,8 @@ def run_yingyang(p):
             while (model.t < trial_end-1e-3*p["DT_MS"]):
                 model.step_time()
                 int_t += 1
-                hidden.pull_var_from_device("lambda_jump")
-                output.pull_var_from_device("lambda_jump")
+                #hidden.pull_var_from_device("lambda_jump")
+                #output.pull_var_from_device("lambda_jump")
                 #lmbj_h.append(lmbj_view_h.copy())
                 #lmbj_o.append(lmbj_view_o.copy())
                 if len(p["REC_SPIKES"]) > 0:
@@ -430,7 +431,7 @@ def run_yingyang(p):
                     the_pop= model.synapse_populations[pop]
                     the_pop.pull_var_from_device(var)
                     rec_vars_s[var+pop].append(the_pop.vars[var].view.copy())
-                                           
+
             output.pull_var_from_device("new_first_spike_t");
             all_nfst.append(nfst.copy())
             if p["TRAIN"]:
@@ -447,6 +448,7 @@ def run_yingyang(p):
                     model.custom_update("EVPLearn")                
             else:
                 #print(nfst)
+                nfst[nfst < 0.0]= model.t+p["TRIAL_MS"]  # neurons that did not spike set to spike time in the future
                 pred= np.argmin(nfst,axis=-1)
                 #print(pred)
                 #print(Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]])
