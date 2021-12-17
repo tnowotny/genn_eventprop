@@ -288,10 +288,12 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
         $(back_spike)= 1;
     }
     // forward pass
-    $(V) += ($(Isyn)-$(V))/$(tau_m)*DT;
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
     """,
     threshold_condition_code="""
-    (($(V) >= $(V_thresh)) || ((fabs($(t)-$(rev_t)-$(trial_t)-DT) < 1e-2*DT) && ($(new_first_spike_t) < 0.0) && ($(id) == $(label)[$(trial)*(int)$(N_batch)+$(batch)])))
+    //(($(V) >= $(V_thresh)) || ((fabs($(t)-$(rev_t)-$(trial_t)-DT) < 1e-2*DT) && ($(new_first_spike_t) < 0.0) && ($(id) == $(label)[$(trial)*(int)$(N_batch)+$(batch)])))
+    ($(V) >= $(V_thresh))
     """,
     reset_code="""
     // this is after a forward spike

@@ -4,9 +4,9 @@ import numpy as np
 
 p["DT_MS"]= 0.1
 p["ETA"]= 5e-3
-p["ETA_DECAY"]= 0.97      
+p["ETA_DECAY"]= 0.95
 p["ALPHA"]= 3e-3
-p["N_BATCH"]= 512
+p["N_BATCH"]= 32
 p["N_TRAIN"]= 50*p["N_BATCH"]
 p["N_TEST"]= 500*p["N_BATCH"]
 p["W_REPORT_INTERVAL"]= 3000

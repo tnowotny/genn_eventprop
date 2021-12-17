@@ -62,7 +62,7 @@ p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["TRAINING_PLOT"]= False
 p["TRAINING_PLOT_INTERVAL"]= 10
-
+p["FANCY_PLOTS"]= False
 # ----------------------------------------------------------------------------
 # Helper functions
 # ----------------------------------------------------------------------------
@@ -93,8 +93,9 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
 def loss_func(nfst, Y, trial):
     #print("new first spikes: {}".format(nfst))
     t= nfst-trial*p["TRIAL_MS"]
-    t[t < 0.0]= p["TRIAL_MS"]
+    t[t < 0.0]= 1000.0
     expsum= np.sum(np.exp(-t/p["TAU_0"]),axis=-1)
+    #print(expsum)
     pred= np.argmin(t,axis=-1)
     selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
     #print("expsum: {}, pred: {}, selected: {}".format(expsum,pred,selected))
@@ -245,7 +246,7 @@ def run_yingyang(p):
     # Model description
     # ----------------------------------------------------------------------------
 
-    model = genn_model.GeNNModel("float", "eventprop_yingyang", generateLineInfo=True)
+    model = genn_model.GeNNModel("float", "eventprop_yingyang", generateLineInfo=True, time_precision="double")
     model.dT = p["DT_MS"]
     model.timing_enabled = p["TIMING"]
     model.batch_size = p["N_BATCH"]
@@ -436,20 +437,22 @@ def run_yingyang(p):
             all_nfst.append(nfst.copy())
             if p["TRAIN"]:
                 # record training loss and error
-                nfst[nfst < 0.0]= model.t+p["TRIAL_MS"]  # neurons that did not spike set to spike time in the future
-                pred= np.argmin(nfst,axis=-1)
+                st= nfst.copy()
+                st[nfst < 0.0]= model.t+p["TRIAL_MS"]  # neurons that did not spike set to spike time in the future
+                pred= np.argmin(st,axis=-1)
                 good += np.sum(cnt[pred == Y_train[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
                 predict.append(pred)
                 the_loss.append(loss_func(nfst,Y_train[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]],trial))
                 update_adam(learning_rate, adam_step, optimisers)
                 adam_step += 1
                 model.custom_update("EVPReduce")
-                if trial%2 == 1:
-                    model.custom_update("EVPLearn")                
+                #if trial%2 == 1:
+                model.custom_update("EVPLearn")                
             else:
                 #print(nfst)
-                nfst[nfst < 0.0]= model.t+p["TRIAL_MS"]  # neurons that did not spike set to spike time in the future
-                pred= np.argmin(nfst,axis=-1)
+                st= nfst.copy()
+                st[nfst < 0.0]= model.t+p["TRIAL_MS"]  # neurons that did not spike set to spike time in the future
+                pred= np.argmin(st,axis=-1)
                 #print(pred)
                 #print(Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]])
                 good += np.sum(cnt[pred == Y_test[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
@@ -512,6 +515,15 @@ def run_yingyang(p):
             plt.scatter(X_t_orig[:,0],X_t_orig[:,1],c=predict,s=0.5)
             plt.show()
 
+        if p["FANCY_PLOTS"]:
+            pltnfst= np.vstack(all_nfst)
+            for i in range(3):
+                plt.figure()
+                plt.set_cmap('hot')
+                plt.scatter(X_t_orig[predict == i,0],X_t_orig[predict == i,1],s=50, color=[ 1, 1, 0.7],edgecolors= "black")
+                plt.scatter(X_t_orig[pltnfst[:,i] < 0.0,0],X_t_orig[pltnfst[:,i] < 0.0,1],s=50, c='g',marker='x')
+                plt.scatter(X_t_orig[np.logical_and(predict != i, pltnfst[:,i] > 0.0),0],X_t_orig[np.logical_and(predict != i, pltnfst[:,i] > 0.0),1],s=50, c=pltnfst[np.logical_and(predict != i, pltnfst[:,i] > 0.0),i],marker='x')
+            plt.show()
     """
     print(X)
     print(Y)
