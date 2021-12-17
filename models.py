@@ -6,6 +6,7 @@ can compute exact gradients for spiking neural networks, Scientific Reports (202
 
 We use "EVP" in naming to indicate "eventprop".
 """
+import numpy as np
 from pygenn import genn_model 
 from pygenn.genn_wrapper.Models import VarAccessDuplication_SHARED, VarAccess_REDUCE_BATCH_SUM, VarAccessMode_READ_ONLY, VarAccess_READ_ONLY, VarAccess_READ_ONLY_DUPLICATE
 
@@ -41,7 +42,7 @@ adam_optimizer_model = genn_model.create_custom_custom_update_class(
     $(v) = ($(beta2) * $(v)) + ((1.0 - $(beta2)) * grad * grad);
     // Add gradient to variable, scaled by learning rate
     $(variable) -= ($(alpha) * $(m) * $(firstMomentScale)) / (sqrt($(v) * $(secondMomentScale)) + $(epsilon));
-    //$(variable) -= 1e-4*grad;
+    //$(variable) -= $(alpha)*grad;
     """
 )
 
@@ -230,7 +231,8 @@ EVP_LIF = genn_model.create_custom_neuron_class(
         $(back_spike)= 1;
     }
     // forward pass
-    $(V) += ($(Isyn)-$(V))/$(tau_m)*DT;
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
     """,
     threshold_condition_code="""
     $(V) >= $(V_thresh)
@@ -266,33 +268,49 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     //if ($(id) == 0) printf(\"%f:%f,%f,%f\\n\",$(t),$(first_spike_t),$(t_k)[buf_idx+$(rp_ImV)],back_t);
     if ($(back_spike)) {
-        $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
-        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
-        assert(back_t - $(first_spike_t) > -1e-2*DT);
-        if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
-            scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
-            if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-                $(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
-            }
-            else {
-                $(lambda_V) -= (exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
-            }
+        if ($(first_spike_t) < 0.0) {// we are dealing with a "phantom spike" introduced because the correct neuron did not spike
+            scalar fst= $(trial_t);
+            //printf(\"adding %f\\n\",$(alpha)/((1.05*$(trial_t)-fst)*(1.05*$(trial_t)-fst))/$(N_batch));
+            //$(lambda_V) += $(alpha)/$(tau1)*exp(fst/$(tau1))/$(N_batch);
+            $(lambda_V) += $(alpha)/((1.01*$(trial_t)-fst)*(1.01*$(trial_t)-fst))/$(N_batch);
         }
-        // decrease read pointer (on ring buffer)
-        $(rp_ImV)--;
-        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        else {
+            $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
+            $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+            if (back_t - $(first_spike_t) <= -1e-2*DT) printf("back_t: %e, fst: %e",back_t,$(first_spike_t)); 
+            assert(back_t - $(first_spike_t) > -1e-2*DT);
+            if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
+                scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
+                if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
+                    //$(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
+                    $(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/((1.01*$(trial_t)-fst)*(1.01*$(trial_t)-fst)))/$(N_batch);
+                    //$(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0))/$(N_batch);
+                }
+                else {
+                    $(lambda_V) -= (exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
+                }
+            }
+            // decrease read pointer (on ring buffer)
+            $(rp_ImV)--;
+            if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        }
         $(back_spike)= 0;
     }    
+    // do this only from trial 1 onwards (i.e. do not try to do backward pass in trial 0)
     // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
-    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)]-DT) < 1e-3*DT) {
+    // YUCKYUCK - need to trigger a pretend back_spike if no spike occurred to keep in operating regime
+    if (($(trial) > 0) && ((abs(back_t - $(t_k)[buf_idx+$(rp_ImV)]-DT) < 1e-3*DT) || (($(t) == $(rev_t)) && ($(first_spike_t) < 0.0) && $(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]))) {
         $(back_spike)= 1;
     }
     // forward pass
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;
     $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    //if ((fabs($(t)-$(rev_t)-$(trial_t)+DT) < 1e-2*DT) && ($(new_first_spike_t) < 0.0) && ($(id) == $(label)[$(trial)*(int)$(N_batch)+$(batch)])) {
+    //    printf(\"ID: %d, lbl: %d\\n\",$(id), $(label)[$(trial)*(int)$(N_batch)+$(batch)]);
+    //}
     """,
     threshold_condition_code="""
-    //(($(V) >= $(V_thresh)) || ((fabs($(t)-$(rev_t)-$(trial_t)-DT) < 1e-2*DT) && ($(new_first_spike_t) < 0.0) && ($(id) == $(label)[$(trial)*(int)$(N_batch)+$(batch)])))
+    //(($(V) >= $(V_thresh)) || ((fabs($(t)-$(rev_t)-$(trial_t)+DT) < 1e-2*DT) && ($(new_first_spike_t) < 0.0)))
     ($(V) >= $(V_thresh))
     """,
     reset_code="""
@@ -337,3 +355,10 @@ EVP_input_synapse= genn_model.create_custom_weight_update_class(
     """,
 )
 
+my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
+    "my_Exp_Curr",
+    param_names=["tau"],
+    decay_code="$(inSyn) *= $(expDecay);",
+    apply_input_code="$(Isyn) += $(inSyn);",
+    derived_params=[("expDecay", genn_model.create_dpf_class(lambda pars, dt: np.exp(-dt / pars[0]))())]
+)

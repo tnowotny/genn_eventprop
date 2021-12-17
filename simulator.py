@@ -20,7 +20,7 @@ p["DATA_SEED"]= 123
 
 # Experiment parameters
 p["TRIAL_MS"]= 30.0
-p["N_MAX_SPIKE"]= 200    # make buffers for maximally 60 spikes (30 in a 30 ms trial) - should be safe
+p["N_MAX_SPIKE"]= 400    # make buffers for maximally 60 spikes (30 in a 30 ms trial) - should be safe
 p["N_BATCH"]= 32
 p["N_TRAIN"]= p["N_BATCH"]*1000
 p["N_EPOCH"]= 10
@@ -63,6 +63,8 @@ p["WRITE_TO_DISK"]= True
 p["TRAINING_PLOT"]= False
 p["TRAINING_PLOT_INTERVAL"]= 10
 p["FANCY_PLOTS"]= False
+p["LOAD_LAST"]= False
+
 # ----------------------------------------------------------------------------
 # Helper functions
 # ----------------------------------------------------------------------------
@@ -93,14 +95,15 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
 def loss_func(nfst, Y, trial):
     #print("new first spikes: {}".format(nfst))
     t= nfst-trial*p["TRIAL_MS"]
-    t[t < 0.0]= 1000.0
+    t[t < 0.0]= p["TRIAL_MS"]
     expsum= np.sum(np.exp(-t/p["TAU_0"]),axis=-1)
-    #print(expsum)
     pred= np.argmin(t,axis=-1)
     selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
     #print("expsum: {}, pred: {}, selected: {}".format(expsum,pred,selected))
-    loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
-    #print(loss)
+    #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
+    loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]/(1.01*p["TRIAL_MS"]-selected))
+    #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum))
+    #print(np.sum(p["ALPHA"]/(1.05*p["TRIAL_MS"]-selected)))
     loss/= p["N_BATCH"]
     return loss
 
@@ -120,8 +123,8 @@ def run_yingyang(p):
     # ----------------------------------------------------------------------------
 
     np.random.seed(p["DATA_SEED"])
-    X_train, Y_train = YinYangDataset(size=p["N_TRAIN"]*N_CLASS, 
-                                      flipped_coords=True, seed=p["DATA_SEED"])[:]
+    #X_train, Y_train = YinYangDataset(size=p["N_TRAIN"]*N_CLASS, flipped_coords=True, seed=p["DATA_SEED"])[:]
+    X_train, Y_train = YinYangDataset(size=p["N_TRAIN"]*N_CLASS, flipped_coords=True, seed=None)[:]
     if p["TRAIN"]:
         X_t_orig= X_train[:,0:2]
 
@@ -219,7 +222,7 @@ def run_yingyang(p):
                        "rp_ImV": 0,
                        "wp_ImV": 0,
                        "back_spike": 0,
-                       "first_spike_t": -1e5,
+                       "first_spike_t": -1e5, 
                        "new_first_spike_t": -1e5,
                        "expsum": 1.0,
                        "trial": 0,
@@ -250,7 +253,7 @@ def run_yingyang(p):
     model.dT = p["DT_MS"]
     model.timing_enabled = p["TIMING"]
     model.batch_size = p["N_BATCH"]
-    model._model.set_seed(p["DATA_SEED"])
+    #model._model.set_seed(p["DATA_SEED"])
 
     # Add neuron populations
     input = model.add_neuron_population("input", NUM_INPUT, EVP_SSA, 
@@ -313,10 +316,10 @@ def run_yingyang(p):
 
     # synapse populations
     in_to_hid= model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, input, hidden, EVP_input_synapse,
-                                            {}, in_to_hid_init_vars, {}, {}, "ExpCurr", {"tau": p["TAU_SYN"]}, {}
+                                            {}, in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}
     )
     hid_to_out= model.add_synapse_population("hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, hidden, output, EVP_synapse,
-                                             {}, hid_to_out_init_vars, {}, {}, "ExpCurr", {"tau": p["TAU_SYN"]}, {}
+                                             {}, hid_to_out_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}
     )
     var_refs = {"dw": genn_model.create_wu_var_ref(in_to_hid, "dw")}
     in_to_hid_reduce= model.add_custom_update("in_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
@@ -346,7 +349,7 @@ def run_yingyang(p):
     # Simulation loop
     # ----------------------------------------------------------------------------
 
-    if p["TRAIN"]:
+    if p["TRAIN"] and not p["LOAD_LAST"]:
         in_to_hid.pull_var_from_device("w")
         hid_to_out.pull_var_from_device("w")
         np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_0.npy"), in_to_hid.vars["w"].view.copy())
@@ -495,8 +498,7 @@ def run_yingyang(p):
                 hid_to_out.pull_var_from_device("w")
                 np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_e{}_t{}.npy".format(epoch,trial)), hid_to_out.vars["w"].view.copy())
 
-        print("Correct: {}".format(good/(N_trial*p["N_BATCH"])))
-        print("Loss: {}".format(np.mean(the_loss)))
+        print("{} Correct: {}, Loss: {}".format(epoch, good/(N_trial*p["N_BATCH"]),np.mean(the_loss)))
         efile.write("{} \n".format(good/(N_trial*p["N_BATCH"])))
         for x in the_loss:
             lfile.write(str(x)+" ")
