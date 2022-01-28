@@ -79,8 +79,7 @@ There is a couple of main ideas that make the body of the method.
 \section{Adjoint method}
 
 \blue{ We apply the adjoint method to a continuous, first order system of ordinary differential
-equations and refer the reader to [63,64]
-for a more general setting. Consider an N-dimensional dynamical system
+equations and refer the reader to [63,64] for a more general setting. Consider an N-dimensional dynamical system
 $x : t  \rightarrow x(t) \in \R^N$ with parameters $p \in \R^P$
 defined by the system of implicit first order ordinary differential 
 equations
@@ -1015,6 +1014,57 @@ backwards jumps, we need
 We will use (\ref{eq:lyy1}) and (\ref{eq:lyy2}) to update $\lambda_V$
 at jump points of output neurons.
 
+\section{MNIST example}
+Here the authors define the cost function
+\begin{align}
+  {\cal L} = - \frac{1}{N_{\text{batch}}} \sum_{i=1]^{N_{\text{batch}}} \log \left[ \frac{\exp\left(\max_t V_{l(i)} (t)\right)}{\sum_{k-1}^{10} \exp\left(\max_t V_k(t)\right)} \right]
+\end{align}
+where $V_k(t)$ is the voltage trace of the $k$th readout neuron, $l(i)$ is the index of the correct label for the $i$th sample and $N_{\text{batch}}$ is the number of samples ina  given batch.
+
+They then argue: \blue{`` Note that we can write the maximum voltage as $\max_t V_k(t) = \int V_k(t) \delta(t-t_{\text{max}} dt$ with the time of the maximum $t_{\text{max}}$ and the Dirac delta $\delta$, allowing us to apply the chain rule to find the jump of $\lambda_{V_k}$ (cf Table 2) at time $t_{\text{max}}$ (terms containing the distributional derivative of $\delta$ are always zero).''}
+
+The first observation is that this does not conform to their general expression for {\cal L},
+\begin{align}
+  {\cal L} = l_p(t^{\text{post}}) + \int_0^T l_V(V(t),t) dt
+\end{align}
+so the normal formula do not apply. However, I believe the argument is that if one did the derivation for this different form of cost function, using the represnetation of $\max_t V_k(t)$ with the Dirac delta as explained above, one would arrive at a similar set of update equations where there si a jump in $\lambda_{V_k}$ at $t_{max,k}$ 
+
+This seems supported by the helpful comment in the earlier discussion: \blue{The loss $l_V$ may depend on the voltage at a discrete time $t_i$ using the Dirac delta,
+$l_V (V(t), t) = V(t) \delta(t_i − t)$ , causing a jump of $\lambda_V$ of magnitude $\tau_{\text{mem}}^{-1}$ at time $t_i$. Note that in many practical
+scenarios as found in deep learning, the loss $l_V$ depends only on the state of a constant number of neurons, irrespective of network size. If $l_V$ depends on the voltage of non-firing readout neurons, we have $ l^+_V = l^−_V$ and the corresponding term in the jump given in Table 2 vanishes.
+
+In order to unpick the details of what's needed, let us define $M_k = \max_t V_k (t)$ such that
+\begin{align}
+  {\cal L} &= - \frac{1}{N_{\text{batch}}} \sum_{i=1]^{N_{\text{batch}}} \log \left[ \frac{\exp\left(M_{l(i)}\right)}{\sum_{k-1}^{10} \exp\left(M_{k}\right)} \right] \\
+  &= - \frac{1}{N_{\text{batch}}} \sum_{i=1]^{N_{\text{batch}}} M_{l(i)} - \log\left(\sum_{k-1}^{10} \exp\left(M_{k}\right)\right) 
+\end{align}
+and the partial derivatives with respect to $V_r$ and $V_{l(i)}$ would be obtained by the chain rule, for $V_r(t)$ in presentation $i$ and $r \neq l(i)$,
+\begin{align}
+  \frac{\partial}{\partial V_r(t)} {\cal L} &= -\frac{1}{N_{\text{batch}}}  \left(-\frac{\exp\left(M_r\right)}{\sum_{k-1}^{10} \exp\left(M_{k}\right)}\right)\frac{\partial}{\partial V_r} M_r
+\end{align}
+where
+\begin{align}
+  \frac{\partial}{\partial V_r(t)} M_r &= \frac{\partial}{\partial V_r(t)}  \int V_r(t') \delta(t'-t_{\text{max}}) dt' \\
+  &=  \int \delta(t'-t)\delta(t'-t_{\text{max}}) dt' ]] \\
+  &= \delta(t-t_{\text{max}})
+\end{align}
+which, if inserted into the reverse differential equation for $\lambda_V$ in Table 2, would lead to the described jump behaviour. In this case the jump would be
+\begin{align}
+  \frac{1}{\tau_{\text{mem}}} \frac{1}{N_{\text{batch}}} \frac{\exp\left(M_r\right)}{\sum_{k-1}^{10} \exp\left(M_{k}\right)}
+\end{align}
+at time $t_{\text{max,r}}$.
+
+For the voltage of the correct output neuron, $V_{l(i)}$ the derivative would be
+\begin{align}
+  \frac{\partial}{\partial V_{l(i)}(t)} {\cal L} &= -\frac{1}{N_{\text{batch}}}  \left(1 - \frac{\exp\left(M_{l(i)}\right)}{\sum_{k-1}^{10} \exp\left(M_{k}\right)}\right)\frac{\partial}{\partial V_{l(i)}} M_{l(i)}
+\end{align}
+and hence the jump,
+\begin{align}
+  \frac{1}{\tau_{\text{mem}}} \frac{1}{N_{\text{batch}}} \left(-1 + \frac{\exp\left(M_r\right)}{\sum_{k-1}^{10} \exp\left(M_{k}\right)}\right)
+\end{align}
+at time $t_{\text{max,r}}$.
+
+  
 \section{GeNN Implementation Notes}
 \begin{itemize}
 \item In the normal forward pass we need to save:
