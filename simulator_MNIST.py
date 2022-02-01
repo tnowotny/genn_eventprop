@@ -436,7 +436,6 @@ class mnist_model:
             self.output.push_extra_global_param_to_device("label")
             self.input_init_vars["startSpike"]= input_start
             self.input_init_vars["endSpike"]= input_end
-        first= True
         for epoch in range(number_epochs):
             if shuffle:
                 if do_shuffle:
@@ -545,7 +544,7 @@ class mnist_model:
             predict= np.hstack(predict)
             if learning:
                 learning_rate *= p["ETA_DECAY"]
-            first= False
+
                 
         for pop in p["REC_SPIKES"]:
             spike_t[pop]= np.hstack(spike_t[pop])

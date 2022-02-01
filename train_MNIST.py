@@ -5,7 +5,7 @@ import numpy as np
 p["ADAM_BETA1"]= 0.95      
 p["ADAM_BETA2"]= 0.9995    
 p["DEBUG"]= False
-p["N_EPOCH"]= 3
+p["N_EPOCH"]= 1000
 p["N_BATCH"]= 5
 p["N_TRAIN"]= 55000
 p["ETA"]= 5e-3
