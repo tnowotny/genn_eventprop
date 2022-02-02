@@ -2,14 +2,16 @@ from simulator_MNIST import *
 import matplotlib.pyplot as plt
 import numpy as np
 
-p["ADAM_BETA1"]= 0.95      
-p["ADAM_BETA2"]= 0.9995    
+p["ADAM_BETA1"]= 0.9
+p["ADAM_BETA2"]= 0.999    
 p["DEBUG"]= False
-p["N_EPOCH"]= 1000
+p["N_EPOCH"]= 100
 p["N_BATCH"]= 5
 p["N_TRAIN"]= 55000
 p["ETA"]= 5e-3
-p["SHUFFLE"]= False
+p["SHUFFLE"]= True
+p["W_REPORT_INTERVAL"] = 11000  # this should be at the end of the epoch (at first trial of evaluation)
+
 if p["DEBUG"]:
     p["REC_SPIKES"]= ["input", "hidden"]
     p["REC_NEURONS"]= [("output", "V"), ("output", "lambda_V"), ("output", "lambda_I")]

@@ -122,11 +122,19 @@ class mnist_model:
         Y= Y[idx]
         self.Y_test_orig= Y[:p["N_TEST"]]
         
-    def generate_input_spiketimes(self, p, Xin, Yin):
+    def generate_input_spiketimes(self, p, Xtrain, Ytrain, Xeval, Yeval):
         # N is the number of training/testing images: always use all images given
-        N= Xin.shape[0]
-        X= Xin.copy()
-        Y= Yin.copy()
+        if Xtrain is None:
+            X= Xeval
+            Y= Yeval
+        else:
+            if Xeval is None:
+                X= Xtrain
+                y= Ytrain
+            else:
+                X= np.append(Xtrain, Xeval, axis= 0)
+                Y= np.append(Ytrain, Yeval, axis= 0)
+        N= X.shape[0]
         """
         if p["DEBUG"]:
             for i in range(10):
@@ -170,11 +178,19 @@ class mnist_model:
     generate a spikeTimes array and startSpike and endSpike arrays to allow indexing into the 
     spikeTimes in a shuffled way
     """
-    def generate_input_spiketimes_shuffle_fast(self, p, Xin, Yin):
+    def generate_input_spiketimes_shuffle_fast(self, p, Xtrain, Ytrain, Xeval, Yeval):
         # N is the number of training/testing images: always use all images given
-        N= Xin.shape[0]
-        X= Xin.copy()
-        Y= Yin.copy()
+        if Xtrain is None:
+            X= Xeval
+            Y= Yeval
+        else:
+            if Xeval is None:
+                X= Xtrain
+                y= Ytrain
+            else:
+                X= np.append(Xtrain, Xeval, axis= 0)
+                Y= np.append(Ytrain, Yeval, axis= 0)
+        N= X.shape[0]
         """
         if p["DEBUG"]:
             for i in range(4):
@@ -385,7 +401,7 @@ class mnist_model:
     ----------------------------------------------------------------------------
     """
             
-    def run_model(self, number_epochs, learning, labels, X_t_orig, N_trial, p, shuffle, do_shuffle= False):
+    def run_model(self, number_epochs, p, shuffle, X_t_orig= None, labels= None, X_t_eval= None, labels_eval= None, resfile= None):
         if p["LOAD_LAST"]:
             self.in_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], "w_input_hidden_last.npy"))
             self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], "w_hidden_output_last.npy"))
@@ -403,9 +419,25 @@ class mnist_model:
         self.hid_to_out.pull_var_from_device("w")
         plt.figure()
         plt.hist(self.hid_to_out.vars["w"].view[:],100)
+        # set up run 
+        N_trial= 0
+        if X_t_orig is not None:
+            assert(labels is not None)
+            N_train= X_t_orig.shape[0] // p["N_BATCH"]
+            N_trial+= N_train
+        else:
+            N_train= 0
+        if X_t_eval is not None:
+            assert(labels_eval is not None)
+            N_eval= X_t_eval.shape[0] // p["N_BATCH"]
+            N_trial+= N_eval
+        else:
+            N_eval= 0
         adam_step= 1
         learning_rate= p["ETA"]
         cnt= np.ones(p["N_BATCH"])
+        
+        # set up recording if required
         spike_t= {}
         spike_ID= {}
         for pop in p["REC_SPIKES"]:
@@ -419,17 +451,18 @@ class mnist_model:
         for pop, var in p["REC_SYNAPSES"]:
             rec_vars_s[var+pop]= []
         # build and assign the input spike train and corresponding labels
-        if shuffle:
-            X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_t_orig, labels)
+        if shuffle:   # use the model version that allows shuffling
+            X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_t_orig, labels, X_t_eval, labels_eval)
             self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
             self.input.push_extra_global_param_to_device("spikeTimes")
             self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
             self.input_set.push_extra_global_param_to_device("allStartSpike")
             self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
             self.input_set.push_extra_global_param_to_device("allEndSpike")
-            input_id= np.arange(X_t_orig.shape[0])
-        else:
-            X, Y, input_start, input_end= self.generate_input_spiketimes(p, X_t_orig, labels)
+            input_id= np.arange(labels.shape[0])
+            all_input_id= np.arange(Y.shape[0])
+        else:        # use model with monolithic spike time array (no shuffling)
+            X, Y, input_start, input_end= self.generate_input_spiketimes(p, X_t_orig, labels,X_t_eval, labels_eval)
             self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
             self.input.push_extra_global_param_to_device("spikeTimes")
             self.output.extra_global_params["label"].view[:len(Y)]= Y
@@ -437,32 +470,48 @@ class mnist_model:
             self.input_init_vars["startSpike"]= input_start
             self.input_init_vars["endSpike"]= input_end
         for epoch in range(number_epochs):
-            if shuffle:
-                if do_shuffle:
-                    self.datarng.shuffle(input_id)
-                #print(input_id)
-                Y= labels[input_id]
+
+            if N_train > 0 and shuffle:
+                self.datarng.shuffle(input_id)
+                all_input_id[:len(input_id)]= input_id
+                Y[:len(input_id)]= labels[input_id]
                 self.output.extra_global_params["label"].view[:len(Y)]= Y
                 self.output.push_extra_global_param_to_device("label")
-                self.input_set.extra_global_params["allInputID"].view[:len(input_id)]= input_id
+                self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
                 self.input_set.push_extra_global_param_to_device("allInputID")
-            predict= []
-            the_loss= []
-            good= 0.0    
+            predict= {
+                "train": [],
+                "eval": []
+            }
+            the_loss= {
+                "train": [],
+                "eval": []
+            }
+            good= {
+                "train": 0.0,
+                "eval": 0.0
+            }
             self.model.t= 0.0
             self.model.timestep= 0
             for var, val in self.input_init_vars.items():
                 self.input.vars[var].view[:]= val
             self.input.push_state_to_device()
+            self.input.extra_global_params["pDrop"].view[:]= p["PDROP_INPUT"]
             for var, val in self.hidden_init_vars.items():
                 self.hidden.vars[var].view[:]= val
             self.hidden.push_state_to_device()
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
+
             for trial in range(N_trial):
                 trial_end= (trial+1)*p["TRIAL_MS"]
                 # if shuffling: assign the input spike train and corresponding labels
+                if trial < N_train:
+                    phase= "train"
+                else:
+                    phase= "eval"
+                    self.input.extra_global_params["pDrop"].view[:]= 0.0
                 if shuffle:
                     self.input_set.extra_global_params["trial"].view[:]= trial
                     self.model.custom_update("inputUpdate")
@@ -503,7 +552,7 @@ class mnist_model:
                         self.hid_to_out.in_syn[:]= 0.0
                         self.hid_to_out.push_in_syn_to_device()
                 
-                if learning:
+                if phase == "train":
                     update_adam(learning_rate, adam_step, self.optimisers)
                     adam_step += 1
                     self.model.custom_update("EVPReduce")
@@ -527,12 +576,12 @@ class mnist_model:
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
                 #print(lbl)
                 #print("-----")
-                good += np.sum(cnt[pred == lbl])
-                predict.append(pred)
                 self.output.pull_var_from_device("expsum")
                 losses= self.loss_func(lbl,p)   # uses self.output.vars["max_V"].view and self.output.vars["expsum"].view
-                the_loss.append(losses)
-
+                good[phase] += np.sum(cnt[pred == lbl])
+                predict[phase].append(pred)
+                the_loss[phase].append(losses)
+                    
                 if (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
                     self.in_to_hid.pull_var_from_device("w")
                     np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
@@ -540,12 +589,20 @@ class mnist_model:
                     np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_e{}_t{}.npy".format(epoch,trial)), self.hid_to_out.vars["w"].view.copy())
 
             #print(the_loss)
-            print("{} Correct: {}, Loss: {}".format(epoch, good/(N_trial*p["N_BATCH"]),np.mean(the_loss)))
-            predict= np.hstack(predict)
-            if learning:
-                learning_rate *= p["ETA_DECAY"]
+            if N_train > 0:
+                correct= good["train"]/(N_train*p["N_BATCH"])
+            else:
+                correct= 0
+            if N_eval > 0:
+                correct_eval= good["eval"]/(N_eval*p["N_BATCH"])
+            else:
+                correct_eval= 0
+            print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
+            if resfile is not None:
+                resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
+            predict[phase]= np.hstack(predict[phase])
+            learning_rate *= p["ETA_DECAY"]
 
-                
         for pop in p["REC_SPIKES"]:
             spike_t[pop]= np.hstack(spike_t[pop])
             spike_ID[pop]= np.hstack(spike_ID[pop])
@@ -580,7 +637,8 @@ class mnist_model:
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         N_trial= p["N_TRAIN"] // p["N_BATCH"]
         self.input.extra_global_params["pDrop"].view[:]= p["PDROP_INPUT"]    # set dropout
-        return self.run_model(p["N_EPOCH"], True, self.Y_train_orig, self.X_train_orig, N_trial, p, p["SHUFFLE"],do_shuffle= p["SHUFFLE"])
+        resfile= open("results.txt", "a")
+        return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= self.X_train_orig, labels= self.Y_train_orig, X_t_eval= self.X_val_orig, labels_eval= self.Y_val_orig, resfile= resfile)
           
     def test(self, p):
         self.define_model(p, False)
@@ -589,5 +647,5 @@ class mnist_model:
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         N_trial= p["N_TEST"] // p["N_BATCH"]
         self.input.extra_global_params["pDrop"].view[:]= 0.0          # no dropout during testing
-        return self.run_model(1, False, self.Y_test_orig, self.X_test_orig, N_trial, p, False)
+        return self.run_model(1, p, False, X_t_eval= self.X_test_orig, labels_eval= self.Y_test_orig)
         
