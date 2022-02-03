@@ -363,13 +363,22 @@ class yingyang:
                     for pop, var in p["REC_NEURONS"]:
                         the_pop= self.model.neuron_populations[pop]
                         the_pop.pull_var_from_device(var)
-                        rec_vars_n[var+pop].append(the_pop.vars[var].view.copy())
+                        rec_vars_n[var+pop].append(the_pop.vars[var].view[0].copy())
 
                     for pop, var in p["REC_SYNAPSES"]:
                         the_pop= self.model.synapse_populations[pop]
-                        the_pop.pull_var_from_device(var)
-                        rec_vars_s[var+pop].append(the_pop.vars[var].view.copy())
-
+                        if var == "in_syn":
+                            the_pop.pull_in_syn_from_device()
+                            rec_vars_s[var+pop].append(the_pop.in_syn[0].copy())
+                        else:
+                            the_pop.pull_var_from_device(var)
+                            rec_vars_s[var+pop].append(the_pop.vars[var].view.copy())
+                    # clamp in_syn to 0 one timestep before trial end to avoid bleeding spikes into the next trial
+                    if np.abs(self.model.t + p["DT_MS"] - trial_end) < 1e-1*p["DT_MS"]:
+                        self.in_to_hid.in_syn[:]= 0.0
+                        self.in_to_hid.push_in_syn_to_device()
+                        self.hid_to_out.in_syn[:]= 0.0
+                        self.hid_to_out.push_in_syn_to_device()
                 self.output.pull_var_from_device("new_first_spike_t");
                 all_nfst.append(nfst.copy())
                 st= nfst.copy()

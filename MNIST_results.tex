@@ -10,8 +10,135 @@
   was saved in \verb+test1_results.txt+ and plotted as test1.png.
   The testing performance was \verb+Evaluation Correct: 0.9578, Evaluation Loss: 0.17792312629185386+
 
-  final weights saved as \verb+test1_w_input_hidden_last.npy+ and \verb+test1w_hidden_output_last.npy+.
+  final weights saved as \verb+test1_w_input_hidden_last.npy+ and \verb+test1_w_hidden_output_last.npy+.
 
+  second run saved in \verb+test2_results.txt+
+  \begin{verbatim}
+    p["ADAM_BETA1"]= 0.9
+    p["ADAM_BETA2"]= 0.999    
+  \end{verbatim}
+  and testing yielded: \verb+Evaluation Correct: 0.9519, Evaluation Loss: 0.20122656752165985+
+  final weights saved as \verb+test2_w_input_hidden_last.npy+ and \verb+test2_w_hidden_output_last.npy+.
+
+  third run saved in \verb+test3_results.txt+
+  \begin{verbatim}
+    p["ADAM_BETA1"]= 0.99
+    p["ADAM_BETA2"]= 0.9999   
+  \end{verbatim}
+  \verb+Evaluation Correct: 0.9585, Evaluation Loss: 0.1547624120225807+
   
-  
+  \verb+test4_results.txt+
+\begin{verbatim}
+p["ADAM_BETA1"]= 0.995
+p["ADAM_BETA2"]= 0.99995    
+\end{verbatim}
+
+  \verb+Evaluation Correct: 0.9537, Evaluation Loss: 0.16555961446831724+
+
+
+  test5:
+   \begin{verbatim}
+    p["ADAM_BETA1"]= 0.99
+    p["ADAM_BETA2"]= 0.9999    
+  \end{verbatim}
+ with Zenke encoding
+
+
+  test6:
+    \begin{verbatim}
+    p["ADAM_BETA1"]= 0.9
+    p["ADAM_BETA2"]= 0.999
+    p["N_BATCH"]= 512
+  \end{verbatim}
+with Zenke encoding
+
+test7:
+   \begin{verbatim}
+    p["ADAM_BETA1"]= 0.99
+    p["ADAM_BETA2"]= 0.9999    
+    p["N_BATCH"]= 512
+  \end{verbatim}
+with linear encoding
+Evaluation Correct: 0.9594, Evaluation Loss: 0.14033508300781253
+
+test8
+   \begin{verbatim}
+p["DPROP_INPUT"]= 0.3
+p["ADAM_BETA1"]= 0.99
+p["ADAM_BETA2"]= 0.9999    
+p["N_BATCH"]= 500
+  \end{verbatim}
+with linear encoding
+Evaluation Correct: 0.9582, Evaluation Loss: 0.13917260131835937
+
+test9
+   \begin{verbatim}
+p["DPROP_INPUT"]= 0.1
+p["ADAM_BETA1"]= 0.99
+p["ADAM_BETA2"]= 0.9999    
+p["N_BATCH"]= 500
+  \end{verbatim}
+with linear encoding
+Evaluation Correct: 0.9594, Evaluation Loss: 0.13727240753173828
+
+
+test10
+   \begin{verbatim}
+p["DPROP_INPUT"]= 0.1
+p["ADAM_BETA1"]= 0.99
+p["ADAM_BETA2"]= 0.9999    
+p["N_BATCH"]= 500
+  \end{verbatim}
+with linear encoding
+Evaluation Correct: 0.9598, Evaluation Loss: 0.1388416519165039
+\end{document}
+
+
+test11
+   \begin{verbatim}
+     p["DT_MS"]= 1
+     p["DPROP_INPUT"]= 0.1
+     p["ADAM_BETA1"]= 0.99
+     p["ADAM_BETA2"]= 0.9999    
+     p["N_BATCH"]= 500
+  \end{verbatim}
+with linear encoding
+Evaluation Correct: 0.9638, Evaluation Loss: 0.12425154151916504
+
+test12
+   \begin{verbatim}
+     p["NUM_HIDDEN"]= 100
+     p["DT_MS"]= 1
+     p["DPROP_INPUT"]= 0.1
+     p["ADAM_BETA1"]= 0.99
+     p["ADAM_BETA2"]= 0.9999    
+     p["N_BATCH"]= 500
+  \end{verbatim}
+with linear encoding
+
+test13
+   \begin{verbatim}
+     p["NUM_HIDDEN"]= 500
+     p["DT_MS"]= 1
+     p["DPROP_INPUT"]= 0.1
+     p["ADAM_BETA1"]= 0.99
+     p["ADAM_BETA2"]= 0.9999    
+     p["N_BATCH"]= 500
+  \end{verbatim}
+with linear encoding
+Evaluation Correct: 0.9643, Evaluation Loss: 0.11887868881225586
+
+test14
+   \begin{verbatim}
+     p["NUM_HIDDEN"]= 700
+     p["N_MAX_SPIKE"]= 60
+     p["DT_MS"]= 1
+     p["DPROP_INPUT"]= 0.1
+     p["ADAM_BETA1"]= 0.99
+     p["ADAM_BETA2"]= 0.9999    
+     p["N_BATCH"]= 500
+  \end{verbatim}
+with linear encoding
+Evaluation Correct: 0.9685, Evaluation Loss: 0.10649884605407714
+
 \end{document}

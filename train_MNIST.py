@@ -2,11 +2,16 @@ from simulator_MNIST import *
 import matplotlib.pyplot as plt
 import numpy as np
 
-p["ADAM_BETA1"]= 0.9
-p["ADAM_BETA2"]= 0.999    
+p["NAME"]= "test14"
+p["NUM_HIDDEN"]= 700
+p["N_MAX_SPIKE"]= 60
+p["DT_MS"]= 1
+p["DPROP_INPUT"]= 0.1
+p["ADAM_BETA1"]= 0.99
+p["ADAM_BETA2"]= 0.9999    
 p["DEBUG"]= False
 p["N_EPOCH"]= 100
-p["N_BATCH"]= 5
+p["N_BATCH"]= 500
 p["N_TRAIN"]= 55000
 p["ETA"]= 5e-3
 p["SHUFFLE"]= True
@@ -17,9 +22,10 @@ if p["DEBUG"]:
     p["REC_NEURONS"]= [("output", "V"), ("output", "lambda_V"), ("output", "lambda_I")]
     p["REC_SYNAPSES"]= [("hid_to_out", "w")]
 mn= mnist_model(p)
-spike_t, spike_ID, rec_vars_n, rec_vars_s,correct= mn.train(p)
+spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
 
 print("correct: {}".format(correct))
+print("correct_eval: {}".format(correct_eval))
 if p["DEBUG"]:
     plt.figure()
     plt.scatter(spike_t["input"],spike_ID["input"],s=0.5)

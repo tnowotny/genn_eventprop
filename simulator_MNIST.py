@@ -12,6 +12,7 @@ import os
 # Parameters
 # ----------------------------------------------------------------------------
 p= {}
+p["NAME"]= "test"
 p["DEBUG"]= True
 p["OUT_DIR"]= "."
 p["TRAIN"]= True
@@ -121,7 +122,15 @@ class mnist_model:
         self.X_test_orig= X[:p["N_TEST"],:,:]
         Y= Y[idx]
         self.Y_test_orig= Y[:p["N_TEST"]]
-        
+
+
+    def spike_time_from_gray(self,t):
+        return (255.0-t)/255.0*(p["TRIAL_MS"]-4*p["DT_MS"])+2*p["DT_MS"]   # make sure spikes are two timesteps within the presentation window
+
+    def spike_time_from_gray2(self,t):
+        t= t/255.0*10.0
+        return 10.0*np.log(t/(t-0.2))
+
     def generate_input_spiketimes(self, p, Xtrain, Ytrain, Xeval, Yeval):
         # N is the number of training/testing images: always use all images given
         if Xtrain is None:
@@ -157,7 +166,9 @@ class mnist_model:
                 for k in range(NUM_INPUT):
                     t= X[i_input,k]
                     if t > 1:   # only make a spike for gray values greater 1
-                        t= (255.0-t)/255.0*(p["TRIAL_MS"]-4*p["DT_MS"])+2*p["DT_MS"]   # make sure spikes are two timesteps within the presentation window
+                        t= self.spike_time_from_gray(t)
+                    #if t > 5.1:
+                        #t= self.spike_time_from_gray2(t)
                         sts[strt+k].append(t_off+t)
             t_off += p["TRIAL_MS"]        
         X= np.hstack(sts)
@@ -210,7 +221,9 @@ class mnist_model:
             for k in range(NUM_INPUT):
                 t= X[i,k]
                 if t > 1:   # only make a spike for gray values greater 1
-                    t= (255.0-t)/255.0*(p["TRIAL_MS"]-4*p["DT_MS"])+2*p["DT_MS"]   # make sure spikes are two timesteps within the presentation window
+                    t= self.spike_time_from_gray(t)
+                #if t > 5.1:
+                    #t= self.spike_time_from_gray2(t)
                     sts[k].append(t)
             all_sts.append(np.hstack(sts))
             n_sts= [ len(s) for s in sts ]
@@ -403,8 +416,8 @@ class mnist_model:
             
     def run_model(self, number_epochs, p, shuffle, X_t_orig= None, labels= None, X_t_eval= None, labels_eval= None, resfile= None):
         if p["LOAD_LAST"]:
-            self.in_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], "w_input_hidden_last.npy"))
-            self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], "w_hidden_output_last.npy"))
+            self.in_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_last.npy"))
+            self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"))
             self.in_to_hid.push_var_to_device("w")
             self.hid_to_out.push_var_to_device("w")
         else:
@@ -546,6 +559,7 @@ class mnist_model:
                         else:
                             the_pop.pull_var_from_device(var)
                             rec_vars_s[var+pop].append(the_pop.vars[var].view.copy())
+                    # clamp in_syn to 0 one timestep before trial end to avoid bleeding spikes into the next trial
                     if np.abs(self.model.t + p["DT_MS"] - trial_end) < 1e-1*p["DT_MS"]:
                         self.in_to_hid.in_syn[:]= 0.0
                         self.in_to_hid.push_in_syn_to_device()
@@ -599,7 +613,7 @@ class mnist_model:
                 correct_eval= 0
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
             if resfile is not None:
-                resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
+                resfile.write("{} {} {} {} {}\n".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
             predict[phase]= np.hstack(predict[phase])
             learning_rate *= p["ETA_DECAY"]
 
@@ -626,9 +640,9 @@ class mnist_model:
 
         self.in_to_hid.pull_var_from_device("w")
         self.hid_to_out.pull_var_from_device("w")
-        np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_last.npy"), self.in_to_hid.vars["w"].view.copy())
-        np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_last.npy"), self.hid_to_out.vars["w"].view.copy())
-        return (spike_t, spike_ID, rec_vars_n, rec_vars_s, good/(N_trial*p["N_BATCH"]))
+        np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_last.npy"), self.in_to_hid.vars["w"].view)
+        np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"), self.hid_to_out.vars["w"].view)
+        return (spike_t, spike_ID, rec_vars_n, rec_vars_s, correct, correct_eval)
         
     def train(self, p):
         self.define_model(p, p["SHUFFLE"])
@@ -637,7 +651,7 @@ class mnist_model:
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         N_trial= p["N_TRAIN"] // p["N_BATCH"]
         self.input.extra_global_params["pDrop"].view[:]= p["PDROP_INPUT"]    # set dropout
-        resfile= open("results.txt", "a")
+        resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= self.X_train_orig, labels= self.Y_train_orig, X_t_eval= self.X_val_orig, labels_eval= self.Y_val_orig, resfile= resfile)
           
     def test(self, p):
