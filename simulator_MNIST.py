@@ -205,59 +205,6 @@ class mnist_model:
         t= t/255.0*10.0
         return 10.0*np.log(t/(t-0.2))
 
-    def generate_input_spiketimes(self, p, Xtrain, Ytrain, Xeval, Yeval):
-        # N is the number of training/testing images: always use all images given
-        if Xtrain is None:
-            X= Xeval
-            Y= Yeval
-        else:
-            if Xeval is None:
-                X= Xtrain
-                y= Ytrain
-            else:
-                X= np.append(Xtrain, Xeval, axis= 0)
-                Y= np.append(Ytrain, Yeval, axis= 0)
-        N= X.shape[0]
-        """
-        if p["DEBUG"]:
-            for i in range(10):
-                plt.figure()
-                plt.imshow(X[i*p["N_BATCH"],:,:])
-                print(Y[i*p["N_BATCH"]])
-        """
-        X= np.reshape(X,(N, self.num_input))
-        # list of spike time lists
-        sts= [ [] for _ in range(p["N_BATCH"]*self.num_input) ]
-        reps= N // p["N_BATCH"]  # number of trials run
-        t_off= 0.0
-        for i in range(reps):
-            for j in range(p["N_BATCH"]):
-                # index of the input image
-                i_input= i*p["N_BATCH"]+j
-                # starting neuron index of jth instance within the batch
-                strt= j*self.num_input
-                # loop through all neurons
-                for k in range(self.num_input):
-                    t= X[i_input,k]
-                    if t > 1:   # only make a spike for gray values greater 1
-                        t= self.spike_time_from_gray(t)
-                    #if t > 5.1:
-                        #t= self.spike_time_from_gray2(t)
-                        sts[strt+k].append(t_off+t)
-            t_off += p["TRIAL_MS"]        
-        X= np.hstack(sts)
-        n_sts= [ len(s) for s in sts ]
-        input_end= np.cumsum(n_sts)
-        input_start= np.zeros(p["N_BATCH"]*self.num_input, dtype= int)
-        input_start[1:]= input_end[:-1]
-        input_end = np.reshape(input_end, (p["N_BATCH"], self.num_input))
-        input_start = np.reshape(input_start, (p["N_BATCH"], self.num_input))
-
-        #for i in range(self.num_input):
-        #    print(input_start[0,i])
-        #    print("X: {}".format(X[input_start[0,i]:input_end[0,i]]))
-        #    print("start= {}, end= {}".format(input_start[0,i],input_end[0,i]))
-        return (X, Y, input_start, input_end) 
 
     """ 
     generate a spikeTimes array and startSpike and endSpike arrays to allow indexing into the 
@@ -561,24 +508,15 @@ class mnist_model:
         for pop, var in p["REC_SYNAPSES"]:
             rec_vars_s[var+pop]= []
         # build and assign the input spike train and corresponding labels
-        if shuffle:   # use the model version that allows shuffling
-            X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_t_orig, labels, X_t_eval, labels_eval)
-            self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
-            self.input.push_extra_global_param_to_device("spikeTimes")
-            self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
-            self.input_set.push_extra_global_param_to_device("allStartSpike")
-            self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
-            self.input_set.push_extra_global_param_to_device("allEndSpike")
-            input_id= np.arange(labels.shape[0])
-            all_input_id= np.arange(Y.shape[0])
-        else:        # use model with monolithic spike time array (no shuffling)
-            X, Y, input_start, input_end= self.generate_input_spiketimes(p, X_t_orig, labels,X_t_eval, labels_eval)
-            self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
-            self.input.push_extra_global_param_to_device("spikeTimes")
-            self.output.extra_global_params["label"].view[:len(Y)]= Y
-            self.output.push_extra_global_param_to_device("label")
-            self.input_init_vars["startSpike"]= input_start
-            self.input_init_vars["endSpike"]= input_end
+        X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_t_orig, labels, X_t_eval, labels_eval)
+        self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
+        self.input.push_extra_global_param_to_device("spikeTimes")
+        self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
+        self.input_set.push_extra_global_param_to_device("allStartSpike")
+        self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
+        self.input_set.push_extra_global_param_to_device("allEndSpike")
+        input_id= np.arange(labels.shape[0])
+        all_input_id= np.arange(Y.shape[0])
         for epoch in range(number_epochs):
 
             if N_train > 0 and shuffle:
