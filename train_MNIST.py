@@ -2,16 +2,19 @@ from simulator_MNIST import *
 import matplotlib.pyplot as plt
 import numpy as np
 
-p["NAME"]= "test14"
-p["NUM_HIDDEN"]= 700
-p["N_MAX_SPIKE"]= 60
+p["DATASET"]= "MNIST"
+p["TRAIN_DATA_SEED"]= None
+p["TEST_DATA_SEED"]= None
+p["NAME"]= "test17"
+p["NUM_HIDDEN"]= 1000
+p["N_MAX_SPIKE"]= 120
 p["DT_MS"]= 1
-p["DPROP_INPUT"]= 0.1
+p["PDROP_INPUT"]= 0.2
 p["ADAM_BETA1"]= 0.99
 p["ADAM_BETA2"]= 0.9999    
 p["DEBUG"]= False
 p["N_EPOCH"]= 100
-p["N_BATCH"]= 500
+p["N_BATCH"]= 10
 p["N_TRAIN"]= 55000
 p["ETA"]= 5e-3
 p["SHUFFLE"]= True

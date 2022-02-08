@@ -311,7 +311,6 @@ class yingyang:
         nfst= self.output.vars["new_first_spike_t"].view
         adam_step= 1
         learning_rate= p["ETA"]
-        cnt= np.ones(p["N_BATCH"])
         spike_t= {}
         spike_ID= {}
         for pop in p["REC_SPIKES"]:
@@ -382,9 +381,10 @@ class yingyang:
                 self.output.pull_var_from_device("new_first_spike_t");
                 all_nfst.append(nfst.copy())
                 st= nfst.copy()
+                valid= np.max(st, axis= -1) >= 0.0
                 st[nfst < 0.0]= self.model.t+p["TRIAL_MS"]  # neurons that did not spike set to spike time in the future
                 pred= np.argmin(st,axis=-1)
-                good += np.sum(cnt[pred == labels[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]])
+                good += np.sum(pred[valid] == labels[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]][valid])
                 predict.append(pred)
                 the_loss.append(loss_func(nfst,labels[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]],trial))
                 if learning:
@@ -419,7 +419,7 @@ class yingyang:
                 for i in range(3):
                     plt.figure()
                     plt.set_cmap('hot')
-                    plt.scatter(X_t_orig[predict == i,0],X_t_orig[predict == i,1],s=50, color=[ 1, 1, 0.7],edgecolors= "black")
+                    plt.scatter(X_t_orig[np.logical_and(predict == i, pltnfst[:,i] > 0.0),0],X_t_orig[np.logical_and(predict == i,pltnfst[:,i] > 0.0),1],s=50, color=[ 1, 1, 0.7],edgecolors= "black")
                     plt.scatter(X_t_orig[pltnfst[:,i] < 0.0,0],X_t_orig[pltnfst[:,i] < 0.0,1],s=50, c='g',marker='x')
                     plt.scatter(X_t_orig[np.logical_and(predict != i, pltnfst[:,i] > 0.0),0],X_t_orig[np.logical_and(predict != i, pltnfst[:,i] > 0.0),1],s=50, c=pltnfst[np.logical_and(predict != i, pltnfst[:,i] > 0.0),i],marker='x')
                 plt.show()

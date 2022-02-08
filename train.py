@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import minimize
 
-p["DT_MS"]= 0.1
+p["DT_MS"]= 1.0
 p["ETA"]= 1e-3
 p["ETA_DECAY"]= 0.998
 p["ADAM_BETA1"]= 0.95
@@ -14,7 +14,7 @@ p["N_TRAIN"]= 10*p["N_BATCH"]
 p["N_TEST"]= 10*p["N_BATCH"]
 p["W_REPORT_INTERVAL"]= 3000
 p["W_EPOCH_INTERVAL"] = 100
-p["N_EPOCH"]= 200
+p["N_EPOCH"]= 400
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["TRAINING_PLOT"]= False
 p["TRAINING_PLOT_INTERVAL"]= 1

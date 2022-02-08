@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
 import mnist
+import tonic
 from models import *
 import os
 
@@ -13,7 +14,9 @@ import os
 # ----------------------------------------------------------------------------
 p= {}
 p["NAME"]= "test"
-p["DEBUG"]= True
+p["DATASET"] = None
+p["DEBUG"]= False
+p["DEBUG_HIDDEN_N"]= False
 p["OUT_DIR"]= "."
 p["TRAIN"]= True
 p["DT_MS"] = 0.1
@@ -31,12 +34,9 @@ p["N_VALIDATE"]= 5000
 p["N_EPOCH"]= 10
 p["SHUFFLE"]= True
 p["N_TEST"]= 10000
-N_CLASS= 10
 p["W_REPORT_INTERVAL"] = 100
 p["W_EPOCH_INTERVAL"] = 10
 # Network structure
-NUM_INPUT = 28*28
-NUM_OUTPUT = 16  # padded to power of two to be able to use warp reduction
 p["NUM_HIDDEN"] = 350
 
 # Model parameters
@@ -81,40 +81,46 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
 
 class mnist_model:
     def __init__(self, p):
-        self.generate_training_data(p)
-        self.generate_testing_data(p)
-                
+        if p["DATASET"] == "MNIST":
+            self.load_data_MNIST(p)
+            
+        if p["DATASET"] == "SHD":
+            self.load_data_SHD(p)
+        
     def loss_func(self, Y, p):
         expsum= self.output.vars["expsum"].view
-        max_V= self.output.vars["max_V"].view
-        max_V_correct= np.array([ max_V[i,y] for i, y in enumerate(Y) ])
-        loss= -np.sum(np.log(np.exp(max_V_correct)/expsum[:,0]))/p["N_BATCH"]
+        exp_V= self.output.vars["exp_V"].view
+        exp_V_correct= np.array([ exp_V[i,y] for i, y in enumerate(Y) ])
+        loss= -np.sum(np.log(exp_V_correct/expsum[:,0]))/p["N_BATCH"]
         return loss
     
-    def generate_training_data(self, p, shuffle= True):
-        X = mnist.train_images()
-        Y = mnist.train_labels()
+    def load_data_MNIST(self, p, shuffle= True):
         if p["TRAIN_DATA_SEED"] is not None:
             self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
         else:
             self.datarng= np.random.default_rng()        
-        idx= np.arange(60000)
-        if (shuffle):
-            self.datarng.shuffle(idx)
-        X= X[idx]
-        self.X_val_orig= X[60000-p["N_VALIDATE"]:,:,:]
-        self.X_train_orig= X[:p["N_TRAIN"],:,:]
-        Y= Y[idx]
-        self.Y_val_orig= Y[60000-p["N_VALIDATE"]:]
-        self.Y_train_orig= Y[:p["N_TRAIN"]]
-        
-    def generate_testing_data(self, p, shuffle= True):
-        X = mnist.test_images()
-        Y = mnist.test_labels()
         if p["TEST_DATA_SEED"] is not None:
             self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
         else:
             self.tdatarng= np.random.default_rng()        
+        X = mnist.train_images()
+        Y = mnist.train_labels()
+        self.data_full_length= 60000
+        self.N_class= 10
+        self.num_input= 28*28
+        self.num_output= 16   # first power of two greater than class number
+        idx= np.arange(self.data_full_length)
+        if (shuffle):
+            self.datarng.shuffle(idx)
+            X= X[idx]
+        self.X_val_orig= X[self.data_full_length-p["N_VALIDATE"]:,:,:]
+        self.X_train_orig= X[:p["N_TRAIN"],:,:]
+        Y= Y[idx]
+        self.Y_val_orig= Y[self.data_full_length-p["N_VALIDATE"]:]
+        self.Y_train_orig= Y[:p["N_TRAIN"]]
+        # also load some testing data
+        X = mnist.test_images()
+        Y = mnist.test_labels()
         idx= np.arange(10000)
         if (shuffle):
             self.tdatarng.shuffle(idx)
@@ -124,6 +130,74 @@ class mnist_model:
         self.Y_test_orig= Y[:p["N_TEST"]]
 
 
+    def load_data_SHD(self, p, shuffle= True):
+        if p["TRAIN_DATA_SEED"] is not None:
+            self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
+        else:
+            self.datarng= np.random.default_rng()        
+        if p["TEST_DATA_SEED"] is not None:
+            self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
+        else:
+            self.tdatarng= np.random.default_rng()        
+        dataset = tonic.datasets.SHD(save_to='./data', train=True)
+        sensor_size = dataset.sensor_size
+        self.data_full_length= len(dataset)
+        self.N_class= len(dataset.classes)
+        self.num_input= int(np.product(sensor_size))
+        self.num_output= 32   # first power of two greater than class number
+        idx= np.arange(self.data_full_length)
+        if (shuffle):
+            self.datarng.shuffle(idx)
+
+        train_idx= idx[np.arange(p["N_TRAIN"])]
+        eval_idx= idx[np.arange(p["N_VALIDATE"])+(self.data_full_length-p["N_VALIDATE"])]
+        self.Y_train_orig= np.empty(len(train_idx), dtype= int)
+        self.X_train_orig= []
+        for i, s in enumerate(train_idx):
+            events, label = dataset[s]
+            self.Y_train_orig[i]= label
+            self.X_train_orig.append(events)
+        self.Y_val_orig= np.empty(len(eval_idx), dtype= int)
+        self.X_val_orig= []
+        for i, s in enumerate(eval_idx):
+            events, label = dataset[s]
+            self.Y_val_orig[i]= label
+            self.X_val_orig.append(events)
+        """
+        # start of debug data generation]
+        self.Y_train_orig=[]
+        self.X_train_orig= []
+        s= 0
+        while len(self.Y_train_orig) < p["N_TRAIN"]:
+            events, label = dataset[s]
+            if label == 3 or label == 7:
+                self.Y_train_orig.append(label)
+                self.X_train_orig.append(events)
+            s= s+1
+        self.Y_train_orig= np.array(self.Y_train_orig)
+        print(self.Y_train_orig)
+        self.Y_val_orig=[]
+        self.X_val_orig= []
+        s= len(dataset)-1
+        while len(self.Y_val_orig) < p["N_VALIDATE"]:
+            events, label = dataset[s]
+            if label < 7:
+                self.Y_val_orig.append(label)
+                self.X_val_orig.append(events)
+            s= s-1
+        self.Y_val_orig= np.array(self.Y_val_orig)
+        print(self.Y_val_orig)
+        # end of debug data generation
+        """
+        dataset = tonic.datasets.SHD(save_to='./data', train=False)
+        self.data_full_length= max(self.data_full_length, len(dataset))
+        self.Y_test_orig= np.empty(len(dataset), dtype= int)
+        self.X_test_orig= []
+        for i in range(len(dataset)):
+            events, label = dataset[i]
+            self.Y_test_orig[i]= label
+            self.X_test_orig.append(events)
+        
     def spike_time_from_gray(self,t):
         return (255.0-t)/255.0*(p["TRIAL_MS"]-4*p["DT_MS"])+2*p["DT_MS"]   # make sure spikes are two timesteps within the presentation window
 
@@ -151,9 +225,9 @@ class mnist_model:
                 plt.imshow(X[i*p["N_BATCH"],:,:])
                 print(Y[i*p["N_BATCH"]])
         """
-        X= np.reshape(X,(N, NUM_INPUT))
+        X= np.reshape(X,(N, self.num_input))
         # list of spike time lists
-        sts= [ [] for _ in range(p["N_BATCH"]*NUM_INPUT) ]
+        sts= [ [] for _ in range(p["N_BATCH"]*self.num_input) ]
         reps= N // p["N_BATCH"]  # number of trials run
         t_off= 0.0
         for i in range(reps):
@@ -161,9 +235,9 @@ class mnist_model:
                 # index of the input image
                 i_input= i*p["N_BATCH"]+j
                 # starting neuron index of jth instance within the batch
-                strt= j*NUM_INPUT
+                strt= j*self.num_input
                 # loop through all neurons
-                for k in range(NUM_INPUT):
+                for k in range(self.num_input):
                     t= X[i_input,k]
                     if t > 1:   # only make a spike for gray values greater 1
                         t= self.spike_time_from_gray(t)
@@ -174,12 +248,12 @@ class mnist_model:
         X= np.hstack(sts)
         n_sts= [ len(s) for s in sts ]
         input_end= np.cumsum(n_sts)
-        input_start= np.zeros(p["N_BATCH"]*NUM_INPUT, dtype= int)
+        input_start= np.zeros(p["N_BATCH"]*self.num_input, dtype= int)
         input_start[1:]= input_end[:-1]
-        input_end = np.reshape(input_end, (p["N_BATCH"], NUM_INPUT))
-        input_start = np.reshape(input_start, (p["N_BATCH"], NUM_INPUT))
+        input_end = np.reshape(input_end, (p["N_BATCH"], self.num_input))
+        input_start = np.reshape(input_start, (p["N_BATCH"], self.num_input))
 
-        #for i in range(NUM_INPUT):
+        #for i in range(self.num_input):
         #    print(input_start[0,i])
         #    print("X: {}".format(X[input_start[0,i]:input_end[0,i]]))
         #    print("start= {}, end= {}".format(input_start[0,i],input_end[0,i]))
@@ -199,9 +273,15 @@ class mnist_model:
                 X= Xtrain
                 y= Ytrain
             else:
-                X= np.append(Xtrain, Xeval, axis= 0)
+                if p["DATASET"] == "MNIST":
+                    X= np.append(Xtrain, Xeval, axis= 0)
+                if p["DATASET"] == "SHD":
+                    X= Xtrain
+                    X.extend(Xeval)
+                    
                 Y= np.append(Ytrain, Yeval, axis= 0)
-        N= X.shape[0]
+        N= len(Y)
+        print(N)
         """
         if p["DEBUG"]:
             for i in range(4):
@@ -209,25 +289,32 @@ class mnist_model:
                 plt.imshow(X[i*p["N_BATCH"],:,:])
                 print(Y[i*p["N_BATCH"]])
         """
-        X= np.reshape(X,(N, NUM_INPUT))
         all_sts= []
         all_input_end= []
         all_input_start= []
         stidx_offset= 0
+        self.max_stim_time= 0.0
         for i in range(N):
-            # list of spike time lists
-            sts= [ [] for _ in range(NUM_INPUT) ]
-            # loop through all neurons
-            for k in range(NUM_INPUT):
-                t= X[i,k]
-                if t > 1:   # only make a spike for gray values greater 1
-                    t= self.spike_time_from_gray(t)
-                #if t > 5.1:
-                    #t= self.spike_time_from_gray2(t)
-                    sts[k].append(t)
-            all_sts.append(np.hstack(sts))
-            n_sts= [ len(s) for s in sts ]
-            i_end= np.cumsum(n_sts)+stidx_offset
+            if p["DATASET"] == "MNIST":
+                X= np.reshape(X,(N, self.num_input))
+                tx= X[i,:]
+                ix= tx > 1
+                #ix= tx[tx > 5.1]
+                tx= tx[ix]
+                tx= self.spike_time_from_gray(tx)
+                self.max_stim_time= max(self.max_stim_time, np.amax(tx))
+                #tx= self.spike_time_from_gray2(tx)
+                i_end= np.cumsum(ix)+stidx_offset
+            if p["DATASET"] == "SHD":
+                events= X[i]
+                spike_event_ids = events["x"]
+                i_end = np.cumsum(np.bincount(spike_event_ids.astype(int), 
+                                              minlength=self.num_input))+stidx_offset    
+                assert len(i_end) == self.num_input
+                tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
+                tx /= 1000.0
+                self.max_stim_time= max(self.max_stim_time, np.amax(tx))
+            all_sts.append(tx)
             i_start= np.empty(i_end.shape)
             i_start[0]= stidx_offset
             i_start[1:]= i_end[:-1]
@@ -237,15 +324,17 @@ class mnist_model:
         X= np.hstack(all_sts)
         input_end= np.hstack(all_input_end)
         input_start= np.hstack(all_input_start)
+        print(self.max_stim_time)
+        #exit(1)
         
-        #for i in range(NUM_INPUT):
+        #for i in range(self.num_input):
         #    print(input_start[0,i])
         #    print("X: {}".format(X[input_start[0,i]:input_end[0,i]]))
         #    print("start= {}, end= {}".format(input_start[0,i],input_end[0,i]))
         return (X, Y, input_start, input_end) 
                 
     def define_model(self, p, shuffle):
-        input_params= {"N_neurons": NUM_INPUT,
+        input_params= {"N_neurons": self.num_input,
                        "N_max_spike": 2  # input neurons have at most one input spike per trial (is the circular spike buffer overkill??)
         }
         self.input_init_vars= {"startSpike": 0.0,  # to be set later
@@ -276,16 +365,17 @@ class mnist_model:
                         "N_batch": p["N_BATCH"],
         }
         self.output_init_vars= {"V": p["V_RESET"],
-                           "lambda_V": 0.0,
-                           "lambda_I": 0.0,
-                           "rev_t": 0.0,
-                           "max_V": p["V_RESET"],
-                           "new_max_V": p["V_RESET"],
-                           "max_t": 0.0,
-                           "new_max_t": 0.0, 
-                           "expsum": 1.0,
-                           "trial": 0,
-                           "lambda_jump": 0.0,
+                                "lambda_V": 0.0,
+                                "lambda_I": 0.0,
+                                "rev_t": 0.0,
+                                "max_V": p["V_RESET"],
+                                "new_max_V": p["V_RESET"],
+                                "max_t": 0.0,
+                                "new_max_t": 0.0, 
+                                "expsum": 1.0,
+                                "exp_V": 1.0,     
+                                "trial": 0,
+                                "lambda_jump": 0.0,
         }
         # ----------------------------------------------------------------------------
         # Synapse initialisation
@@ -313,23 +403,23 @@ class mnist_model:
 
         # Add neuron populations
         if shuffle:
-            self.input = self.model.add_neuron_population("input", NUM_INPUT, EVP_SSA_MNIST_SHUFFLE, 
+            self.input = self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, 
                                                           input_params, self.input_init_vars)
         else:
-            self.input = self.model.add_neuron_population("input", NUM_INPUT, EVP_SSA_MNIST, 
+            self.input = self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST, 
                                                           input_params, self.input_init_vars)
-        self.input.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*NUM_INPUT*p["N_MAX_SPIKE"],dtype=np.float32))
-        self.input.set_extra_global_param("spikeTimes", np.zeros(10000000,dtype=np.float32)) # reserve enough space for any set of input spikes that is likely
+        self.input.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*self.num_input*p["N_MAX_SPIKE"],dtype=np.float32))
+        self.input.set_extra_global_param("spikeTimes", np.zeros(200000000,dtype=np.float32)) # reserve enough space for any set of input spikes that is likely
        
         self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars) 
         self.hidden.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
         self.hidden.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
         
-        self.output= self.model.add_neuron_population("output", NUM_OUTPUT, EVP_LIF_output, output_params, self.output_init_vars)
-        self.output.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*NUM_OUTPUT*p["N_MAX_SPIKE"],dtype=np.float32))
-        self.output.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*NUM_OUTPUT*p["N_MAX_SPIKE"],dtype=np.float32))
+        self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST, output_params, self.output_init_vars)
+        self.output.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"],dtype=np.float32))
+        self.output.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"],dtype=np.float32))
 
-        self.output.set_extra_global_param("label", np.zeros(60000,dtype=np.float32)) # reserve space for labels
+        self.output.set_extra_global_param("label", np.zeros(self.data_full_length,dtype=np.float32)) # reserve space for labels
 
         input_var_refs= {"rp_ImV": genn_model.create_var_ref(self.input, "rp_ImV"),
                          "wp_ImV": genn_model.create_var_ref(self.input, "wp_ImV"),
@@ -339,7 +429,7 @@ class mnist_model:
         self.input_reset= self.model.add_custom_update("input_reset","neuronReset", EVP_input_reset_MNIST, {"N_max_spike": p["N_MAX_SPIKE"]}, {}, input_var_refs)
 
         input_set_params= {"N_batch": p["N_BATCH"],
-                           "num_input": NUM_INPUT
+                           "num_input": self.num_input
         }
         input_var_refs= {"startSpike": genn_model.create_var_ref(self.input, "startSpike"),
                          "endSpike": genn_model.create_var_ref(self.input, "endSpike")
@@ -347,9 +437,9 @@ class mnist_model:
         if shuffle:
             self.input_set= self.model.add_custom_update("input_set", "inputUpdate", EVP_input_set_MNIST_shuffle, input_set_params, {}, input_var_refs)
             # reserving memory for the worst case of the full training set
-            self.input_set.set_extra_global_param("allStartSpike", np.zeros(60000*NUM_INPUT,dtype= int))
-            self.input_set.set_extra_global_param("allEndSpike", np.zeros(60000*NUM_INPUT,dtype= int))
-            self.input_set.set_extra_global_param("allInputID", np.zeros(60000,dtype= int))
+            self.input_set.set_extra_global_param("allStartSpike", np.zeros(self.data_full_length*self.num_input,dtype= int))
+            self.input_set.set_extra_global_param("allEndSpike", np.zeros(self.data_full_length*self.num_input,dtype= int))
+            self.input_set.set_extra_global_param("allInputID", np.zeros(self.data_full_length,dtype= int))
             self.input_set.set_extra_global_param("trial", 0)
             
         hidden_var_refs= {"rp_ImV": genn_model.create_var_ref(self.hidden, "rp_ImV"),
@@ -363,7 +453,7 @@ class mnist_model:
         self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
 
         output_reset_params= {"V_reset": p["V_RESET"],
-                              "N_class": N_CLASS
+                              "N_class": self.N_class
         }
         output_var_refs= {"max_V": genn_model.create_var_ref(self.output, "max_V"),
                           "new_max_V": genn_model.create_var_ref(self.output, "new_max_V"),
@@ -374,9 +464,13 @@ class mnist_model:
                           "lambda_I": genn_model.create_var_ref(self.output, "lambda_I"),
                           "rev_t": genn_model.create_var_ref(self.output, "rev_t"),
                           "expsum": genn_model.create_var_ref(self.output, "expsum"),
+                          "exp_V": genn_model.create_var_ref(self.output, "exp_V"),
                           "trial": genn_model.create_var_ref(self.output, "trial")
         }
-        self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_MNIST, output_reset_params, {}, output_var_refs)
+        if p["DATASET"] == "MNIST":
+            self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_MNIST, output_reset_params, {}, output_var_refs)
+        if p["DATASET"] == "SHD":
+            self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD, output_reset_params, {}, output_var_refs)
 
         # synapse populations
         self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
@@ -404,6 +498,9 @@ class mnist_model:
         var_refs = {"w": genn_model.create_wu_var_ref(self.hid_to_out, "w")}
         self.normalize_out=  self.model.add_custom_update("normalize_hid_to_out", "Normalize", normalize_model, {}, {}, var_refs)
         
+        # DEBUG hidden layer spike numbers
+        if p["DEBUG_HIDDEN_N"]:
+            self.model.neuron_populations["hidden"].spike_recording_enabled= True
         # enable buffered spike recording where desired
         for pop in p["REC_SPIKES"]:
             self.model.neuron_populations[pop].spike_recording_enabled= True
@@ -420,15 +517,15 @@ class mnist_model:
             self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"))
             self.in_to_hid.push_var_to_device("w")
             self.hid_to_out.push_var_to_device("w")
-        else:
+        #else:
             # zero the weights of synapses to "padding output neurons" - this should remove them
             # from influencing the backward pass
-            mask= np.zeros((p["NUM_HIDDEN"],NUM_OUTPUT))
-            mask[:,N_CLASS:]= 1
-            mask= np.array(mask, dtype= bool).flatten()
-            self.hid_to_out.pull_var_from_device("w")
-            self.hid_to_out.vars["w"].view[mask]= 0
-            self.hid_to_out.push_var_to_device("w")
+            #mask= np.zeros((p["NUM_HIDDEN"],self.num_output))
+            #mask[:,self.N_class:]= 1
+            #mask= np.array(mask, dtype= bool).flatten()
+            #self.hid_to_out.pull_var_from_device("w")
+            #self.hid_to_out.vars["w"].view[mask]= 0
+            #self.hid_to_out.push_var_to_device("w")
         self.hid_to_out.pull_var_from_device("w")
         plt.figure()
         plt.hist(self.hid_to_out.vars["w"].view[:],100)
@@ -436,13 +533,13 @@ class mnist_model:
         N_trial= 0
         if X_t_orig is not None:
             assert(labels is not None)
-            N_train= X_t_orig.shape[0] // p["N_BATCH"]
+            N_train= len(X_t_orig) // p["N_BATCH"]
             N_trial+= N_train
         else:
             N_train= 0
         if X_t_eval is not None:
             assert(labels_eval is not None)
-            N_eval= X_t_eval.shape[0] // p["N_BATCH"]
+            N_eval= len(X_t_eval) // p["N_BATCH"]
             N_trial+= N_eval
         else:
             N_eval= 0
@@ -516,7 +613,8 @@ class mnist_model:
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
-
+            if p["DEBUG_HIDDEN_N"]:
+                all_hidden_n= []
             for trial in range(N_trial):
                 trial_end= (trial+1)*p["TRIAL_MS"]
                 # if shuffling: assign the input spike train and corresponding labels
@@ -531,9 +629,16 @@ class mnist_model:
                     self.input.extra_global_params["t_offset"].view[:]= self.model.t
                     
                 int_t= 0
+                if p["DEBUG_HIDDEN_N"]:
+                    spike_N_hidden= 0
                 while (self.model.t < trial_end-1e-1*p["DT_MS"]):
                     self.model.step_time()
                     int_t += 1
+                    # DEBUG of middle layer activity
+                    if p["DEBUG_HIDDEN_N"]:
+                        if int_t%p["SPK_REC_STEPS"] == 0:
+                            self.model.pull_recording_buffers_from_device()
+                            spike_N_hidden+= len(self.model.neuron_populations["hidden"].spike_recording_data[0][0])
                     if len(p["REC_SPIKES"]) > 0:
                         if int_t%p["SPK_REC_STEPS"] == 0:
                             self.model.pull_recording_buffers_from_device()
@@ -580,22 +685,20 @@ class mnist_model:
                 self.hid_to_out.push_in_syn_to_device()
                 self.model.custom_update("neuronReset")
                 # record training loss and error
-                # NOTE: the neuronReset does the calculation of expsum and updates max_V
-                # from new_max_V, so use max_V here!
-                self.output.pull_var_from_device("max_V")
-                #print(self.output.vars["max_V"].view)
-                #print(self.output.vars["max_V"].view.shape)
-                pred= np.argmax(self.output.vars["max_V"].view, axis=-1)
-                #print(pred)
+                # NOTE: the neuronReset does the calculation of expsum and updates exp_V
+                self.output.pull_var_from_device("exp_V")
+                pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
+                print(pred)
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
-                #print(lbl)
-                #print("-----")
+                print(lbl)
+                print("-----")
                 self.output.pull_var_from_device("expsum")
-                losses= self.loss_func(lbl,p)   # uses self.output.vars["max_V"].view and self.output.vars["expsum"].view
+                losses= self.loss_func(lbl,p)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
                 good[phase] += np.sum(cnt[pred == lbl])
                 predict[phase].append(pred)
                 the_loss[phase].append(losses)
-                    
+                if p["DEBUG_HIDDEN_N"]:
+                    all_hidden_n.append(spike_N_hidden)
                 if (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
                     self.in_to_hid.pull_var_from_device("w")
                     np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
@@ -611,9 +714,12 @@ class mnist_model:
                 correct_eval= good["eval"]/(N_eval*p["N_BATCH"])
             else:
                 correct_eval= 0
+            if p["DEBUG_HIDDEN_N"]:
+                print("Hidden spikes: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
             if resfile is not None:
-                resfile.write("{} {} {} {} {}\n".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
+                resfile.write("{} {} {} {} {} {} {} {} {}\n".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]),
+                np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
             predict[phase]= np.hstack(predict[phase])
             learning_rate *= p["ETA_DECAY"]
 

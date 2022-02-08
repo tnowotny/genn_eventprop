@@ -128,7 +128,7 @@ EVP_neuron_reset= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output",
     param_names=["V_reset","N_max_spike","tau0","tau1"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),("trial","unsigned int")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),("trial","int")],
     update_code= """
         scalar mexp;
         if ($(new_first_spike_t) > 0.0) {
@@ -174,12 +174,21 @@ EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output_MNIST= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_MNIST",
     param_names=["V_reset","N_class"],
-    var_refs=[("max_V","scalar"),("new_max_V","scalar"),("max_t","scalar"),("new_max_t","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("trial","int")],
+    var_refs=[("max_V","scalar"),("new_max_V","scalar"),("max_t","scalar"),("new_max_t","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
     update_code= """
         scalar mexp= 0.0;
-        if ($(id) < $(N_class)) mexp= exp($(new_max_V));
         #define __CUDA__
         #ifdef __CUDA__
+        scalar m= 0.0;
+        if ($(id) < $(N_class)) m= $(new_max_V);
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x1));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x2));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x4));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x8));
+        if ($(id) < $(N_class)) {
+             mexp= exp($(new_max_V) - m);
+             $(exp_V)= mexp;
+        } else $(exp_V)= 0.0;
         mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
         mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
         mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
@@ -193,6 +202,58 @@ EVP_neuron_reset_output_MNIST= genn_model.create_custom_custom_update_class(
         group->expsum[0]+= mexp;
         if ($(id) == 9) {
              for (int _i_= 1; _i_ < 10; _i_++) {
+                 group->expsum[_i_]= group->expsum[0];
+             }
+        }
+        #endif
+        //printf(\"%g\\n\",$(expsum));
+        $(rev_t)= $(t);
+        $(lambda_V)= 0.0;
+        $(lambda_I)= 0.0;
+        $(V)= $(V_reset);
+        $(max_V)= $(new_max_V);
+        $(max_t)= $(new_max_t);
+        $(new_max_V)= $(V_reset);
+        $(new_max_t)= $(t);
+        $(trial)++;
+    """
+)
+
+# custom update class for resetting output neurons at trial end for SHD
+# almost like MNIST but annoyingly more classes/ output neurons
+EVP_neuron_reset_output_SHD= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_output_SHD",
+    param_names=["V_reset","N_class"],
+    var_refs=[("max_V","scalar"),("new_max_V","scalar"),("max_t","scalar"),("new_max_t","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
+    update_code= """
+        scalar mexp= 0.0;
+        #define __CUDA__
+        #ifdef __CUDA__
+        scalar m= 0.0;
+        if ($(id) < $(N_class)) m= $(new_max_V);
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x1));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x2));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x4));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x8));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x10));
+        if ($(id) < $(N_class)) {
+             mexp= exp($(new_max_V) - m);
+             $(exp_V)= mexp;
+        } else $(exp_V)= 0.0;
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
+        $(expsum)= mexp;
+        #else
+        // YUCK - terrible hack for CPU_ONLY
+        if ($(id) == 0) {
+             $(expsum)= 0.0;
+        }
+        group->expsum[0]+= mexp;
+        if ($(id) == 19) {
+             for (int _i_= 1; _i_ < 20; _i_++) {
                  group->expsum[_i_]= group->expsum[0];
              }
         }
@@ -498,12 +559,12 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
 
 # LIF neuron model for output neurons in the MNIST task - non-spiking and jumps in backward
 # pass at times where the voltage reaches its maximum
-EVP_LIF_output = genn_model.create_custom_neuron_class(
-    "EVP_LIF_output",
+EVP_LIF_output_MNIST = genn_model.create_custom_neuron_class(
+    "EVP_LIF_output_MINST",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("max_V","scalar"),("new_max_V","scalar"),
-                    ("max_t","scalar"),("new_max_t","scalar"),("expsum","scalar"),
+                    ("max_t","scalar"),("new_max_t","scalar"),("expsum","scalar"),("exp_V","scalar"),
                     ("trial","int"),("lambda_jump","scalar")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
     sim_code="""
@@ -516,11 +577,11 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     if (($(trial) > 0) && (abs(back_t - $(max_t)) < 1e-3*DT)) {
         //if (($(id) == 0) && ($(batch) == 0) && ($(trial) < 11)) printf("%d\\n",$(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]);
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += ((1.0-exp($(max_V))/$(expsum))/$(tau_m))/$(N_batch);
+            $(lambda_V) += ((1.0-$(exp_V)/$(expsum))/$(tau_m))/$(N_batch);
             //printf("%d. up: label= %d, lambda_V(l(i))= %g \\n", ($(trial)-1)*(int)$(N_batch)+$(batch), $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)], $(lambda_V));
         }
         else {
-            $(lambda_V) -= (exp($(max_V))/$(expsum)/$(tau_m))/$(N_batch);
+            $(lambda_V) -= ($(exp_V)/$(expsum)/$(tau_m))/$(N_batch);
             //printf("%d. down: label= %d, lambda_Vk= %g \\n", ($(trial)-1)*(int)$(N_batch)+$(batch), $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)], $(lambda_V));        
         }
     }    

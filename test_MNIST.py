@@ -2,12 +2,13 @@ from simulator_MNIST import *
 import matplotlib.pyplot as plt
 import numpy as np
 
-p["NAME"]= "test14"
-p["NUM_HIDDEN"]= 700
-p["N_MAX_SPIKE"]= 60
+p["DATASET"]= "MNIST"
+p["NAME"]= "test17"
+p["NUM_HIDDEN"]= 1000
+p["N_MAX_SPIKE"]= 120
 p["DT_MS"]= 1
 p["DEBUG"]= False
-p["N_BATCH"]= 500
+p["N_BATCH"]= 10
 p["SHUFFLE"]= True
 p["LOAD_LAST"]= True
 
