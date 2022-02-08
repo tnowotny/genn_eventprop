@@ -124,6 +124,35 @@ EVP_neuron_reset= genn_model.create_custom_custom_update_class(
     """
 )
 
+# custom update class for resetting neurons at trial end with hidden layer rate normalisation terms
+EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_reg",
+    param_names=["V_reset","N_max_spike"],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("sNSum_all","scalar")],
+    update_code= """
+        // make a reduction of the spike number sum across the neuron population
+        
+        scalar sum= $(new_sNSum);
+        sum += __shfl_xor_sync(0xFFFF, sum, 0x1);
+        sum += __shfl_xor_sync(0xFFFF, sum, 0x2);
+        sum += __shfl_xor_sync(0xFFFF, sum, 0x4);
+        sum += __shfl_xor_sync(0xFFFF, sum, 0x8);
+        sum += __shfl_xor_sync(0xFFFF, sum, 0x10);
+        if (threadIdx.x%32 == 0) {
+            atomicAdd(&(group->sNSum_all[0]),sum);
+        }
+        $(sNSum)= $(new_sNSum);
+        $(new_sNSum)= 0.0;
+        $(rp_ImV)= $(wp_ImV)-1;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        $(rev_t)= $(t);
+        $(lambda_V)= 0.0;
+        $(lambda_I)= 0.0;
+        $(V)= $(V_reset);
+        $(back_spike)= 0;
+    """
+)
+
 # custom update class for resetting neurons at trial end for output neurons for YingYang
 EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output",
@@ -305,52 +334,6 @@ EVP_SSA = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
-"""
-SpikeSourceArray as in standard GeNN but with a recording of spikes and backward
-spike triggering as above; however for the MNIST experiment, we need "dropout"
-or "unreliable spiking", which can be switched on (training) and off (testing)
-"""
-EVP_SSA_MNIST = genn_model.create_custom_neuron_class(
-    "EVP_spikeSourceArray_MNIST",
-    param_names=["N_neurons","N_max_spike"],
-    var_name_types=[("startSpike", "int"), ("endSpike", "int", VarAccess_READ_ONLY_DUPLICATE),("back_spike","uint8_t"), ("rp_ImV","int"),("wp_ImV","int"),("rev_t","scalar")],
-#    var_name_types=[("startSpike", "int"), ("endSpike", "int"),("back_spike","uint8_t"), ("rp_ImV","int"),("wp_ImV","int"),("rev_t","scalar")],
-    sim_code= """
-        int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
-        // backward pass
-        const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
-        if ($(back_spike)) {
-            // decrease read pointer (on ring buffer)
-            $(rp_ImV)--;
-            if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
-            $(back_spike) = 0;
-        }
-        // YUCK - need to trigger the back_spike the time step before 
-        if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
-            $(back_spike)= 1;
-        }
-        // forward spikes
-        //printf("%d, %d \\n", $(startSpike), $(endSpike));
-        //if ($(startSpike) != $(endSpike)) {
-        //    printf("t= %f, sT= %f \\n",$(t), $(spikeTimes)[$(startSpike)]);
-        //}
-        if ($(startSpike) != $(endSpike) && ($(t) >= $(spikeTimes)[$(startSpike)]+DT))
-             $(startSpike)++;
-    """,
-    threshold_condition_code= """
-        $(startSpike) != $(endSpike) && 
-        $(t) >= $(spikeTimes)[$(startSpike)] &&
-        $(gennrand_uniform) > $(pDrop)
-    """,
-    reset_code= """
-        // this is after a forward spike
-        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
-        $(wp_ImV)++;
-        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
-    """,
-    extra_global_params= [("spikeTimes", "scalar*"),("t_k", "scalar*"),("pDrop", "scalar")],
-    is_auto_refractory_required=False
-)
 
 """
 A type of SpikeSourceArray that provides more efficient updating of input patterns when shuffling of inputs
@@ -399,8 +382,6 @@ EVP_SSA_MNIST_SHUFFLE = genn_model.create_custom_neuron_class(
     extra_global_params= [("spikeTimes", "scalar*"), ("t_offset","scalar"), ("t_k", "scalar*"),("pDrop", "scalar")],
     is_auto_refractory_required=False
 )
-
-
 
 
 """
@@ -484,6 +465,56 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+# LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
+EVP_LIF_reg = genn_model.create_custom_neuron_class(
+    "EVP_LIF",
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("lambda_jump","scalar"),("sNSum","scalar"),("new_sNSum","scalar"),("sNSum_all","scalar")],
+    # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("nu_lower","scalar"),("nu_upper","scalar")],
+    additional_input_vars=[("revIsyn", "scalar", 0.0)],
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
+    if ($(back_spike)) {
+        //printf(\"%f\\n",$(revIsyn));
+    
+        $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
+        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+        // decrease read pointer (on ring buffer)
+        $(rp_ImV)--;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        // contributions from regularisation
+        $(back_spike)= 0;
+    }   
+    // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+        $(back_spike)= 1;
+    }
+    // forward pass
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    """,
+    threshold_condition_code="""
+    $(V) >= $(V_thresh)
+    """,
+    reset_code="""
+    // this is after a forward spike
+    $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+    $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+    $(wp_ImV)++;
+    if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    $(V)= $(V_reset);
+    """,
+    is_auto_refractory_required=False
+)
+
 # LIF neuron model for output neurons of YingYang task (includes contribution from dl_p/dt_k loss function term at jumps)
 EVP_LIF_output = genn_model.create_custom_neuron_class(
     "EVP_LIF_output",
@@ -519,11 +550,11 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
                 scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
                 if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
                     //$(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
-                    $(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/((1.01*$(trial_t)-fst)*(1.01*$(trial_t)-fst)))/$(N_batch);
+                    $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/((1.01*$(trial_t)-fst)*(1.01*$(trial_t)-fst)))/$(N_batch);
                     //$(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0))/$(N_batch);
                 }
                 else {
-                    $(lambda_V) -= (exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
+                    $(lambda_V) -= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*(exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
                 }
             }
             // decrease read pointer (on ring buffer)

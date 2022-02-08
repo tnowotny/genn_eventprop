@@ -349,16 +349,18 @@ class mnist_model:
         #model._model.set_seed(p["DATA_SEED"])
 
         # Add neuron populations
-        if shuffle:
-            self.input = self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, 
-                                                          input_params, self.input_init_vars)
-        else:
-            self.input = self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST, 
-                                                          input_params, self.input_init_vars)
+        self.input = self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, 
+                                                      input_params, self.input_init_vars)
         self.input.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*self.num_input*p["N_MAX_SPIKE"],dtype=np.float32))
         self.input.set_extra_global_param("spikeTimes", np.zeros(200000000,dtype=np.float32)) # reserve enough space for any set of input spikes that is likely
-       
-        self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars) 
+
+        if p["REGULARISATION"]:
+            self.hidden_init_vars["sNSum"]= 0.0
+            self.hidden_init_vars["new_sNSum"]= 0.0
+            self.hidden_init_vars["sNSum_all"]= 0.0
+            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars) 
+        else:
+            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars) 
         self.hidden.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
         self.hidden.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
         
@@ -381,13 +383,12 @@ class mnist_model:
         input_var_refs= {"startSpike": genn_model.create_var_ref(self.input, "startSpike"),
                          "endSpike": genn_model.create_var_ref(self.input, "endSpike")
                          }
-        if shuffle:
-            self.input_set= self.model.add_custom_update("input_set", "inputUpdate", EVP_input_set_MNIST_shuffle, input_set_params, {}, input_var_refs)
-            # reserving memory for the worst case of the full training set
-            self.input_set.set_extra_global_param("allStartSpike", np.zeros(self.data_full_length*self.num_input,dtype= int))
-            self.input_set.set_extra_global_param("allEndSpike", np.zeros(self.data_full_length*self.num_input,dtype= int))
-            self.input_set.set_extra_global_param("allInputID", np.zeros(self.data_full_length,dtype= int))
-            self.input_set.set_extra_global_param("trial", 0)
+        self.input_set= self.model.add_custom_update("input_set", "inputUpdate", EVP_input_set_MNIST_shuffle, input_set_params, {}, input_var_refs)
+        # reserving memory for the worst case of the full training set
+        self.input_set.set_extra_global_param("allStartSpike", np.zeros(self.data_full_length*self.num_input,dtype= int))
+        self.input_set.set_extra_global_param("allEndSpike", np.zeros(self.data_full_length*self.num_input,dtype= int))
+        self.input_set.set_extra_global_param("allInputID", np.zeros(self.data_full_length,dtype= int))
+        self.input_set.set_extra_global_param("trial", 0)
             
         hidden_var_refs= {"rp_ImV": genn_model.create_var_ref(self.hidden, "rp_ImV"),
                           "wp_ImV": genn_model.create_var_ref(self.hidden, "wp_ImV"),
@@ -397,7 +398,13 @@ class mnist_model:
                           "rev_t": genn_model.create_var_ref(self.hidden, "rev_t"),
                           "back_spike": genn_model.create_var_ref(self.hidden, "back_spike")
         }
-        self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
+        if p["REGULARISATION"]:
+            hidden_var_refs["sNSum"]= genn_model.create_var_ref(self.hidden, "sNSum")
+            hidden_var_refs["new_sNSum"]= genn_model.create_var_ref(self.hidden, "new_sNSum")
+            hidden_var_refs["sNSum_all"]= genn_model.create_var_ref(self.hidden, "sNSum_all")
+            self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
+        else:
+            self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
 
         output_reset_params= {"V_reset": p["V_RESET"],
                               "N_class": self.N_class
@@ -555,16 +562,15 @@ class mnist_model:
                 all_hidden_n= []
             for trial in range(N_trial):
                 trial_end= (trial+1)*p["TRIAL_MS"]
-                # if shuffling: assign the input spike train and corresponding labels
+                # assign the input spike train and corresponding labels
                 if trial < N_train:
                     phase= "train"
                 else:
                     phase= "eval"
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
-                if shuffle:
-                    self.input_set.extra_global_params["trial"].view[:]= trial
-                    self.model.custom_update("inputUpdate")
-                    self.input.extra_global_params["t_offset"].view[:]= self.model.t
+                self.input_set.extra_global_params["trial"].view[:]= trial
+                self.model.custom_update("inputUpdate")
+                self.input.extra_global_params["t_offset"].view[:]= self.model.t
                     
                 int_t= 0
                 if p["DEBUG_HIDDEN_N"]:
