@@ -127,8 +127,9 @@ EVP_neuron_reset= genn_model.create_custom_custom_update_class(
 # custom update class for resetting neurons at trial end with hidden layer rate normalisation terms
 EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_reg",
-    param_names=["V_reset","N_max_spike"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("sNSum_all","scalar")],
+    param_names=["V_reset","N_max_spike","N_neurons"],
+    extra_global_params=[("sNSum_all", "scalar*")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     update_code= """
         // make a reduction of the spike number sum across the neuron population
         
@@ -139,7 +140,8 @@ EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
         sum += __shfl_xor_sync(0xFFFF, sum, 0x8);
         sum += __shfl_xor_sync(0xFFFF, sum, 0x10);
         if (threadIdx.x%32 == 0) {
-            atomicAdd(&(group->sNSum_all[0]),sum);
+            atomicAdd(&($(sNSum_all)[$(batch)]),sum);
+            //printf("%d: %f\\n", $(batch), $(sNSum_all)[$(batch)]);
         }
         $(sNSum)= $(new_sNSum);
         $(new_sNSum)= 0.0;
@@ -468,11 +470,11 @@ EVP_LIF = genn_model.create_custom_neuron_class(
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
 EVP_LIF_reg = genn_model.create_custom_neuron_class(
     "EVP_LIF",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","lbd_upper","lbd_lower","nu_upper","nu_lower"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("lambda_jump","scalar"),("sNSum","scalar"),("new_sNSum","scalar"),("sNSum_all","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("lambda_jump","scalar"),("sNSum","scalar"),("new_sNSum","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
-    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("nu_lower","scalar"),("nu_upper","scalar")],
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("sNSum_all","scalar*")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
@@ -483,14 +485,19 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
-        //printf(\"%f\\n",$(revIsyn));
-    
         $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         // decrease read pointer (on ring buffer)
         $(rp_ImV)--;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         // contributions from regularisation
+        //printf("%d: %f\\n", $(batch), $(sNSum_all)[$(batch)]);
+        if ($(sNSum_all)[$(batch)] > $(nu_upper)) {
+            $(lambda_V) -= 2*$(lbd_upper)*($(sNSum_all)[$(batch)] - $(nu_upper))/($(N_neurons)*$(N_neurons));
+        }
+        if ($(sNSum) < $(nu_lower)) {
+            $(lambda_V) -= 2*$(lbd_lower)*($(sNSum)- $(nu_lower))/$(N_neurons);
+        }
         $(back_spike)= 0;
     }   
     // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
@@ -511,6 +518,7 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     $(wp_ImV)++;
     if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
     $(V)= $(V_reset);
+    $(new_sNSum)+= 1.0;
     """,
     is_auto_refractory_required=False
 )
