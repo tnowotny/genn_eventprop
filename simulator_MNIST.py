@@ -8,7 +8,6 @@ import tonic
 from models import *
 import os
 
-
 # ----------------------------------------------------------------------------
 # Parameters
 # ----------------------------------------------------------------------------
@@ -18,7 +17,6 @@ p["DATASET"] = None
 p["DEBUG"]= False
 p["DEBUG_HIDDEN_N"]= False
 p["OUT_DIR"]= "."
-p["TRAIN"]= True
 p["DT_MS"] = 0.1
 p["BUILD"] = True
 p["TIMING"] = True
@@ -50,11 +48,12 @@ p["HIDDEN_OUTPUT_MEAN"]= 0.2
 p["HIDDEN_OUTPUT_STD"]= 0.37
 p["PDROP_INPUT"] = 0.2
 p["REGULARISATION"]= False
-p["LBD_UPPER"]= 1.0
-p["LBD_LOWER"]= 1.0
-p["NU_UPPER"]= 1000.0
-p["NU_LOWER"]= 1.0
-
+p["LBD_UPPER"]= 0.000005
+p["LBD_LOWER"]= 0.001
+p["NU_UPPER"]= 20*p["N_BATCH"]
+p["NU_LOWER"]= 0.1*p["N_BATCH"]
+p["RHO_UPPER"]= 5000.0
+p["GLB_UPPER"]= 0.00001
 # Learning parameters
 p["ETA"]= 5e-3
 p["ADAM_BETA1"]= 0.9      
@@ -365,6 +364,8 @@ class mnist_model:
             hidden_params["lbd_lower"]= p["LBD_LOWER"]
             hidden_params["nu_upper"]= p["NU_UPPER"]
             hidden_params["nu_lower"]= p["NU_LOWER"]
+            hidden_params["rho_upper"]= p["RHO_UPPER"]
+            hidden_params["glb_upper"]= p["GLB_UPPER"]
             self.hidden_init_vars["sNSum"]= 0.0
             self.hidden_init_vars["new_sNSum"]= 0.0
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars) 
@@ -372,7 +373,8 @@ class mnist_model:
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars) 
         self.hidden.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
         self.hidden.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
-        self.hidden.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
+        if p["REGULARISATION"]:
+            self.hidden.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
         
         self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST, output_params, self.output_init_vars)
         self.output.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"],dtype=np.float32))
@@ -413,6 +415,13 @@ class mnist_model:
             hidden_var_refs["new_sNSum"]= genn_model.create_var_ref(self.hidden, "new_sNSum")
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"], "N_neurons": p["NUM_HIDDEN"]}, {}, hidden_var_refs)
             self.hidden_reset.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
+            var_refs= {"sNSum": genn_model.create_var_ref(self.hidden, "sNSum")}
+            self.hidden_reg_reduce= self.model.add_custom_update("hidden_reg_reduce","sNSumReduce", EVP_reg_reduce, {}, {"reduced_sNSum": 0.0}, var_refs)
+            var_refs= {
+                "reduced_sNSum": genn_model.create_var_ref(self.hidden_reg_reduce, "reduced_sNSum"),
+                "sNSum": genn_model.create_var_ref(self.hidden, "sNSum")
+            }
+            self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply","sNSumApply", EVP_sNSum_apply, {}, {}, var_refs)
         else:
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
 
@@ -459,8 +468,8 @@ class mnist_model:
         self.optimisers= [self.in_to_hid_learn, self.hid_to_out_learn]
         #self.optimisers= [self.hid_to_out_learn]
         # global normalisation of hid to out synapses
-        var_refs = {"w": genn_model.create_wu_var_ref(self.hid_to_out, "w")}
-        self.normalize_out=  self.model.add_custom_update("normalize_hid_to_out", "Normalize", normalize_model, {}, {}, var_refs)
+        #var_refs = {"w": genn_model.create_wu_var_ref(self.hid_to_out, "w")}
+        #self.normalize_out=  self.model.add_custom_update("normalize_hid_to_out", "Normalize", normalize_model, {}, {}, var_refs)
         
         # DEBUG hidden layer spike numbers
         if p["DEBUG_HIDDEN_N"]:
@@ -491,8 +500,8 @@ class mnist_model:
             #self.hid_to_out.vars["w"].view[mask]= 0
             #self.hid_to_out.push_var_to_device("w")
         self.hid_to_out.pull_var_from_device("w")
-        plt.figure()
-        plt.hist(self.hid_to_out.vars["w"].view[:],100)
+        #plt.figure()
+        #plt.hist(self.hid_to_out.vars["w"].view[:],100)
         # set up run 
         N_trial= 0
         if X_t_orig is not None:
@@ -642,19 +651,24 @@ class mnist_model:
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
                     self.model.custom_update("neuronReset")
-                if p["REGULARISATION"]:
+                    self.model.custom_update("sNSumReduce")
+                    self.model.custom_update("sNSumApply")
+                    self.hidden.pull_var_from_device("sNSum")
+                    #print(self.hidden.vars["sNSum"].view[0,:])
                     self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
+                    self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)
                     self.hidden.extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
-                    self.hidden.push_extra_global_param_to_device("sNSum_all")
+                    #self.hidden.push_extra_global_param_to_device("sNSum_all")
                     #print("sNSum_all: {}".format(self.hidden.extra_global_params["sNSum_all"].view[:]))
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V
                 self.output.pull_var_from_device("exp_V")
                 pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
-                #print(pred)
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
-                #print(lbl)
-                #print("-----")
+                if p["DEBUG"]:
+                    print(pred)
+                    print(lbl)
+                    print("---------------------------------------")
                 self.output.pull_var_from_device("expsum")
                 losses= self.loss_func(lbl,p)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
                 good[phase] += np.sum(cnt[pred == lbl])
@@ -710,8 +724,9 @@ class mnist_model:
 
         self.in_to_hid.pull_var_from_device("w")
         self.hid_to_out.pull_var_from_device("w")
-        np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_last.npy"), self.in_to_hid.vars["w"].view)
-        np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"), self.hid_to_out.vars["w"].view)
+        if p["WRITE_TO_DISK"]:            # Saving results
+            np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_last.npy"), self.in_to_hid.vars["w"].view)
+            np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"), self.hid_to_out.vars["w"].view)
         return (spike_t, spike_ID, rec_vars_n, rec_vars_s, correct, correct_eval)
         
     def train(self, p):

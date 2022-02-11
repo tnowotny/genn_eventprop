@@ -155,6 +155,27 @@ EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
     """
 )
 
+# custom update class for reducing regularisation terms across a batch
+EVP_reg_reduce= genn_model.create_custom_custom_update_class(
+    "EVP_reg_reduce",
+    var_name_types=[("reduced_sNSum", "scalar", VarAccess_REDUCE_BATCH_SUM)],
+    var_refs=[("sNSum", "scalar")],
+    update_code="""
+        $(reduced_sNSum) = $(sNSum);
+    """
+)
+
+# custom update class for reducing regularisation terms across a batch
+EVP_sNSum_apply= genn_model.create_custom_custom_update_class(
+    "EVP_sNSum_apply",
+    var_refs=[
+        ("reduced_sNSum", "scalar", VarAccessMode_READ_ONLY),
+        ("sNSum", "scalar")],
+    update_code="""
+        $(sNSum)= $(reduced_sNSum);
+    """
+)
+
 # custom update class for resetting neurons at trial end for output neurons for YingYang
 EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output",
@@ -470,7 +491,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
 EVP_LIF_reg = genn_model.create_custom_neuron_class(
     "EVP_LIF",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","lbd_upper","lbd_lower","nu_upper","nu_lower"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","lbd_upper","lbd_lower","nu_upper","nu_lower","rho_upper","glb_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("lambda_jump","scalar"),("sNSum","scalar"),("new_sNSum","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
@@ -492,12 +513,20 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         // contributions from regularisation
         //printf("%d: %f\\n", $(batch), $(sNSum_all)[$(batch)]);
-        if ($(sNSum_all)[$(batch)] > $(nu_upper)) {
-            $(lambda_V) -= 2*$(lbd_upper)*($(sNSum_all)[$(batch)] - $(nu_upper))/($(N_neurons)*$(N_neurons));
+        /*
+        if ($(sNSum_all)[$(batch)] > $(rho_upper)) {
+            $(lambda_V) -= 2*$(glb_upper)*($(sNSum_all)[$(batch)] - $(nu_upper))/($(N_neurons)*$(N_neurons));
         }
         if ($(sNSum) < $(nu_lower)) {
             $(lambda_V) -= 2*$(lbd_lower)*($(sNSum)- $(nu_lower))/$(N_neurons);
         }
+        if ($(sNSum) > $(nu_upper)) {
+            //$(lambda_V) -= 2*$(lbd_upper)*($(sNSum)- $(nu_upper))/$(N_neurons);
+            $(lambda_V) -= 2*$(lbd_upper)/$(N_neurons);
+        }
+        */
+        //printf("%f, %f \\n", $(lambda_jump), $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_neurons));
+        $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_neurons);
         $(back_spike)= 0;
     }   
     // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input

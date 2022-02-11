@@ -35,8 +35,9 @@ p["NU_UPPER"]= 2000
 p["NU_LOWER"]= 2
 
 
-def costfun(x, shd, p):
+def costfun(x, p):
     print("x = {}".format(x))
+    shd=  mnist_model(p)
     log10= np.log(10)
     p["ETA"]= np.exp(x[0]*log10)
     p["LDB_UPPER"]= np.exp(x[1]*log10)
@@ -56,13 +57,14 @@ x= [ np.log(p["ETA"])/log10,
      p["NU_LOWER"]
 ]
 
+x= [-2.     , -4.30103, -3.     ,  2.     ,  2.1    ]
 bound= [ (-4,-1), (-7,-3), (-6, -2), (0.1, 5), (0, 10) ]
 
-shd= mnist_model(p)
+
 method = 'nelder-mead'
-options = {'disp': True, 'maxiter': 50000, 'maxfev': 10, 'xatol': 1e-8, 'fatol': 1e-8}
+options = {'disp': True, 'maxiter': 50000, 'maxfev': 100, 'xatol': 1e-8, 'fatol': 1e-8}
 result = minimize(costfun, x, method=method, options=options,
-                  args=(shd, p), bounds= bound)
+                  args=(p), bounds= bound)
 
 print(result)
 
