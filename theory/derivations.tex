@@ -1064,8 +1064,56 @@ and hence the jump,
 \end{align}
 at time $t_{\text{max,r}}$ (including the minus sign from table 2, as above).
 
-So, in essence, in the MNIST example wih non-spiking output neurons, there are no spike times to jump at. Furthermore, $l_V$ does not jump at other neurons' spike times, so there is no contribution $l_V^- - l_V^+$ to other neurons' jumps. However, in addition to their normal exponential decay $\lambda_V$ equation, output neurons jump at their $t_{\text{max}}$ byt he amounts noted above. $t_{\text{max}}$ can obviously easily be recorded in teh forward pass.
-  
+So, in essence, in the MNIST example with non-spiking output neurons, there are no spike times to jump at. Furthermore, $l_V$ does not jump at other neurons' spike times, so there is no contribution $l_V^- - l_V^+$ to other neurons' jumps. However, in addition to their normal exponential decay $\lambda_V$ equation, output neurons jump at their $t_{\text{max}}$ by the amounts noted above. $t_{\text{max}}$ can obviously easily be recorded in the forward pass.
+
+The same technology can be applied to the spiking Heidelberg digits dataset. Though (as of 2022-02-15) not iwth much success.
+
+\section{Exact integration of forward and backward dynamics}
+Because of the simplicity of the dynamic equations (at least in the absence of the $\frac{\partial l_V}{\partial V}$ term) one can calculate the exact solution for teh $\lambda$ dynamics over a timestep from $t_0$ to $t$.
+
+We have
+\begin{align}
+  \tau_{\text{mem}} \lambda'_V &= - \lambda_V \\
+  \tau_{\text{syn}} \lambda'_I &= \lambda_V - \lambda_I .
+\end{align}
+For the $\lambda_V$ eqaution we know by heart that this is simply exponential decay (or otherwise there is the usual derivation with $\frac{f'}{f}$ integrating to $\log f$):
+\begin{align}
+  \lambda_V(t) = \lambda_V(t_0) \exp\left(-\frac{t-t_0}{\tau_{\text{mem}}}\right)
+\end{align}  
+A quick check shows:
+\begin{align}
+  \tau_{\text{mem}} \lambda'_V &= \tau_{\text{mem}} \lambda_v(t_0) (-1) \exp\left(- \frac{t-t_0}{\tau_{\text{mem}}} \right) \\
+  &= -\lambda_V(t_0) \exp\left(- \frac{t-t_0}{\tau_{\text{mem}}} \right) = - \lambda_V
+\end{align}
+and
+\begin{align}
+  \lambda_V(t_0)= \lambda_V(t_0)
+\end{align}
+as it should be. Then, the homogeneous equation for $\lambda_I$ is also simple exponential decay, so that
+\begin{align}
+\lambda_I(t) = c(t) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}} \right)
+\end{align}
+Therefore,
+\begin{align}
+  \tau_{\text{syn}} \lambda'_I (t) &= \tau_{\text{syn}} c'(t) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}} \right) - c(t) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}} \right) \stackrel{=}{!} \lambda_V(t) - \lambda_I(t) \\
+  \Rightarrow  \quad \tau_{\text{syn}} c'(t) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}} \right) &= \lambda_V(t) =  \lambda_V(t_0) \exp\left(-\frac{t-t_0}{\tau_{\text{mem}}}\right) \\
+  \Rightarrow \quad c'(t) &= \frac{\lambda_V(t_0)}{\tau_{\text{syn}}} \exp \left(-\left(\frac{1}{\tau_{\text{mem}}} - \frac{1}{\tau_{\text{syn}}} \right) (t-t_0)\right) \\
+  \Rightarrow \quad c(t) &= - \frac{\lambda_V(t_0)}{\tau_{\text{syn}}} \frac{1}{\frac{1}{\tau_{\text{mem}}} - \frac{1}{\tau_{\text{syn}}}} \exp \left(-\left(\frac{1}{\tau_{\text{mem}}} - \frac{1}{\tau_{\text{syn}}} \right) (t-t_0)\right) +c \\
+  \Rightarrow \quad \lambda_I(t) &= -\frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1} \exp \left( -\frac{1}{\taiu_{\text{mem}}} (t-t_0)\right) + c \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}} \right) 
+\end{align}
+Taking the initial condition into account, we have
+\begin{align}
+  \lambda_I(t_0) &= -\frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1} + c \\
+  \Rightarrow \quad c &= \lambda_I(t_0) + \frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1}
+\end{align}
+Hence we get altogether
+\begin{align}
+  \lambda_I(t) &= -\frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1} \exp\left(-\frac{t-t_0}{\tau_{\text{mem}}} \right) + \lambda_I(t_0) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}}\right) + \frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1} \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}}\right) \\
+  &= \frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1} \left(\exp\left(-\frac{t-t_0}{\tau_{\text{syn}}}\right) - \exp\left(-\frac{t-t_0}{\tau_{\text{mem}}} \right) \right) + \lambda_I(t_0) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}}\right)
+\end{align}
+
+As the forward equations are identical for $V$ (i.e. like the $\lambda_I$ equation), the equivalent equation can be used for $V$ in the forward pass.
+
 \section{GeNN Implementation Notes (OUTDATED)}
 \begin{itemize}
 \item In the normal forward pass we need to save:
