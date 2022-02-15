@@ -493,13 +493,13 @@ class mnist_model:
         #else:
             # zero the weights of synapses to "padding output neurons" - this should remove them
             # from influencing the backward pass
-            #mask= np.zeros((p["NUM_HIDDEN"],self.num_output))
-            #mask[:,self.N_class:]= 1
-            #mask= np.array(mask, dtype= bool).flatten()
-            #self.hid_to_out.pull_var_from_device("w")
-            #self.hid_to_out.vars["w"].view[mask]= 0
-            #self.hid_to_out.push_var_to_device("w")
-        self.hid_to_out.pull_var_from_device("w")
+            mask= np.zeros((p["NUM_HIDDEN"],self.num_output))
+            mask[:,self.N_class:]= 1
+            mask= np.array(mask, dtype= bool).flatten()
+            self.hid_to_out.pull_var_from_device("w")
+            self.hid_to_out.vars["w"].view[mask]= 0
+            self.hid_to_out.push_var_to_device("w")
+        #self.hid_to_out.pull_var_from_device("w")
         #plt.figure()
         #plt.hist(self.hid_to_out.vars["w"].view[:],100)
         # set up run 
@@ -608,8 +608,9 @@ class mnist_model:
                             for pop in p["REC_SPIKES"]:
                                 the_pop= self.model.neuron_populations[pop]
                                 if p["N_BATCH"] > 1:
-                                    spike_t[pop].append(the_pop.spike_recording_data[0][0]+epoch*N_trial*p["TRIAL_MS"])
-                                    spike_ID[pop].append(the_pop.spike_recording_data[0][1])
+                                    for i in range(p["N_BATCH"]):
+                                        spike_t[pop].append(the_pop.spike_recording_data[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i)*p["TRIAL_MS"])
+                                        spike_ID[pop].append(the_pop.spike_recording_data[i][1])
                                 else:
                                     spike_t[pop].append(the_pop.spike_recording_data[0]+epoch*N_trial*p["TRIAL_MS"])
                                     spike_ID[pop].append(the_pop.spike_recording_data[1])
@@ -617,13 +618,13 @@ class mnist_model:
                     for pop, var in p["REC_NEURONS"]:
                         the_pop= self.model.neuron_populations[pop]
                         the_pop.pull_var_from_device(var)
-                        rec_vars_n[var+pop].append(the_pop.vars[var].view[0].copy())
+                        rec_vars_n[var+pop].append(the_pop.vars[var].view.copy())
 
                     for pop, var in p["REC_SYNAPSES"]:
                         the_pop= self.model.synapse_populations[pop]
                         if var == "in_syn":
                             the_pop.pull_in_syn_from_device()
-                            rec_vars_s[var+pop].append(the_pop.in_syn[0].copy())
+                            rec_vars_s[var+pop].append(the_pop.in_syn.copy())
                         else:
                             the_pop.pull_var_from_device(var)
                             rec_vars_s[var+pop].append(the_pop.vars[var].view.copy())
@@ -646,19 +647,22 @@ class mnist_model:
                 self.in_to_hid.push_in_syn_to_device()
                 self.hid_to_out.in_syn[:]= 0.0
                 self.hid_to_out.push_in_syn_to_device()
+                self.output.pull_var_from_device("new_max_V")
+                pred= np.argmax(self.output.vars["new_max_V"].view, axis=-1)
+                print(pred)
+                self.model.custom_update("neuronReset")
                 if p["REGULARISATION"]:
                     # for hidden regularistation prepare "sNSum_all"
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
-                    self.model.custom_update("neuronReset")
                     self.model.custom_update("sNSumReduce")
                     self.model.custom_update("sNSumApply")
                     self.hidden.pull_var_from_device("sNSum")
                     #print(self.hidden.vars["sNSum"].view[0,:])
                     self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
-                    self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)
+                    #self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)
                     self.hidden.extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
-                    #self.hidden.push_extra_global_param_to_device("sNSum_all")
+                    self.hidden.push_extra_global_param_to_device("sNSum_all")
                     #print("sNSum_all: {}".format(self.hidden.extra_global_params["sNSum_all"].view[:]))
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V
@@ -705,11 +709,18 @@ class mnist_model:
             spike_t[pop]= np.hstack(spike_t[pop])
             spike_ID[pop]= np.hstack(spike_ID[pop])
 
-        for pop, var in p["REC_NEURONS"]:
-            rec_vars_n[var+pop]= np.vstack(rec_vars_n[var+pop])
-        
-        for pop, var in p["REC_SYNAPSES"]:
-            rec_vars_s[var+pop]= np.vstack(rec_vars_s[var+pop])
+        for rec_var, rec_list in [ (rec_vars_n, p["REC_NEURONS"]), (rec_vars_s, p["REC_SYNAPSES"])]:
+            for pop, var in rec_list:
+                rec_steps= int(p["TRIAL_MS"]/p["DT_MS"])
+                the_rec= np.empty((len(rec_var[var+pop])*p["N_BATCH"],rec_var[var+pop][0].shape[1]))
+                # unfortunately need to unwind batches in a rather awkward way ...
+                for i in range(p["N_EPOCH"]*N_trial):
+                    x= np.array(rec_var[var+pop][(i*rec_steps):((i+1)*rec_steps)])
+                    for j in range(p["N_BATCH"]):
+                        strt= (i*p["N_BATCH"]+j)*rec_steps
+                        stp= strt+rec_steps
+                        the_rec[strt:stp,:]= x[:,j,:]
+                rec_var[var+pop]= the_rec
         
         if p["WRITE_TO_DISK"]:            # Saving results
             for pop in p["REC_SPIKES"]:
