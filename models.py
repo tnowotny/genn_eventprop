@@ -527,6 +527,14 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
         */
         //printf("%f, %f \\n", $(lambda_jump), $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_neurons));
         $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_neurons);
+        /* 
+        if ($(sNSum) > $(nu_upper)) {
+            $(lambda_V) -= $(lbd_upper)/$(N_neurons);
+        }
+        else {
+            $(lambda_V) += $(lbd_upper)/$(N_neurons);
+        }
+        */
         $(back_spike)= 0;
     }   
     // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
@@ -638,8 +646,8 @@ EVP_LIF_output_MNIST = genn_model.create_custom_neuron_class(
     sim_code="""
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
-    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
     $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if (($(trial) > 0) && (abs(back_t - $(max_t)) < 1e-3*DT)) {

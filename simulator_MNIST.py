@@ -27,6 +27,7 @@ p["TEST_DATA_SEED"]= 456
 p["TRIAL_MS"]= 20.0
 p["N_MAX_SPIKE"]= 400    # make buffers for maximally 400 spikes (200 in a 30 ms trial) - should be safe
 p["N_BATCH"]= 32
+p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 55000
 p["N_VALIDATE"]= 5000
 p["N_EPOCH"]= 10
@@ -60,7 +61,11 @@ p["ADAM_BETA1"]= 0.9
 p["ADAM_BETA2"]= 0.999    
 p["ADAM_EPS"]= 1e-8       
 # applied every epoch
-p["ETA_DECAY"]= 0.95      
+p["ETA_DECAY"]= 0.95
+# try a step-down of learning rate after substantial training
+p["ETA_FIDDELING"]= False
+p["ETA_REDUCE"]= 0.1
+p["ETA_REDUCE_PERIOD"]= 50
 
 # spike recording
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
@@ -490,7 +495,7 @@ class mnist_model:
             self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"))
             self.in_to_hid.push_var_to_device("w")
             self.hid_to_out.push_var_to_device("w")
-        #else:
+        else:
             # zero the weights of synapses to "padding output neurons" - this should remove them
             # from influencing the backward pass
             mask= np.zeros((p["NUM_HIDDEN"],self.num_output))
@@ -499,9 +504,12 @@ class mnist_model:
             self.hid_to_out.pull_var_from_device("w")
             self.hid_to_out.vars["w"].view[mask]= 0
             self.hid_to_out.push_var_to_device("w")
+            print("connections zeroed")
         #self.hid_to_out.pull_var_from_device("w")
         #plt.figure()
         #plt.hist(self.hid_to_out.vars["w"].view[:],100)
+        #plt.figure()
+        #plt.imshow(self.hid_to_out.vars["w"].view.copy().reshape((p["NUM_HIDDEN"],self.num_output)))
         # set up run 
         N_trial= 0
         if X_t_orig is not None:
@@ -577,6 +585,7 @@ class mnist_model:
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
+            self.model.custom_update("EVPReduce")  # this zeros dw (so as to ignore eval gradients from last epoch!
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= []
             for trial in range(N_trial):
@@ -635,7 +644,7 @@ class mnist_model:
                         self.hid_to_out.in_syn[:]= 0.0
                         self.hid_to_out.push_in_syn_to_device()
                 
-                if phase == "train":
+                if (phase == "train") and ((trial+1)%p["SUPER_BATCH"]) == 0:
                     update_adam(learning_rate, adam_step, self.optimisers)
                     adam_step += 1
                     self.model.custom_update("EVPReduce")
@@ -647,9 +656,10 @@ class mnist_model:
                 self.in_to_hid.push_in_syn_to_device()
                 self.hid_to_out.in_syn[:]= 0.0
                 self.hid_to_out.push_in_syn_to_device()
-                self.output.pull_var_from_device("new_max_V")
-                pred= np.argmax(self.output.vars["new_max_V"].view, axis=-1)
-                print(pred)
+                #self.output.pull_var_from_device("new_max_V")
+                #pred= np.argmax(self.output.vars["new_max_V"].view, axis=-1)
+                #print(pred)
+                #print(np.amax(self.output.vars["new_max_V"].view, axis= -1))
                 self.model.custom_update("neuronReset")
                 if p["REGULARISATION"]:
                     # for hidden regularistation prepare "sNSum_all"
@@ -657,12 +667,12 @@ class mnist_model:
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
                     self.model.custom_update("sNSumReduce")
                     self.model.custom_update("sNSumApply")
-                    self.hidden.pull_var_from_device("sNSum")
+                    #self.hidden.pull_var_from_device("sNSum")
                     #print(self.hidden.vars["sNSum"].view[0,:])
-                    self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
+                    #self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
                     #self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)
-                    self.hidden.extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
-                    self.hidden.push_extra_global_param_to_device("sNSum_all")
+                    #self.hidden.extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
+                    #self.hidden.push_extra_global_param_to_device("sNSum_all")
                     #print("sNSum_all: {}".format(self.hidden.extra_global_params["sNSum_all"].view[:]))
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V
@@ -704,6 +714,10 @@ class mnist_model:
                 resfile.flush()
             predict[phase]= np.hstack(predict[phase])
             learning_rate *= p["ETA_DECAY"]
+            if p["ETA_FIDDELING"]:
+                if (epoch+1) % p["ETA_REDUCE_PERIOD"] == 0:
+                    learning_rate *= p["ETA_REDUCE"]
+                    adam_step= 1
 
         for pop in p["REC_SPIKES"]:
             spike_t[pop]= np.hstack(spike_t[pop])
@@ -712,14 +726,17 @@ class mnist_model:
         for rec_var, rec_list in [ (rec_vars_n, p["REC_NEURONS"]), (rec_vars_s, p["REC_SYNAPSES"])]:
             for pop, var in rec_list:
                 rec_steps= int(p["TRIAL_MS"]/p["DT_MS"])
-                the_rec= np.empty((len(rec_var[var+pop])*p["N_BATCH"],rec_var[var+pop][0].shape[1]))
+                the_rec= np.empty((len(rec_var[var+pop])*p["N_BATCH"],rec_var[var+pop][0].shape[-1]))
                 # unfortunately need to unwind batches in a rather awkward way ...
                 for i in range(p["N_EPOCH"]*N_trial):
                     x= np.array(rec_var[var+pop][(i*rec_steps):((i+1)*rec_steps)])
                     for j in range(p["N_BATCH"]):
                         strt= (i*p["N_BATCH"]+j)*rec_steps
                         stp= strt+rec_steps
-                        the_rec[strt:stp,:]= x[:,j,:]
+                        if len(x.shape) == 3:
+                            the_rec[strt:stp,:]= x[:,j,:]
+                        else:  # shared var between batches
+                            the_rec[strt:stp,:]= x
                 rec_var[var+pop]= the_rec
         
         if p["WRITE_TO_DISK"]:            # Saving results
