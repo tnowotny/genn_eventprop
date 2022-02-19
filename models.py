@@ -79,10 +79,12 @@ EVP_input_reset= genn_model.create_custom_custom_update_class(
 EVP_input_reset_MNIST= genn_model.create_custom_custom_update_class(
     "EVP_input_reset_MNIST",
     param_names=["N_max_spike"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("rev_t","scalar")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("rev_t","scalar")],
     update_code= """
         $(rp_ImV)= $(wp_ImV)-1;
-        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) ($(N_max_spike)-1);
+        $(fwd_start)= $(new_fwd_start);
+        $(new_fwd_start)= $(rp_ImV);       // this is one to the left of the actual writing start but that avoids trouble for 0 spikes in a trial
         $(back_spike)= 0;
         $(rev_t)= $(t);
     """
@@ -129,7 +131,7 @@ EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_reg",
     param_names=["V_reset","N_max_spike","N_neurons"],
     extra_global_params=[("sNSum_all", "scalar*")],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     update_code= """
         // make a reduction of the spike number sum across the neuron population
         
@@ -146,7 +148,9 @@ EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
         $(sNSum)= $(new_sNSum);
         $(new_sNSum)= 0.0;
         $(rp_ImV)= $(wp_ImV)-1;
-        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) ($(N_max_spike)-1);
+        $(fwd_start)= $(new_fwd_start);
+        $(new_fwd_start)= $(rp_ImV);       // this is one to the left of the actual writing start but that avoids trouble for 0 spikes in a trial
         $(rev_t)= $(t);
         $(lambda_V)= 0.0;
         $(lambda_I)= 0.0;
@@ -368,7 +372,7 @@ As above, for the MNIST experiment, we need "dropout" or "unreliable spiking", w
 EVP_SSA_MNIST_SHUFFLE = genn_model.create_custom_neuron_class(
     "EVP_spikeSourceArray_MNIST_Shuffle",
     param_names=["N_neurons","N_max_spike"],
-    var_name_types=[("startSpike", "int"), ("endSpike", "int", VarAccess_READ_ONLY_DUPLICATE), ("back_spike","uint8_t"), ("rp_ImV","int"),("wp_ImV","int"),("rev_t","scalar")],
+    var_name_types=[("startSpike", "int"), ("endSpike", "int", VarAccess_READ_ONLY_DUPLICATE), ("back_spike","uint8_t"), ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("rev_t","scalar")],
     sim_code= """
         int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
         // backward pass
@@ -398,9 +402,15 @@ EVP_SSA_MNIST_SHUFFLE = genn_model.create_custom_neuron_class(
     """,
     reset_code= """
         // this is after a forward spike
-        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
-        $(wp_ImV)++;
-        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+        if ($(wp_ImV) != $(fwd_start)) {
+            $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+            $(wp_ImV)++;
+            if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+        }
+        else {
+            printf("%f: input: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+            assert(0);
+        }
     """,
     extra_global_params= [("spikeTimes", "scalar*"), ("t_offset","scalar"), ("t_k", "scalar*"),("pDrop", "scalar")],
     is_auto_refractory_required=False
@@ -493,7 +503,7 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     "EVP_LIF",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","lbd_upper","lbd_lower","nu_upper","nu_lower","rho_upper","glb_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("lambda_jump","scalar"),("sNSum","scalar"),("new_sNSum","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("lambda_jump","scalar"),("sNSum","scalar"),("new_sNSum","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("sNSum_all","scalar*")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -550,10 +560,16 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     """,
     reset_code="""
     // this is after a forward spike
-    $(t_k)[buf_idx+$(wp_ImV)]= $(t);
-    $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
-    $(wp_ImV)++;
-    if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    if ($(wp_ImV) != $(fwd_start)) {
+        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+        $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+        $(wp_ImV)++;
+        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    } 
+    else {
+        printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        assert(0);
+    }
     $(V)= $(V_reset);
     $(new_sNSum)+= 1.0;
     """,
@@ -642,7 +658,7 @@ EVP_LIF_output_MNIST = genn_model.create_custom_neuron_class(
                     ("max_V","scalar"),("new_max_V","scalar"),
                     ("max_t","scalar"),("new_max_t","scalar"),("expsum","scalar"),("exp_V","scalar"),
                     ("trial","int"),("lambda_jump","scalar")],
-    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
+    extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;

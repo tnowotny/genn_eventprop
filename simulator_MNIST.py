@@ -292,14 +292,16 @@ class mnist_model:
                 
     def define_model(self, p, shuffle):
         input_params= {"N_neurons": self.num_input,
-                       "N_max_spike": 2  # input neurons have at most one input spike per trial (is the circular spike buffer overkill??)
+                       "N_max_spike": p["N_MAX_SPIKE"] 
         }
         self.input_init_vars= {"startSpike": 0.0,  # to be set later
-                          "endSpike": 0.0,         # to be set later
-                          "back_spike": 0,
-                          "rp_ImV": 0,
-                          "wp_ImV": 0,
-                          "rev_t": 0.0}
+                               "endSpike": 0.0,         # to be set later
+                               "back_spike": 0,
+                               "rp_ImV": p["N_MAX_SPIKE"]-1,
+                               "wp_ImV": 0,
+                               "fwd_start": p["N_MAX_SPIKE"]-1,
+                               "new_fwd_start": p["N_MAX_SPIKE"]-1,
+                               "rev_t": 0.0}
         hidden_params= {"tau_m": p["TAU_MEM"],
                         "V_thresh": p["V_THRESH"],
                         "V_reset": p["V_RESET"],
@@ -308,13 +310,15 @@ class mnist_model:
                         "tau_syn": p["TAU_SYN"],
         }
         self.hidden_init_vars= {"V": p["V_RESET"],
-                           "lambda_V": 0.0,
-                           "lambda_I": 0.0,
-                           "rev_t": 0.0,
-                           "rp_ImV": 0,
-                           "wp_ImV": 0,
-                           "back_spike": 0,
-                           "lambda_jump": 0.0,
+                                "lambda_V": 0.0,
+                                "lambda_I": 0.0,
+                                "rev_t": 0.0,
+                                "rp_ImV": p["N_MAX_SPIKE"]-1,
+                                "wp_ImV": 0,
+                                "fwd_start": p["N_MAX_SPIKE"]-1,
+                                "new_fwd_start": p["N_MAX_SPIKE"]-1,
+                                "back_spike": 0,
+                                "lambda_jump": 0.0,
         }
         output_params= {"tau_m": p["TAU_MEM"],
                         "tau_syn": p["TAU_SYN"],
@@ -382,14 +386,14 @@ class mnist_model:
             self.hidden.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
         
         self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST, output_params, self.output_init_vars)
-        self.output.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"],dtype=np.float32))
-        self.output.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"],dtype=np.float32))
 
         self.output.set_extra_global_param("label", np.zeros(self.data_full_length,dtype=np.float32)) # reserve space for labels
 
         input_var_refs= {"rp_ImV": genn_model.create_var_ref(self.input, "rp_ImV"),
                          "wp_ImV": genn_model.create_var_ref(self.input, "wp_ImV"),
                          "back_spike": genn_model.create_var_ref(self.input, "back_spike"),
+                         "fwd_start": genn_model.create_var_ref(self.input, "fwd_start"),
+                         "new_fwd_start": genn_model.create_var_ref(self.input, "new_fwd_start"),
                          "rev_t": genn_model.create_var_ref(self.input, "rev_t")
         }
         self.input_reset= self.model.add_custom_update("input_reset","neuronReset", EVP_input_reset_MNIST, {"N_max_spike": p["N_MAX_SPIKE"]}, {}, input_var_refs)
@@ -413,6 +417,8 @@ class mnist_model:
                           "lambda_V": genn_model.create_var_ref(self.hidden, "lambda_V"),
                           "lambda_I": genn_model.create_var_ref(self.hidden, "lambda_I"),
                           "rev_t": genn_model.create_var_ref(self.hidden, "rev_t"),
+                          "fwd_start": genn_model.create_var_ref(self.hidden, "fwd_start"),
+                          "new_fwd_start": genn_model.create_var_ref(self.hidden, "new_fwd_start"),
                           "back_spike": genn_model.create_var_ref(self.hidden, "back_spike")
         }
         if p["REGULARISATION"]:
