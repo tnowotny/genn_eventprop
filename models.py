@@ -455,7 +455,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     "EVP_LIF",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),("lambda_jump","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
@@ -467,9 +467,6 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
-        //printf(\"%f\\n",$(revIsyn));
-    
-        $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         // decrease read pointer (on ring buffer)
         $(rp_ImV)--;
@@ -503,7 +500,7 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     "EVP_LIF",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","lbd_upper","lbd_lower","nu_upper","nu_lower","rho_upper","glb_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("lambda_jump","scalar"),("sNSum","scalar"),("new_sNSum","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("sNSum_all","scalar*")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -516,7 +513,6 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
-        $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         // decrease read pointer (on ring buffer)
         $(rp_ImV)--;
@@ -535,7 +531,6 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
             $(lambda_V) -= 2*$(lbd_upper)/$(N_neurons);
         }
         */
-        //printf("%f, %f \\n", $(lambda_jump), $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_neurons));
         $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_neurons);
         /* 
         if ($(sNSum) > $(nu_upper)) {
@@ -583,7 +578,7 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
                     ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),
-                    ("trial","int"),("lambda_jump","scalar")],
+                    ("trial","int")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
@@ -603,7 +598,6 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
             $(lambda_V) += $(alpha)/((1.01*$(trial_t)-fst)*(1.01*$(trial_t)-fst))/$(N_batch);
         }
         else {
-            $(lambda_jump)= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)); // for debugging only
             $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
             //if (back_t - $(first_spike_t) <= -1e-2*DT) printf("back_t: %e, fst: %e",back_t,$(first_spike_t)); 
             assert(back_t - $(first_spike_t) > -1e-2*DT);
@@ -657,7 +651,7 @@ EVP_LIF_output_MNIST = genn_model.create_custom_neuron_class(
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("max_V","scalar"),("new_max_V","scalar"),
                     ("max_t","scalar"),("new_max_t","scalar"),("expsum","scalar"),("exp_V","scalar"),
-                    ("trial","int"),("lambda_jump","scalar")],
+                    ("trial","int")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass

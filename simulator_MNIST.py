@@ -318,7 +318,6 @@ class mnist_model:
                                 "fwd_start": p["N_MAX_SPIKE"]-1,
                                 "new_fwd_start": p["N_MAX_SPIKE"]-1,
                                 "back_spike": 0,
-                                "lambda_jump": 0.0,
         }
         output_params= {"tau_m": p["TAU_MEM"],
                         "tau_syn": p["TAU_SYN"],
@@ -336,7 +335,6 @@ class mnist_model:
                                 "expsum": 1.0,
                                 "exp_V": 1.0,     
                                 "trial": 0,
-                                "lambda_jump": 0.0,
         }
         # ----------------------------------------------------------------------------
         # Synapse initialisation
