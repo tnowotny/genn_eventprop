@@ -532,7 +532,6 @@ class mnist_model:
             N_eval= 0
         adam_step= 1
         learning_rate= p["ETA"]
-        cnt= np.ones(p["N_BATCH"])
         
         # set up recording if required
         spike_t= {}
@@ -555,8 +554,13 @@ class mnist_model:
         self.input_set.push_extra_global_param_to_device("allStartSpike")
         self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
         self.input_set.push_extra_global_param_to_device("allEndSpike")
-        input_id= np.arange(labels.shape[0])
+        if labels is not None:
+            input_id= np.arange(labels.shape[0])
+        else:
+            input_id= []
         all_input_id= np.arange(Y.shape[0])
+        self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
+        self.input_set.push_extra_global_param_to_device("allInputID")
         for epoch in range(number_epochs):
 
             if N_train > 0 and shuffle:
@@ -603,6 +607,7 @@ class mnist_model:
                     phase= "eval"
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
                 self.input_set.extra_global_params["trial"].view[:]= trial
+                #print(self.input_set.extra_global_params["trial"].view[:])
                 self.model.custom_update("inputUpdate")
                 self.input.extra_global_params["t_offset"].view[:]= self.model.t
                     
@@ -624,7 +629,7 @@ class mnist_model:
                                 the_pop= self.model.neuron_populations[pop]
                                 if p["N_BATCH"] > 1:
                                     for i in range(p["N_BATCH"]):
-                                        spike_t[pop].append(the_pop.spike_recording_data[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i)*p["TRIAL_MS"])
+                                        spike_t[pop].append(the_pop.spike_recording_data[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i-trial)*p["TRIAL_MS"])
                                         spike_ID[pop].append(the_pop.spike_recording_data[i][1])
                                 else:
                                     spike_t[pop].append(the_pop.spike_recording_data[0]+epoch*N_trial*p["TRIAL_MS"])
@@ -691,7 +696,7 @@ class mnist_model:
                     print("---------------------------------------")
                 self.output.pull_var_from_device("expsum")
                 losses= self.loss_func(lbl,p)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
-                good[phase] += np.sum(cnt[pred == lbl])
+                good[phase] += np.sum(pred == lbl)
                 predict[phase].append(pred)
                 the_loss[phase].append(losses)
                 if p["DEBUG_HIDDEN_N"]:
@@ -768,7 +773,6 @@ class mnist_model:
         if p["BUILD"]:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-        N_trial= p["N_TRAIN"] // p["N_BATCH"]
         self.input.extra_global_params["pDrop"].view[:]= p["PDROP_INPUT"]    # set dropout
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= self.X_train_orig, labels= self.Y_train_orig, X_t_eval= self.X_val_orig, labels_eval= self.Y_val_orig, resfile= resfile)
@@ -778,7 +782,6 @@ class mnist_model:
         if p["BUILD"]:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-        N_trial= p["N_TEST"] // p["N_BATCH"]
         self.input.extra_global_params["pDrop"].view[:]= 0.0          # no dropout during testing
         return self.run_model(1, p, False, X_t_eval= self.X_test_orig, labels_eval= self.Y_test_orig)
         
