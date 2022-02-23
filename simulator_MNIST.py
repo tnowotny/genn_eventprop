@@ -22,6 +22,7 @@ p["BUILD"] = True
 p["TIMING"] = True
 p["TRAIN_DATA_SEED"]= 123
 p["TEST_DATA_SEED"]= 456
+p["MODEL_SEED"]= None
 
 # Experiment parameters
 p["TRIAL_MS"]= 20.0
@@ -152,7 +153,6 @@ class mnist_model:
         dataset = tonic.datasets.SHD(save_to='./data', train=True)
         sensor_size = dataset.sensor_size
         self.data_full_length= len(dataset)
-        print(self.data_full_length)
         self.N_class= len(dataset.classes)
         self.num_input= int(np.product(sensor_size))
         self.num_output= 32   # first power of two greater than class number
@@ -239,7 +239,6 @@ class mnist_model:
                     
                 Y= np.append(Ytrain, Yeval, axis= 0)
         N= len(Y)
-        print(N)
         """
         if p["DEBUG"]:
             for i in range(4):
@@ -282,13 +281,6 @@ class mnist_model:
         X= np.hstack(all_sts)
         input_end= np.hstack(all_input_end)
         input_start= np.hstack(all_input_start)
-        print(self.max_stim_time)
-        #exit(1)
-        
-        #for i in range(self.num_input):
-        #    print(input_start[0,i])
-        #    print("X: {}".format(X[input_start[0,i]:input_end[0,i]]))
-        #    print("start= {}, end= {}".format(input_start[0,i],input_end[0,i]))
         return (X, Y, input_start, input_end) 
                 
     def define_model(self, p, shuffle):
@@ -359,7 +351,8 @@ class mnist_model:
         self.model.dT = p["DT_MS"]
         self.model.timing_enabled = p["TIMING"]
         self.model.batch_size = p["N_BATCH"]
-        #model._model.set_seed(p["DATA_SEED"])
+        if p["MODEL_SEED"] is not None:
+            model._model.set_seed(p["MODEL_SEED"])
 
         # Add neuron populations
         self.input = self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, 
@@ -511,8 +504,7 @@ class mnist_model:
             self.in_to_hid.push_var_to_device("w")
             self.hid_to_out.push_var_to_device("w")
         else:
-            # zero the weights of synapses to "padding output neurons" - this should remove them
-            # from influencing the backward pass
+            # zero the weights of synapses to "padding output neurons" - this should remove them from influencing the backward pass
             mask= np.zeros((p["NUM_HIDDEN"],self.num_output))
             mask[:,self.N_class:]= 1
             mask= np.array(mask, dtype= bool).flatten()
@@ -520,11 +512,6 @@ class mnist_model:
             self.hid_to_out.vars["w"].view[mask]= 0
             self.hid_to_out.push_var_to_device("w")
             print("connections zeroed")
-        #self.hid_to_out.pull_var_from_device("w")
-        #plt.figure()
-        #plt.hist(self.hid_to_out.vars["w"].view[:],100)
-        #plt.figure()
-        #plt.imshow(self.hid_to_out.vars["w"].view.copy().reshape((p["NUM_HIDDEN"],self.num_output)))
         # set up run 
         N_trial= 0
         if X_t_orig is not None:
@@ -616,7 +603,6 @@ class mnist_model:
                     phase= "eval"
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
                 self.input_set.extra_global_params["trial"].view[:]= trial
-                #print(self.input_set.extra_global_params["trial"].view[:])
                 self.model.custom_update("inputUpdate")
                 self.input.extra_global_params["t_offset"].view[:]= self.model.t
                     
@@ -695,9 +681,6 @@ class mnist_model:
                     self.hidden.push_extra_global_param_to_device("sNSum_all")
                     if p["DEBUG_HIDDEN_N"]:
                         spike_N_hidden= self.hidden_reset.extra_global_params["sNSum_all"].view[:].copy()
-                    #self.hidden.pull_var_from_device("sNSum")
-                    #print(self.hidden.vars["sNSum"].view[0,:])
-                    #print("sNSum_all: {}".format(self.hidden.extra_global_params["sNSum_all"].view[:]))
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V
                 self.output.pull_var_from_device("exp_V")
@@ -720,7 +703,6 @@ class mnist_model:
                     self.hid_to_out.pull_var_from_device("w")
                     np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_e{}_t{}.npy".format(epoch,trial)), self.hid_to_out.vars["w"].view.copy())
 
-            #print(the_loss)
             if N_train > 0:
                 correct= good["train"]/(N_train*p["N_BATCH"])
             else:
@@ -731,7 +713,6 @@ class mnist_model:
                 correct_eval= 0
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= np.hstack(all_hidden_n)
-                print(all_hidden_n.shape)
                 print("Hidden spikes: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
             if resfile is not None:
