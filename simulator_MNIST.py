@@ -788,7 +788,6 @@ class mnist_model:
         if p["BUILD"]:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-        self.input.extra_global_params["pDrop"].view[:]= p["PDROP_INPUT"]    # set dropout
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= self.X_train_orig, labels= self.Y_train_orig, X_t_eval= self.X_val_orig, labels_eval= self.Y_val_orig, resfile= resfile)
           
@@ -797,6 +796,5 @@ class mnist_model:
         if p["BUILD"]:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-        self.input.extra_global_params["pDrop"].view[:]= 0.0          # no dropout during testing
         return self.run_model(1, p, False, X_t_eval= self.X_test_orig, labels_eval= self.Y_test_orig)
         
