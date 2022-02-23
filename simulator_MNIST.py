@@ -492,7 +492,8 @@ class mnist_model:
         
         # DEBUG hidden layer spike numbers
         if p["DEBUG_HIDDEN_N"]:
-            self.model.neuron_populations["hidden"].spike_recording_enabled= True
+            if p["REG_TYPE"] != "Thomas1":
+                self.model.neuron_populations["hidden"].spike_recording_enabled= True
         # enable buffered spike recording where desired
         for pop in p["REC_SPIKES"]:
             self.model.neuron_populations[pop].spike_recording_enabled= True
@@ -621,7 +622,8 @@ class mnist_model:
                     
                 int_t= 0
                 if p["DEBUG_HIDDEN_N"]:
-                    spike_N_hidden= np.zeros(p["N_BATCH"])
+                    if p["REG_TYPE"] != "Thomas1":
+                        spike_N_hidden= np.zeros(p["N_BATCH"])
                 while (self.model.t < trial_end-1e-1*p["DT_MS"]):
                     self.model.step_time()
                     int_t += 1
