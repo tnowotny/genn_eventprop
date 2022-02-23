@@ -628,10 +628,11 @@ class mnist_model:
                     # DEBUG of middle layer activity
                     if p["DEBUG_HIDDEN_N"]:
                         if int_t%p["SPK_REC_STEPS"] == 0:
-                            self.model.pull_recording_buffers_from_device()
-                            x= self.model.neuron_populations["hidden"].spike_recording_data
-                            for btch in range(p["N_BATCH"]):
-                                spike_N_hidden[btch]+= len(x[btch][0])
+                            if p["REG_TYPE"] != "Thomas1":
+                                self.model.pull_recording_buffers_from_device()
+                                x= self.model.neuron_populations["hidden"].spike_recording_data
+                                for btch in range(p["N_BATCH"]):
+                                    spike_N_hidden[btch]+= len(x[btch][0])
                     if len(p["REC_SPIKES"]) > 0:
                         if int_t%p["SPK_REC_STEPS"] == 0:
                             self.model.pull_recording_buffers_from_device()
@@ -690,6 +691,8 @@ class mnist_model:
                     #self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)
                     self.hidden.extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
                     self.hidden.push_extra_global_param_to_device("sNSum_all")
+                    if p["DEBUG_HIDDEN_N"]:
+                        spike_N_hidden= self.hidden_reset.extra_global_params["sNSum_all"].view[:].copy()
                     #self.hidden.pull_var_from_device("sNSum")
                     #print(self.hidden.vars["sNSum"].view[0,:])
                     #print("sNSum_all: {}".format(self.hidden.extra_global_params["sNSum_all"].view[:]))
