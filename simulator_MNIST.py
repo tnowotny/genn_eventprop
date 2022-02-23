@@ -48,7 +48,7 @@ p["INPUT_HIDDEN_STD"]= 0.045
 p["HIDDEN_OUTPUT_MEAN"]= 0.2
 p["HIDDEN_OUTPUT_STD"]= 0.37
 p["PDROP_INPUT"] = 0.2
-p["REGULARISATION"]= False
+p["REG_TYPE"]= "none"
 p["LBD_UPPER"]= 0.000005
 p["LBD_LOWER"]= 0.001
 p["NU_UPPER"]= 20*p["N_BATCH"]
@@ -152,6 +152,7 @@ class mnist_model:
         dataset = tonic.datasets.SHD(save_to='./data', train=True)
         sensor_size = dataset.sensor_size
         self.data_full_length= len(dataset)
+        print(self.data_full_length)
         self.N_class= len(dataset.classes)
         self.num_input= int(np.product(sensor_size))
         self.num_output= 32   # first power of two greater than class number
@@ -366,21 +367,26 @@ class mnist_model:
         self.input.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*self.num_input*p["N_MAX_SPIKE"],dtype=np.float32))
         self.input.set_extra_global_param("spikeTimes", np.zeros(200000000,dtype=np.float32)) # reserve enough space for any set of input spikes that is likely
 
-        if p["REGULARISATION"]:
+        if p["REG_TYPE"] == "simple":
             hidden_params["lbd_upper"]= p["LBD_UPPER"]
-            hidden_params["lbd_lower"]= p["LBD_LOWER"]
             hidden_params["nu_upper"]= p["NU_UPPER"]
-            hidden_params["nu_lower"]= p["NU_LOWER"]
-            hidden_params["rho_upper"]= p["RHO_UPPER"]
-            hidden_params["glb_upper"]= p["GLB_UPPER"]
             self.hidden_init_vars["sNSum"]= 0.0
             self.hidden_init_vars["new_sNSum"]= 0.0
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars) 
-        else:
+        if p["REG_TYPE"] == "Thomas1":
+            hidden_params["lbd_lower"]= p["LBD_LOWER"]
+            hidden_params["nu_lower"]= p["NU_LOWER"]
+            hidden_params["rho_upper"]= p["RHO_UPPER"]
+            hidden_params["glb_upper"]= p["GLB_UPPER"]
+            hidden_params["N_batch"]= p["N_BATCH"]
+            self.hidden_init_vars["sNSum"]= 0.0
+            self.hidden_init_vars["new_sNSum"]= 0.0
+            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg_Thomas1, hidden_params, self.hidden_init_vars) 
+        if p["REG_TYPE"] == "none":
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars) 
         self.hidden.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
         self.hidden.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
-        if p["REGULARISATION"]:
+        if p["REG_TYPE"] == "Thomas1":
             self.hidden.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
         
         self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST, output_params, self.output_init_vars)
@@ -419,11 +425,15 @@ class mnist_model:
                           "new_fwd_start": genn_model.create_var_ref(self.hidden, "new_fwd_start"),
                           "back_spike": genn_model.create_var_ref(self.hidden, "back_spike")
         }
-        if p["REGULARISATION"]:
+        if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
             hidden_var_refs["sNSum"]= genn_model.create_var_ref(self.hidden, "sNSum")
             hidden_var_refs["new_sNSum"]= genn_model.create_var_ref(self.hidden, "new_sNSum")
+        if p["REG_TYPE"] == "simple":
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"], "N_neurons": p["NUM_HIDDEN"]}, {}, hidden_var_refs)
+        if p["REG_TYPE"] == "Thomas1":
+            self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg_global, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"], "N_neurons": p["NUM_HIDDEN"]}, {}, hidden_var_refs)
             self.hidden_reset.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
+        if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
             var_refs= {"sNSum": genn_model.create_var_ref(self.hidden, "sNSum")}
             self.hidden_reg_reduce= self.model.add_custom_update("hidden_reg_reduce","sNSumReduce", EVP_reg_reduce, {}, {"reduced_sNSum": 0.0}, var_refs)
             var_refs= {
@@ -431,7 +441,7 @@ class mnist_model:
                 "sNSum": genn_model.create_var_ref(self.hidden, "sNSum")
             }
             self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply","sNSumApply", EVP_sNSum_apply, {}, {}, var_refs)
-        else:
+        if p["REG_TYPE"] == "none":
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
 
         output_reset_params= {"V_reset": p["V_RESET"],
@@ -670,18 +680,20 @@ class mnist_model:
                 #print(pred)
                 #print(np.amax(self.output.vars["new_max_V"].view, axis= -1))
                 self.model.custom_update("neuronReset")
-                if p["REGULARISATION"]:
+                if p["REG_TYPE"] == "Thomas1":
                     # for hidden regularistation prepare "sNSum_all"
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
+                if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
                     self.model.custom_update("sNSumReduce")
                     self.model.custom_update("sNSumApply")
+                if p["REG_TYPE"] == "Thomas1": 
+                    self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
+                    #self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)
+                    self.hidden.extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
+                    self.hidden.push_extra_global_param_to_device("sNSum_all")
                     #self.hidden.pull_var_from_device("sNSum")
                     #print(self.hidden.vars["sNSum"].view[0,:])
-                    #self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
-                    #self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)
-                    #self.hidden.extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
-                    #self.hidden.push_extra_global_param_to_device("sNSum_all")
                     #print("sNSum_all: {}".format(self.hidden.extra_global_params["sNSum_all"].view[:]))
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V

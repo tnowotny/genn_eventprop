@@ -130,6 +130,26 @@ EVP_neuron_reset= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_reg",
     param_names=["V_reset","N_max_spike","N_neurons"],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+    update_code= """
+        $(sNSum)= $(new_sNSum);
+        $(new_sNSum)= 0.0;
+        $(rp_ImV)= $(wp_ImV)-1;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) ($(N_max_spike)-1);
+        $(fwd_start)= $(new_fwd_start);
+        $(new_fwd_start)= $(rp_ImV);       // this is one to the left of the actual writing start but that avoids trouble for 0 spikes in a trial
+        $(rev_t)= $(t);
+        $(lambda_V)= 0.0;
+        $(lambda_I)= 0.0;
+        $(V)= $(V_reset);
+        $(back_spike)= 0;
+    """
+)
+
+# custom update class for resetting neurons at trial end with hidden layer rate normalisation terms
+EVP_neuron_reset_reg_global= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_reg_global",
+    param_names=["V_reset","N_max_spike","N_neurons"],
     extra_global_params=[("sNSum_all", "scalar*")],
     var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     update_code= """
@@ -192,25 +212,10 @@ EVP_neuron_reset_output= genn_model.create_custom_custom_update_class(
         else
             mexp= 0.0;
         //printf(\"%g, %d, %g, %g\\n\",$(t),$(id),$(new_first_spike_t),$(rev_t));
-        #define __CUDA__
-        #ifdef __CUDA__
         scalar sum= __shfl_sync(0x7, mexp, 0);
         sum+= __shfl_sync(0x7, mexp, 1);
         sum+= __shfl_sync(0x7, mexp, 2);
         $(expsum)= sum;
-        #else
-        // YUCK - terrible hack for CPU_ONLY
-        if ($(id) == 0) {
-             $(expsum)= 0.0;
-             group->expsum[1]= 0.0;
-             group->expsum[2]= 0.0;
-        }
-        group->expsum[0]+= mexp;
-        if ($(id) == 2) {
-           group->expsum[1]= group->expsum[0];
-           $(expsum)= group->expsum[0];
-        }
-        #endif
         //printf(\"%g\\n\",$(expsum));
         //printf(\"ID: %d, rp: %d, wp: %d\\n\",$(id),$(rp_ImV),$(wp_ImV)); 
         $(rp_ImV)= $(wp_ImV)-1;
@@ -233,8 +238,6 @@ EVP_neuron_reset_output_MNIST= genn_model.create_custom_custom_update_class(
     var_refs=[("max_V","scalar"),("new_max_V","scalar"),("max_t","scalar"),("new_max_t","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
     update_code= """
         scalar mexp= 0.0;
-        #define __CUDA__
-        #ifdef __CUDA__
         scalar m= 0.0;
         if ($(id) < $(N_class)) m= $(new_max_V);
         m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x1));
@@ -250,18 +253,6 @@ EVP_neuron_reset_output_MNIST= genn_model.create_custom_custom_update_class(
         mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
         mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
         $(expsum)= mexp;
-        #else
-        // YUCK - terrible hack for CPU_ONLY
-        if ($(id) == 0) {
-             $(expsum)= 0.0;
-        }
-        group->expsum[0]+= mexp;
-        if ($(id) == 9) {
-             for (int _i_= 1; _i_ < 10; _i_++) {
-                 group->expsum[_i_]= group->expsum[0];
-             }
-        }
-        #endif
         //printf(\"%g\\n\",$(expsum));
         $(rev_t)= $(t);
         $(lambda_V)= 0.0;
@@ -283,8 +274,6 @@ EVP_neuron_reset_output_SHD= genn_model.create_custom_custom_update_class(
     var_refs=[("max_V","scalar"),("new_max_V","scalar"),("max_t","scalar"),("new_max_t","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
     update_code= """
         scalar mexp= 0.0;
-        #define __CUDA__
-        #ifdef __CUDA__
         scalar m= 0.0;
         if ($(id) < $(N_class)) m= $(new_max_V);
         m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x1));
@@ -302,18 +291,6 @@ EVP_neuron_reset_output_SHD= genn_model.create_custom_custom_update_class(
         mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
         mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
         $(expsum)= mexp;
-        #else
-        // YUCK - terrible hack for CPU_ONLY
-        if ($(id) == 0) {
-             $(expsum)= 0.0;
-        }
-        group->expsum[0]+= mexp;
-        if ($(id) == 19) {
-             for (int _i_= 1; _i_ < 20; _i_++) {
-                 group->expsum[_i_]= group->expsum[0];
-             }
-        }
-        #endif
         //printf(\"%g\\n\",$(expsum));
         $(rev_t)= $(t);
         $(lambda_V)= 0.0;
@@ -388,10 +365,6 @@ EVP_SSA_MNIST_SHUFFLE = genn_model.create_custom_neuron_class(
             $(back_spike)= 1;
         }
         // forward spikes
-        //printf("%d, %d \\n", $(startSpike), $(endSpike));
-        //if ($(startSpike) != $(endSpike)) {
-        //    printf("t= %f, sT= %f \\n",$(t), $(spikeTimes)[$(startSpike)]);
-        //}
         if ($(startSpike) != $(endSpike) && ($(t) >= $(t_offset)+$(spikeTimes)[$(startSpike)]+DT))
              $(startSpike)++;
     """,
@@ -496,9 +469,74 @@ EVP_LIF = genn_model.create_custom_neuron_class(
 )
 
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
+# Regularisation: each neuron towards a desired spike number; parameters lbd_upper/ nu_upper; uses sNSum
 EVP_LIF_reg = genn_model.create_custom_neuron_class(
     "EVP_LIF",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","lbd_upper","lbd_lower","nu_upper","nu_lower","rho_upper","glb_upper"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","lbd_upper","nu_upper"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+    # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*")],
+    additional_input_vars=[("revIsyn", "scalar", 0.0)],
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
+    if ($(back_spike)) {
+        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+        // decrease read pointer (on ring buffer)
+        $(rp_ImV)--;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        // contributions from regularisation
+        $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_neurons);
+        /* 
+        if ($(sNSum) > $(nu_upper)) {
+            $(lambda_V) -= $(lbd_upper)/$(N_neurons);
+        }
+        else {
+            $(lambda_V) += $(lbd_upper)/$(N_neurons);
+        }
+        */
+        $(back_spike)= 0;
+    }   
+    // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+        $(back_spike)= 1;
+    }
+    // forward pass
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    """,
+    threshold_condition_code="""
+    $(V) >= $(V_thresh)
+    """,
+    reset_code="""
+    // this is after a forward spike
+    if ($(wp_ImV) != $(fwd_start)) {
+        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+        $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+        $(wp_ImV)++;
+        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    } 
+    else {
+        printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        assert(0);
+    }
+    $(V)= $(V_reset);
+    $(new_sNSum)+= 1.0;
+    """,
+    is_auto_refractory_required=False
+)
+
+# LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
+# Regularisation almost a la Zenke with exponent L=1 (but individual neuron activity averaged over batch before comparing to lower threshold); parameters rho_upper/ glb_upper, nu_lower/lbd_lower; uses sNSum and sNSum_all
+EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
+    "EVP_LIF_reg_Thomas1",
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","tau_syn","lbd_lower","nu_lower","rho_upper","glb_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
@@ -518,28 +556,12 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
         $(rp_ImV)--;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         // contributions from regularisation
-        //printf("%d: %f\\n", $(batch), $(sNSum_all)[$(batch)]);
-        /*
         if ($(sNSum_all)[$(batch)] > $(rho_upper)) {
-            $(lambda_V) -= 2*$(glb_upper)*($(sNSum_all)[$(batch)] - $(nu_upper))/($(N_neurons)*$(N_neurons));
+            $(lambda_V) -= $(glb_upper)/$(N_neurons)/$(N_batch);
         }
         if ($(sNSum) < $(nu_lower)) {
-            $(lambda_V) -= 2*$(lbd_lower)*($(sNSum)- $(nu_lower))/$(N_neurons);
+            $(lambda_V) += 2*$(lbd_lower)*($(nu_lower) - $(sNSum))/$(N_neurons)/$(N_batch);
         }
-        if ($(sNSum) > $(nu_upper)) {
-            //$(lambda_V) -= 2*$(lbd_upper)*($(sNSum)- $(nu_upper))/$(N_neurons);
-            $(lambda_V) -= 2*$(lbd_upper)/$(N_neurons);
-        }
-        */
-        $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_neurons);
-        /* 
-        if ($(sNSum) > $(nu_upper)) {
-            $(lambda_V) -= $(lbd_upper)/$(N_neurons);
-        }
-        else {
-            $(lambda_V) += $(lbd_upper)/$(N_neurons);
-        }
-        */
         $(back_spike)= 0;
     }   
     // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
