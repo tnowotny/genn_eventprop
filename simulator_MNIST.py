@@ -621,7 +621,7 @@ class mnist_model:
                     
                 int_t= 0
                 if p["DEBUG_HIDDEN_N"]:
-                    spike_N_hidden= 0
+                    spike_N_hidden= np.zeros(p["N_BATCH"])
                 while (self.model.t < trial_end-1e-1*p["DT_MS"]):
                     self.model.step_time()
                     int_t += 1
@@ -629,7 +629,9 @@ class mnist_model:
                     if p["DEBUG_HIDDEN_N"]:
                         if int_t%p["SPK_REC_STEPS"] == 0:
                             self.model.pull_recording_buffers_from_device()
-                            spike_N_hidden+= len(self.model.neuron_populations["hidden"].spike_recording_data[0][0])
+                            x= self.model.neuron_populations["hidden"].spike_recording_data
+                            for btch in range(p["N_BATCH"]):
+                                spike_N_hidden[btch]+= len(x[btch][0])
                     if len(p["REC_SPIKES"]) > 0:
                         if int_t%p["SPK_REC_STEPS"] == 0:
                             self.model.pull_recording_buffers_from_device()
@@ -727,6 +729,8 @@ class mnist_model:
             else:
                 correct_eval= 0
             if p["DEBUG_HIDDEN_N"]:
+                all_hidden_n= np.hstack(all_hidden_n)
+                print(all_hidden_n.shape)
                 print("Hidden spikes: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
             if resfile is not None:
