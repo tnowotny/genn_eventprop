@@ -675,15 +675,11 @@ class mnist_model:
                 self.in_to_hid.push_in_syn_to_device()
                 self.hid_to_out.in_syn[:]= 0.0
                 self.hid_to_out.push_in_syn_to_device()
-                #self.output.pull_var_from_device("new_max_V")
-                #pred= np.argmax(self.output.vars["new_max_V"].view, axis=-1)
-                #print(pred)
-                #print(np.amax(self.output.vars["new_max_V"].view, axis= -1))
-                self.model.custom_update("neuronReset")
                 if p["REG_TYPE"] == "Thomas1":
                     # for hidden regularistation prepare "sNSum_all"
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
+                self.model.custom_update("neuronReset")
                 if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
                     self.model.custom_update("sNSumReduce")
                     self.model.custom_update("sNSumApply")
