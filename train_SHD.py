@@ -43,6 +43,7 @@ p["ETA_FIDDELING"]= False
 p["ETA_REDUCE"]= 0.5
 p["ETA_REDUCE_PERIOD"]= 50
 p["TIMING"]= False
+p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 
 if p["DEBUG"]:
     p["REC_SPIKES"]= ["input", "hidden"]
