@@ -239,13 +239,6 @@ class mnist_model:
                     
                 Y= np.append(Ytrain, Yeval, axis= 0)
         N= len(Y)
-        """
-        if p["DEBUG"]:
-            for i in range(4):
-                plt.figure()
-                plt.imshow(X[i*p["N_BATCH"],:,:])
-                print(Y[i*p["N_BATCH"]])
-        """
         all_sts= []
         all_input_end= []
         all_input_start= []
@@ -626,13 +619,14 @@ class mnist_model:
                             self.model.pull_recording_buffers_from_device()
                             for pop in p["REC_SPIKES"]:
                                 the_pop= self.model.neuron_populations[pop]
+                                x= the_pop.spike_recording_data
                                 if p["N_BATCH"] > 1:
                                     for i in range(p["N_BATCH"]):
-                                        spike_t[pop].append(the_pop.spike_recording_data[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i-trial)*p["TRIAL_MS"])
-                                        spike_ID[pop].append(the_pop.spike_recording_data[i][1])
+                                        spike_t[pop].append(x[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i-trial)*p["TRIAL_MS"])
+                                        spike_ID[pop].append(x[i][1])
                                 else:
-                                    spike_t[pop].append(the_pop.spike_recording_data[0]+epoch*N_trial*p["TRIAL_MS"])
-                                    spike_ID[pop].append(the_pop.spike_recording_data[1])
+                                    spike_t[pop].append(x[0]+epoch*N_trial*p["TRIAL_MS"])
+                                    spike_ID[pop].append(x[1])
 
                     for pop, var in p["REC_NEURONS"]:
                         the_pop= self.model.neuron_populations[pop]
