@@ -695,7 +695,7 @@ class mnist_model:
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V
                 self.output.pull_var_from_device("exp_V")
-                print(self.output.vars["exp_V"].view)
+                #print(self.output.vars["exp_V"].view)
                 pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
                 if p["DEBUG"]:
