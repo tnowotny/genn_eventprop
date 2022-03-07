@@ -196,6 +196,7 @@ class mnist_model:
         cache_dir=os.path.expanduser("~/data")
         cache_subdir="SHD"
         print("Using cache dir: %s"%cache_dir)
+        """
         # The remote directory with the data files
         base_url = "https://zenkelab.org/datasets"
         # Retrieve MD5 hashes from remote
@@ -217,12 +218,14 @@ class mnist_model:
                   "shd_test.h5.gz",
         ]
         hdf5_file_path= []
+        """
         self.num_input= 700
         self.num_output= 32   # first power of two greater than class number
         self.data_full_length= 0
-        fn= files[0]
-        origin= "%s/%s"%(base_url,fn)
-        hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
+        #fn= files[0]
+        #origin= "%s/%s"%(base_url,fn)
+        #hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
+        hdf5_file_path= '~/data/SHD/shd_train.h5'
         fileh= tables.open_file(hdf5_file_path, mode='r')
         units= fileh.root.spikes.units
         times= fileh.root.spikes.times
@@ -235,9 +238,10 @@ class mnist_model:
             self.X_train_orig.append({"x": units[i], "t": times[i]})
         self.X_train_orig= np.array(self.X_train_orig)
 
-        fn= files[1]
-        origin= "%s/%s"%(base_url,fn)
-        hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
+        #fn= files[1]
+        #origin= "%s/%s"%(base_url,fn)
+        #hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
+        hdf5_file_path= '~/data/SHD/shd_test.h5'
         fileh= tables.open_file(hdf5_file_path, mode='r')
         units= fileh.root.spikes.units
         times= fileh.root.spikes.times
