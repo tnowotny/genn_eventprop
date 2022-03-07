@@ -304,6 +304,43 @@ EVP_neuron_reset_output_SHD= genn_model.create_custom_custom_update_class(
     """
 )
 
+# custom update class for resetting output neurons at trial end for SHD
+# almost like MNIST but annoyingly more classes/ output neurons
+# This version for "sum-based loss function"
+EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_output_SHD_sum",
+    param_names=["V_reset","N_class"],
+    var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
+    update_code= """
+        scalar mexp= 0.0;
+        scalar m= 0.0;
+        if ($(id) < $(N_class)) m= $(new_sum_V);
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x1));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x2));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x4));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x8));
+        m = fmax(m, __shfl_xor_sync(0xFFFFFFFF, m, 0x10));
+        if ($(id) < $(N_class)) {
+             mexp= exp($(new_sum_V) - m);
+             $(exp_V)= mexp;
+        } else $(exp_V)= 0.0;
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
+        $(expsum)= mexp;
+        //printf(\"%g\\n\",$(expsum));
+        $(rev_t)= $(t);
+        $(lambda_V)= 0.0;
+        $(lambda_I)= 0.0;
+        $(V)= $(V_reset);
+        $(sum_V)= $(new_sum_V);
+        $(new_sum_V)= 0.0;
+        $(trial)++;
+    """
+)
+
 #----------------------------------------------------------------------------
 # Neuron models
 #----------------------------------------------------------------------------
@@ -492,7 +529,12 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
         $(rp_ImV)--;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         // contributions from regularisation
-        $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_neurons);
+        // printf("%f\\n",$(lbd_upper)*($(sNSum) - $(nu_upper)));
+    /*if ($(id) == 0 && $(batch) == 0) {
+        printf("sNSum: %e, nu_upper: %e, lbd_upper: %e\\n", $(sNSum), $(nu_upper), $(lbd_upper));
+    printf("%e \\n", -$(lbd_upper)*($(sNSum) - $(nu_upper));
+}*/
+        $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper));
         /* 
         if ($(sNSum) > $(nu_upper)) {
             $(lambda_V) -= $(lbd_upper)/$(N_neurons);
@@ -685,11 +727,11 @@ EVP_LIF_output_MNIST = genn_model.create_custom_neuron_class(
     if (($(trial) > 0) && (abs(back_t - $(max_t)) < 1e-3*DT)) {
         //if (($(id) == 0) && ($(batch) == 0) && ($(trial) < 11)) printf("%d\\n",$(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]);
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += ((1.0-$(exp_V)/$(expsum))/$(tau_m))/$(N_batch);
+            $(lambda_V) += ((1.0-$(exp_V)/$(expsum))/$(tau_m))/$(N_batch)/$(trial_t);
             //printf("%d. up: label= %d, lambda_V(l(i))= %g \\n", ($(trial)-1)*(int)$(N_batch)+$(batch), $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)], $(lambda_V));
         }
         else {
-            $(lambda_V) -= ($(exp_V)/$(expsum)/$(tau_m))/$(N_batch);
+            $(lambda_V) -= ($(exp_V)/$(expsum)/$(tau_m))/$(N_batch)/$(trial_t);
             //printf("%d. down: label= %d, lambda_Vk= %g \\n", ($(trial)-1)*(int)$(N_batch)+$(batch), $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)], $(lambda_V));        
         }
     }    
@@ -706,6 +748,41 @@ EVP_LIF_output_MNIST = genn_model.create_custom_neuron_class(
     reset_code="",
     is_auto_refractory_required=False
 )
+
+# LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
+# by dlV/dV (this is for a "sum-based loss function"
+EVP_LIF_output_MNIST_sum = genn_model.create_custom_neuron_class(
+    "EVP_LIF_output_MINST_sum",
+    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("sum_V","scalar"),("new_sum_V","scalar"),
+                    ("expsum","scalar"),("exp_V","scalar"),
+                    ("trial","int")],
+    extra_global_params=[("label","int*")], 
+    sim_code="""
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
+    if ($(trial) > 0) {
+        if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
+            $(lambda_V) += (1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+        }
+        else {
+            $(lambda_V) -= $(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+        }
+    }
+    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
+    // forward pass
+    // update the maximum voltage
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    $(new_sum_V)+= $(V)/$(trial_t)*DT; // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    """,
+    threshold_condition_code="",
+    reset_code="",
+    is_auto_refractory_required=False
+)
+
 
 # synapses
 EVP_synapse= genn_model.create_custom_weight_update_class(

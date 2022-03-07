@@ -75,6 +75,7 @@ p["REC_NEURONS"] = []
 p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
+p["LOSS_TYPE"]= "MAX"
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -314,14 +315,19 @@ class mnist_model:
                                 "lambda_V": 0.0,
                                 "lambda_I": 0.0,
                                 "rev_t": 0.0,
-                                "max_V": p["V_RESET"],
-                                "new_max_V": p["V_RESET"],
-                                "max_t": 0.0,
-                                "new_max_t": 0.0, 
                                 "expsum": 1.0,
                                 "exp_V": 1.0,     
                                 "trial": 0,
         }
+        if p["LOSS_TYPE"] == "MAX":
+            self.output_init_vars["max_V"]= p["V_RESET"]
+            self.output_init_vars["new_max_V"]= p["V_RESET"]
+            self.output_init_vars["max_t"]= 0.0
+            self.output_init_vars["new_max_t"]= 0.0
+        if p["LOSS_TYPE"] == "SUM":
+            self.output_init_vars["sum_V"]= 0.0
+            self.output_init_vars["new_sum_V"]= 0.0
+
         # ----------------------------------------------------------------------------
         # Synapse initialisation
         # ----------------------------------------------------------------------------
@@ -374,9 +380,12 @@ class mnist_model:
         self.hidden.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
         if p["REG_TYPE"] == "Thomas1":
             self.hidden.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
-        
-        self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST, output_params, self.output_init_vars)
 
+        if p["LOSS_TYPE"] == "MAX":
+            self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST, output_params, self.output_init_vars)
+        if p["LOSS_TYPE"] == "SUM":
+            self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST_sum, output_params, self.output_init_vars)
+            
         self.output.set_extra_global_param("label", np.zeros(self.data_full_length,dtype=np.float32)) # reserve space for labels
 
         input_var_refs= {"rp_ImV": genn_model.create_var_ref(self.input, "rp_ImV"),
@@ -433,11 +442,7 @@ class mnist_model:
         output_reset_params= {"V_reset": p["V_RESET"],
                               "N_class": self.N_class
         }
-        output_var_refs= {"max_V": genn_model.create_var_ref(self.output, "max_V"),
-                          "new_max_V": genn_model.create_var_ref(self.output, "new_max_V"),
-                          "max_t": genn_model.create_var_ref(self.output, "max_t"),
-                          "new_max_t": genn_model.create_var_ref(self.output, "new_max_t"),
-                          "V": genn_model.create_var_ref(self.output, "V"),
+        output_var_refs= {"V": genn_model.create_var_ref(self.output, "V"),
                           "lambda_V": genn_model.create_var_ref(self.output, "lambda_V"),
                           "lambda_I": genn_model.create_var_ref(self.output, "lambda_I"),
                           "rev_t": genn_model.create_var_ref(self.output, "rev_t"),
@@ -445,10 +450,22 @@ class mnist_model:
                           "exp_V": genn_model.create_var_ref(self.output, "exp_V"),
                           "trial": genn_model.create_var_ref(self.output, "trial")
         }
+        if p["LOSS_TYPE"] == "MAX":
+            output_var_refs["max_V"]= genn_model.create_var_ref(self.output, "max_V")
+            output_var_refs["new_max_V"]= genn_model.create_var_ref(self.output, "new_max_V")
+            output_var_refs["max_t"]= genn_model.create_var_ref(self.output, "max_t")
+            output_var_refs["new_max_t"]= genn_model.create_var_ref(self.output, "new_max_t")
+        if p["LOSS_TYPE"] == "SUM":
+            output_var_refs["sum_V"]= genn_model.create_var_ref(self.output, "sum_V")
+            output_var_refs["new_sum_V"]= genn_model.create_var_ref(self.output, "new_sum_V")
+               
         if p["DATASET"] == "MNIST":
             self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_MNIST, output_reset_params, {}, output_var_refs)
         if p["DATASET"] == "SHD":
-            self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD, output_reset_params, {}, output_var_refs)
+            if p["LOSS_TYPE"] == "MAX":
+                self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD, output_reset_params, {}, output_var_refs)
+            if p["LOSS_TYPE"] == "SUM":
+                self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD_sum, output_reset_params, {}, output_var_refs)
 
         # synapse populations
         self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
@@ -665,9 +682,9 @@ class mnist_model:
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
                 self.model.custom_update("neuronReset")
-                if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
-                    self.model.custom_update("sNSumReduce")
-                    self.model.custom_update("sNSumApply")
+                #if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
+                    #self.model.custom_update("sNSumReduce")
+                    #self.model.custom_update("sNSumApply")
                 if p["REG_TYPE"] == "Thomas1": 
                     self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
                     #self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)
@@ -678,6 +695,7 @@ class mnist_model:
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V
                 self.output.pull_var_from_device("exp_V")
+                print(self.output.vars["exp_V"].view)
                 pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
                 if p["DEBUG"]:
