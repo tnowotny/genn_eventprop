@@ -43,7 +43,7 @@ p["ETA_REDUCE"]= 0.5
 p["ETA_REDUCE_PERIOD"]= 50
 p["TIMING"]= False
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
-p["LOSS_TYPE"]= "SUM"
+p["LOSS_TYPE"]= "sum"
 p["EVALUATION"]= "speaker"
 
 wd= 4
@@ -58,7 +58,7 @@ for i in range(ht):
         p["INPUT_HIDDEN_STD"]= instrength[j]
         p["NAME"]= "scan_"+str(i*wd+j)
         
-        with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as file:
-            json.dump(p, file)
+        with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as f:
+            json.dump(p, f)
     
 

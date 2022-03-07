@@ -79,7 +79,7 @@ p["REC_NEURONS"] = []
 p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
-p["LOSS_TYPE"]= "MAX"
+p["LOSS_TYPE"]= "max"
 p["EVALUATION"]= "random"
 
 # ----------------------------------------------------------------------------
@@ -376,12 +376,12 @@ class mnist_model:
                                 "exp_V": 1.0,     
                                 "trial": 0,
         }
-        if p["LOSS_TYPE"] == "MAX":
+        if p["LOSS_TYPE"] == "max":
             self.output_init_vars["max_V"]= p["V_RESET"]
             self.output_init_vars["new_max_V"]= p["V_RESET"]
             self.output_init_vars["max_t"]= 0.0
             self.output_init_vars["new_max_t"]= 0.0
-        if p["LOSS_TYPE"] == "SUM":
+        if p["LOSS_TYPE"] == "sum":
             self.output_init_vars["sum_V"]= 0.0
             self.output_init_vars["new_sum_V"]= 0.0
 
@@ -438,9 +438,9 @@ class mnist_model:
         if p["REG_TYPE"] == "Thomas1":
             self.hidden.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
 
-        if p["LOSS_TYPE"] == "MAX":
+        if p["LOSS_TYPE"] == "max":
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST, output_params, self.output_init_vars)
-        if p["LOSS_TYPE"] == "SUM":
+        if p["LOSS_TYPE"] == "sum":
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST_sum, output_params, self.output_init_vars)
             
         self.output.set_extra_global_param("label", np.zeros(self.data_full_length,dtype=np.float32)) # reserve space for labels
@@ -507,21 +507,21 @@ class mnist_model:
                           "exp_V": genn_model.create_var_ref(self.output, "exp_V"),
                           "trial": genn_model.create_var_ref(self.output, "trial")
         }
-        if p["LOSS_TYPE"] == "MAX":
+        if p["LOSS_TYPE"] == "max":
             output_var_refs["max_V"]= genn_model.create_var_ref(self.output, "max_V")
             output_var_refs["new_max_V"]= genn_model.create_var_ref(self.output, "new_max_V")
             output_var_refs["max_t"]= genn_model.create_var_ref(self.output, "max_t")
             output_var_refs["new_max_t"]= genn_model.create_var_ref(self.output, "new_max_t")
-        if p["LOSS_TYPE"] == "SUM":
+        if p["LOSS_TYPE"] == "sum":
             output_var_refs["sum_V"]= genn_model.create_var_ref(self.output, "sum_V")
             output_var_refs["new_sum_V"]= genn_model.create_var_ref(self.output, "new_sum_V")
                
         if p["DATASET"] == "MNIST":
             self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_MNIST, output_reset_params, {}, output_var_refs)
         if p["DATASET"] == "SHD":
-            if p["LOSS_TYPE"] == "MAX":
+            if p["LOSS_TYPE"] == "max":
                 self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD, output_reset_params, {}, output_var_refs)
-            if p["LOSS_TYPE"] == "SUM":
+            if p["LOSS_TYPE"] == "sum":
                 self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD_sum, output_reset_params, {}, output_var_refs)
 
         # synapse populations
