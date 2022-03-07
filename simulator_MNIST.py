@@ -4,9 +4,13 @@ import matplotlib.pyplot as plt
 from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
 import mnist
-import tonic
+#import tonic
 from models import *
 import os
+import urllib.request
+import gzip, shutil
+from tensorflow.keras.utils import get_file
+import tables
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -76,6 +80,7 @@ p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
 p["LOSS_TYPE"]= "MAX"
+p["EVALUATION"]= "random"
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -93,11 +98,20 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
 
 class mnist_model:
     def __init__(self, p):
+        if p["TRAIN_DATA_SEED"] is not None:
+            self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
+        else:
+            self.datarng= np.random.default_rng()        
+        if p["TEST_DATA_SEED"] is not None:
+            self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
+        else:
+            self.tdatarng= np.random.default_rng()        
+
         if p["DATASET"] == "MNIST":
             self.load_data_MNIST(p)
             
         if p["DATASET"] == "SHD":
-            self.load_data_SHD(p)
+            self.load_data_SHD_Zenke(p)
         
     def loss_func(self, Y, p):
         expsum= self.output.vars["expsum"].view
@@ -107,14 +121,6 @@ class mnist_model:
         return loss
     
     def load_data_MNIST(self, p, shuffle= True):
-        if p["TRAIN_DATA_SEED"] is not None:
-            self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
-        else:
-            self.datarng= np.random.default_rng()        
-        if p["TEST_DATA_SEED"] is not None:
-            self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
-        else:
-            self.tdatarng= np.random.default_rng()        
         X = mnist.train_images()
         Y = mnist.train_labels()
         self.data_full_length= 60000
@@ -141,7 +147,8 @@ class mnist_model:
         Y= Y[idx]
         self.Y_test_orig= Y[:p["N_TEST"]]
 
-
+    """
+    For now I will disable this - uses tonic,which might be niver but doesn't give access to speaker info
     def load_data_SHD(self, p, shuffle= True):
         if p["TRAIN_DATA_SEED"] is not None:
             self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
@@ -175,32 +182,6 @@ class mnist_model:
             events, label = dataset[s]
             self.Y_val_orig[i]= label
             self.X_val_orig.append(events)
-        """
-        # start of debug data generation]
-        self.Y_train_orig=[]
-        self.X_train_orig= []
-        s= 0
-        while len(self.Y_train_orig) < p["N_TRAIN"]:
-            events, label = dataset[s]
-            if label == 3 or label == 7:
-                self.Y_train_orig.append(label)
-                self.X_train_orig.append(events)
-            s= s+1
-        self.Y_train_orig= np.array(self.Y_train_orig)
-        print(self.Y_train_orig)
-        self.Y_val_orig=[]
-        self.X_val_orig= []
-        s= len(dataset)-1
-        while len(self.Y_val_orig) < p["N_VALIDATE"]:
-            events, label = dataset[s]
-            if label < 7:
-                self.Y_val_orig.append(label)
-                self.X_val_orig.append(events)
-            s= s-1
-        self.Y_val_orig= np.array(self.Y_val_orig)
-        print(self.Y_val_orig)
-        # end of debug data generation
-        """
         dataset = tonic.datasets.SHD(save_to='./data', train=False)
         self.data_full_length= max(self.data_full_length, len(dataset))
         self.Y_test_orig= np.empty(len(dataset), dtype= int)
@@ -209,7 +190,88 @@ class mnist_model:
             events, label = dataset[i]
             self.Y_test_orig[i]= label
             self.X_test_orig.append(events)
+    """
+
+    def load_data_SHD_Zenke(self, p):
+        cache_dir=os.path.expanduser("~/data")
+        cache_subdir="SHD"
+        print("Using cache dir: %s"%cache_dir)
+        # The remote directory with the data files
+        base_url = "https://zenkelab.org/datasets"
+        # Retrieve MD5 hashes from remote
+        response = urllib.request.urlopen("%s/md5sums.txt"%base_url)
+        data = response.read() 
+        lines = data.decode('utf-8').split("\n")
+        file_hashes = { line.split()[1]:line.split()[0] for line in lines if len(line.split())==2 }
+ 
+        def get_and_gunzip(origin, filename, md5hash=None):
+            gz_file_path = get_file(filename, origin, md5_hash=md5hash, cache_dir=cache_dir, cache_subdir=cache_subdir)
+            hdf5_file_path=gz_file_path[:-3]
+            if not os.path.isfile(hdf5_file_path) or os.path.getctime(gz_file_path) > os.path.getctime(hdf5_file_path):
+                print("Decompressing %s"%gz_file_path)
+                with gzip.open(gz_file_path, 'r') as f_in, open(hdf5_file_path, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            return hdf5_file_path
+        # Download the Spiking Heidelberg Digits (SHD) dataset
+        files = [ "shd_train.h5.gz", 
+                  "shd_test.h5.gz",
+        ]
+        hdf5_file_path= []
+        self.num_input= 700
+        self.num_output= 32   # first power of two greater than class number
+        self.data_full_length= 0
+        fn= files[0]
+        origin= "%s/%s"%(base_url,fn)
+        hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
+        fileh= tables.open_file(hdf5_file_path, mode='r')
+        units= fileh.root.spikes.units
+        times= fileh.root.spikes.times
+        self.Y_train_orig= fileh.root.labels
+        self.Z_train_orig= fileh.root.extra.speaker
+        self.data_full_length= max(self.data_full_length, len(units))
+        self.N_class= len(set(self.Y_train_orig))
+        self.X_train_orig= []
+        for i in range(len(units)):
+            self.X_train_orig.append({"x": units[i], "t": times[i]})
+        self.X_train_orig= np.array(self.X_train_orig)
+
+        fn= files[1]
+        origin= "%s/%s"%(base_url,fn)
+        hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
+        fileh= tables.open_file(hdf5_file_path, mode='r')
+        units= fileh.root.spikes.units
+        times= fileh.root.spikes.times
+        self.Y_test_orig= fileh.root.labels
+        self.Z_test_orig= fileh.root.extra.speaker
+        self.data_full_length= max(self.data_full_length, len(units))
+        self.X_test_orig= []
+        for i in range(len(units)):
+            self.X_test_orig.append({"x": units[i], "t": times[i]})
+        self.X_test_orig= np.array(self.X_test_orig)
         
+    def split_SHD_random(self, X, Y, p, shuffle= True):
+        idx= np.arange(len(X),dtype= int)
+        if (shuffle):
+            self.datarng.shuffle(idx)
+        train_idx= idx[np.arange(p["N_TRAIN"])]
+        eval_idx= idx[np.arange(p["N_VALIDATE"])+(self.data_full_length-p["N_VALIDATE"])]
+        print(train_idx)
+        newX_t= X[train_idx]
+        newX_e= X[eval_idx]
+        newY_t= Y[train_idx]
+        newY_e= Y[eval_idx]
+        print(newX_t[0])
+        return (newX_t, newY_t, newX_e, newY_e)
+
+    # split off one speaker to form evaluation set
+    def split_SHD_speaker(self, X, Y, Z, speaker, p):
+        speaker= np.array(speaker)
+        newX_t= X[Z != speaker]
+        newY_t= Y[Z != speaker]
+        newX_e= X[Z == speaker]
+        newY_e= Y[Z == speaker]
+        return (newX_t, newY_t, newX_e, newY_e)
+    
     def spike_time_from_gray(self,t):
         return (255.0-t)/255.0*(p["TRIAL_MS"]-4*p["DT_MS"])+2*p["DT_MS"]   # make sure spikes are two timesteps within the presentation window
 
@@ -230,14 +292,9 @@ class mnist_model:
         else:
             if Xeval is None:
                 X= Xtrain
-                y= Ytrain
+                Y= Ytrain
             else:
-                if p["DATASET"] == "MNIST":
-                    X= np.append(Xtrain, Xeval, axis= 0)
-                if p["DATASET"] == "SHD":
-                    X= Xtrain
-                    X.extend(Xeval)
-                    
+                X= np.append(Xtrain, Xeval, axis= 0)    
                 Y= np.append(Ytrain, Yeval, axis= 0)
         N= len(Y)
         all_sts= []
@@ -263,7 +320,7 @@ class mnist_model:
                                               minlength=self.num_input))+stidx_offset    
                 assert len(i_end) == self.num_input
                 tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
-                tx /= 1000.0
+                tx *= 1000.0
                 self.max_stim_time= max(self.max_stim_time, np.amax(tx))
             all_sts.append(tx)
             i_start= np.empty(i_end.shape)
@@ -782,8 +839,29 @@ class mnist_model:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
-        return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= self.X_train_orig, labels= self.Y_train_orig, X_t_eval= self.X_val_orig, labels_eval= self.Y_val_orig, resfile= resfile)
-          
+        if p["EVALUATION"] == "random":
+            X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
+        if p["EVALUATION"] == "speaker":
+            X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, 0, p)
+        return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
+
+    def cross_validate(self, p):
+        self.define_model(p, p["SHUFFLE"])
+        if p["BUILD"]:
+            self.model.build()
+        resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
+        speakers= set(self.Z_train_orig)
+        all_res= []
+        for i in speakers:
+            self.define_model(p, p["SHUFFLE"])
+            if p["BUILD"]:
+                self.model.build()
+            self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
+            X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, i, p)
+            res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
+            all_res.append([ res[4], res[5] ])
+        return all_res
+    
     def test(self, p):
         self.define_model(p, False)
         if p["BUILD"]:

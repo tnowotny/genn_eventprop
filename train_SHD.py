@@ -7,7 +7,7 @@ p["TRIAL_MS"]= 1400
 p["DATASET"]= "SHD"
 p["TRAIN_DATA_SEED"]= 372
 p["TEST_DATA_SEED"]= 814
-p["NAME"]= "test24"
+p["NAME"]= "test26"
 p["NUM_HIDDEN"]= 256
 p["N_MAX_SPIKE"]= 1500
 p["DT_MS"]= 1
@@ -17,7 +17,7 @@ p["ADAM_BETA2"]= 0.999
 p["DEBUG"]= False
 p["DEBUG_HIDDEN_N"]= True
 p["LOAD_LAST"]= False
-p["N_EPOCH"]= 500 #200
+p["N_EPOCH"]= 200
 p["N_BATCH"]= 256
 p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
@@ -45,6 +45,7 @@ p["ETA_REDUCE_PERIOD"]= 50
 p["TIMING"]= False
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["LOSS_TYPE"]= "SUM"
+p["EVALUATION"]= "speaker"
 
 if p["DEBUG"]:
     p["REC_SPIKES"]= ["input", "hidden"]

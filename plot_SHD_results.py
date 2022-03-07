@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-res= np.loadtxt("test22_results.txt", dtype= np.float32)
+res= np.loadtxt("test26_results.txt", dtype= np.float32)
 plt.figure(figsize=(20,15))
 plt.subplot(2,1,1)
 plt.plot(1-res[:,1])
