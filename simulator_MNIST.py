@@ -225,7 +225,7 @@ class mnist_model:
         #fn= files[0]
         #origin= "%s/%s"%(base_url,fn)
         #hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
-        hdf5_file_path= '~/data/SHD/shd_train.h5'
+        hdf5_file_path= 'data/SHD/shd_train.h5'
         fileh= tables.open_file(hdf5_file_path, mode='r')
         units= fileh.root.spikes.units
         times= fileh.root.spikes.times
@@ -241,7 +241,7 @@ class mnist_model:
         #fn= files[1]
         #origin= "%s/%s"%(base_url,fn)
         #hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
-        hdf5_file_path= '~/data/SHD/shd_test.h5'
+        hdf5_file_path= 'data/SHD/shd_test.h5'
         fileh= tables.open_file(hdf5_file_path, mode='r')
         units= fileh.root.spikes.units
         times= fileh.root.spikes.times
