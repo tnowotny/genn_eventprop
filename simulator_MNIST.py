@@ -11,7 +11,6 @@ import urllib.request
 import gzip, shutil
 from tensorflow.keras.utils import get_file
 import tables
-from pygenn.genn_wrapper.CUDABackend import DeviceSelect_MANUAL
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -411,6 +410,7 @@ class mnist_model:
         # ----------------------------------------------------------------------------
         kwargs = {}
         if p["CUDA_VISIBLE_DEVICES"]:
+            from pygenn.genn_wrapper.CUDABackend import DeviceSelect_MANUAL
             kwargs["selectGPUByDeviceID"] = True
             kwargs["deviceSelectMethod"] = DeviceSelect_MANUAL
         self.model = genn_model.GeNNModel("float", "eventprop_MNIST", generateLineInfo=True, time_precision="double", **kwargs)
