@@ -1015,6 +1015,74 @@ backwards jumps, we need
 We will use (\ref{eq:lyy1}) and (\ref{eq:lyy2}) to update $\lambda_V$
 at jump points of output neurons.
 
+\section{Derivation of exact solution for $\lambda_V$ and $\lambda_I$
+  within a timestep}
+
+\begin{align}
+  \tau_m \lambda'_V = -\lambda_V \label{eqn:lv1} \\
+  \tau_{\text{syn}} \lambda'_I = - \lambda_I + \lambda_V
+\end{align}
+From equation (\ref{eqn:lv1}) we easily get
+\begin{align}
+  \lambda_V(t+ \Delta t - t') = \lambda_V(t+\Delta t) \exp\left(-\frac{t'}{\tau_m}\right).
+\end{align}
+Then we have
+\begin{align}
+  \lambda'_I = \frac{1}{\tau_{\text{syn}}} \left(-\lambda_I +
+  \lambda_V(t+\Delta t) \exp\left(-\frac{t'}{\tau_m}\right)\right)
+\end{align}
+The solution to the autonomous equation is
+\begin{align}
+  \lambda_I = \tilde{\lambda}_I \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right)
+\end{align}
+and with the usual trick $\tilde{\lambda}_I \rightarrow
+\tilde{\lambda}_I(t)$ we get
+\begin{align}
+  \lambda'_{I} &= \tilde{\lambda}'_I \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) - \frac{1}{\tau_{\text{syn}}} \tilde{\lambda}_I \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) = - \frac{1}{\tau_{\text{syn}}}
+  \lambda_I + \tilde{\lambda}'_I \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right)
+\end{align}
+Hence, we can identify
+\begin{align}
+  \tilde{\lambda}'_I \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) &= \frac{1}{\tau_{\text{syn}}}
+  \lambda_V =
+  \frac{1}{\tau_{\text{syn}}} \lambda_V(t+\Delta t) \exp\left(-\frac{t'}{\tau_m}\right) \\
+ \Rightarrow \quad  \tilde{\lambda}'_I &= \frac{1}{\tau_{\text{syn}}}
+  \lambda_V(t+\Delta t)
+  \exp\left(-\left(\frac{1}{\tau_m}-\frac{1}{\tau_{\text{syn}}}\right)
+  t' \right) \\
+\Rightarrow \quad  \tilde{\lambda}_I &= - \frac{1}{\frac{1}{\tau_m} -
+  \frac{1}{\tau_{\text{syn}}}} \frac{1}{\tau_{\text{syn}}} \lambda_V(t+\Delta t) \exp\left(-\left(\frac{1}{\tau_m}-\frac{1}{\tau_{\text{syn}}}\right)t' \right) +C \\
+  \Rightarrow \quad  \lambda_I &= - \frac{\tau_m}{\tau_{\text{syn}}-\tau_m} \lambda_V(t+\Delta t) \exp\left(-\left(\frac{1}{\tau_m}-\frac{1}{\tau_{\text{syn}}}\right)
+  t' - \frac{t'}{\tau_{\text{syn}}}\right) + C
+  \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) \\
+  &= - \frac{\tau_m}{\tau_{\text{syn}}-\tau_m} \lambda_V(t+\Delta t)
+  \exp\left(-\frac{t'}{\tau_m}\right) + C
+  \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) 
+\end{align}
+At $t' = 0$,
+\begin{align}
+  - \frac{\tau_m}{\tau_{\text{syn}}-\tau_m} \lambda_V(t+\Delta t) + C
+  &= \lambda_I(t+\Delta t) \\
+  \Rightarrow \quad  C &= \lambda_I(t+\Delta t)  +
+  \frac{\tau_m}{\tau_{\text{syn}}-\tau_m} \lambda_V(t+\Delta t)
+\end{align}
+and hence
+\begin{align}
+  \lambda_I = \frac{\tau_m}{\tau_{\text{syn}}-\tau_m}
+  \lambda_V(t+\Delta t)  \left(\exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) - \exp\left(-\frac{t'}{\tau_m}\right)\right) + \lambda_I(t+\Delta t) \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right)
+\end{align}
+And accordingly for $t' = \Delta t$,
+\begin{align}
+  \lambda_V (t) &= \lambda_V(t+\Delta t) \exp\left(-\frac{\Delta
+    t}{\tau_m}\right) \\
+  \lambda_I (t) &= \frac{\tau_m}{\tau_{\text{syn}}-\tau_m}
+  \lambda_V(t+\Delta t)  \left(\exp\left(-\frac{\Delta
+    t}{\tau_{\text{syn}}}\right) - \exp\left(-\frac{\Delta
+    t}{\tau_m}\right)\right) + \lambda_I(t+\Delta t)
+  \exp\left(-\frac{\Delta t}{\tau_{\text{syn}}}\right)
+\end{align}
+
+  
 \section{GeNN Implementation Notes}
 \begin{itemize}
 \item In the normal forward pass we need to save:
