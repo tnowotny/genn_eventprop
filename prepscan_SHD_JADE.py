@@ -45,6 +45,7 @@ p["TIMING"]= False
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["LOSS_TYPE"]= "sum"
 p["EVALUATION"]= "speaker"
+p["CUDA_VISIBLE_DEVICES"]= True
 
 wd= 4
 ht= 4

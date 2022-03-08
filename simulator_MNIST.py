@@ -11,6 +11,7 @@ import urllib.request
 import gzip, shutil
 from tensorflow.keras.utils import get_file
 import tables
+from pygenn.genn_wrapper.CUDABackend import DeviceSelect_MANUAL
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -81,6 +82,7 @@ p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
 p["LOSS_TYPE"]= "max"
 p["EVALUATION"]= "random"
+p["CUDA_VISIBLE_DEVICES"]= False
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -407,7 +409,11 @@ class mnist_model:
         # ----------------------------------------------------------------------------
         # Model description
         # ----------------------------------------------------------------------------
-        self.model = genn_model.GeNNModel("float", "eventprop_MNIST", generateLineInfo=True, time_precision="double")
+        kwargs = {}
+        if p["CUDA_VISIBLE_DEVICES"]:
+            kwargs["selectGPUByDeviceID"] = True
+            kwargs["deviceSelectMethod"] = DeviceSelect_MANUAL
+        self.model = genn_model.GeNNModel("float", "eventprop_MNIST", generateLineInfo=True, time_precision="double", **kwargs)
         self.model.dT = p["DT_MS"]
         self.model.timing_enabled = p["TIMING"]
         self.model.batch_size = p["N_BATCH"]
