@@ -414,7 +414,7 @@ class mnist_model:
             from pygenn.genn_wrapper.CUDABackend import DeviceSelect_MANUAL
             kwargs["selectGPUByDeviceID"] = True
             kwargs["deviceSelectMethod"] = DeviceSelect_MANUAL
-        self.model = genn_model.GeNNModel("float", "eventprop_MNIST", generateLineInfo=True, time_precision="double", **kwargs)
+        self.model = genn_model.GeNNModel("float", p["NAME"], generateLineInfo=True, time_precision="double", **kwargs)
         self.model.dT = p["DT_MS"]
         self.model.timing_enabled = p["TIMING"]
         self.model.batch_size = p["N_BATCH"]
