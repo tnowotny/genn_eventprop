@@ -50,13 +50,12 @@ p["CUDA_VISIBLE_DEVICES"]= True
 wd= 4
 ht= 4
 eta= [ 1e-3, 2e-3, 5e-3, 1e-2 ]
-instrength= [ 0.005, 0.01, 0.02, 0.05 ] 
+lup= [ 1e-15, 1e-14, 1e-13, 1e-12 ] 
 
 for i in range(ht):
     for j in range(wd):
         p["ETA"]= eta[i]
-        p["INPUT_HIDDEN_MEAN"]= instrength[j]
-        p["INPUT_HIDDEN_STD"]= instrength[j]
+        p["LBD_UPPER"]= lup[j]
         p["NAME"]= "scan_"+str(i*wd+j)
         
         with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as f:

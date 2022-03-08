@@ -82,6 +82,7 @@ p["LOAD_LAST"]= False
 p["LOSS_TYPE"]= "max"
 p["EVALUATION"]= "random"
 p["CUDA_VISIBLE_DEVICES"]= False
+p["AVG_SNSUM"]= False
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -495,14 +496,14 @@ class mnist_model:
         if p["REG_TYPE"] == "Thomas1":
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg_global, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"], "N_neurons": p["NUM_HIDDEN"]}, {}, hidden_var_refs)
             self.hidden_reset.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
-        if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
+        if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
             var_refs= {"sNSum": genn_model.create_var_ref(self.hidden, "sNSum")}
             self.hidden_reg_reduce= self.model.add_custom_update("hidden_reg_reduce","sNSumReduce", EVP_reg_reduce, {}, {"reduced_sNSum": 0.0}, var_refs)
             var_refs= {
                 "reduced_sNSum": genn_model.create_var_ref(self.hidden_reg_reduce, "reduced_sNSum"),
                 "sNSum": genn_model.create_var_ref(self.hidden, "sNSum")
             }
-            self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply","sNSumApply", EVP_sNSum_apply, {}, {}, var_refs)
+            self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply","sNSumApply", EVP_sNSum_apply, {"N_batch": p["N_BATCH"]}, {}, var_refs)
         if p["REG_TYPE"] == "none":
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
 
@@ -749,9 +750,9 @@ class mnist_model:
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
                 self.model.custom_update("neuronReset")
-                #if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
-                    #self.model.custom_update("sNSumReduce")
-                    #self.model.custom_update("sNSumApply")
+                if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
+                    self.model.custom_update("sNSumReduce")
+                    self.model.custom_update("sNSumApply")
                 if p["REG_TYPE"] == "Thomas1": 
                     self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
                     #self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)

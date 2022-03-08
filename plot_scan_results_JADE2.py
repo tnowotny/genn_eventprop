@@ -28,6 +28,7 @@ for i in range(ht):
             ax[i,j].set_title("scan_"+str(i)+"_"+str(j))
 print(mn)
 plt.yscale("log")
+fig.savefig(basename+"_accuracy.png")
 
 fig, ax= plt.subplots(1,2,sharey=True)
 for i in range(ht):
@@ -42,6 +43,7 @@ for i in range(ht):
             ax[0].plot(1-d[:,1])
             ax[1].plot(1-d[:,3])
 #plt.yscale("log")
+fig.savefig(basename+"_accuracy_2.png")
 
 final_loss= np.zeros((ht,wd))
 final_loss_e= np.zeros((ht,wd))
@@ -65,6 +67,7 @@ for i in range(ht):
 #plt.yscale("log")
 #plt.ylim([0.01,10])
 print(mn)
+fig.savefig(basename+"_loss.png")
 fig, ax= plt.subplots(ht,wd,sharex= True, sharey= True)
 for i in range(ht):
     for j in range(wd):
@@ -79,6 +82,7 @@ for i in range(ht):
             ax[i,j].plot(d[:,0],d[:,7])
             ax[i,j].plot(d[:,0],d[:,8])
             ax[i,j].set_title("scan_"+str(i)+"_"+str(j))
+fig.savefig(basename+"_activity.png")
 
 print(final_cor)
 print(final_cor_e)
@@ -95,4 +99,3 @@ fig.colorbar(im,ax=ax[1,0])
 im= ax[1,1].imshow(final_loss_e)
 fig.colorbar(im,ax=ax[1,1])
 
-plt.show()
