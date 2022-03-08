@@ -11,6 +11,6 @@ with open(fname,"r") as f:
 mn= mnist_model(p)
 res= mn.cross_validate(p)
 
-with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_summary.json')) as f:
+with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_summary.json'),'w') as f:
     json.dump(res, f)
 
