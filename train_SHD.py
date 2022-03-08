@@ -44,7 +44,7 @@ p["ETA_REDUCE"]= 0.5
 p["ETA_REDUCE_PERIOD"]= 50
 p["TIMING"]= False
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
-p["LOSS_TYPE"]= "SUM"
+p["LOSS_TYPE"]= "sum"
 p["EVALUATION"]= "speaker"
 
 if p["DEBUG"]:
