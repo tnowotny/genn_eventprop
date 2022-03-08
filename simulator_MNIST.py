@@ -777,11 +777,11 @@ class mnist_model:
                 the_loss[phase].append(losses)
                 if p["DEBUG_HIDDEN_N"]:
                     all_hidden_n.append(spike_N_hidden)
-                if (epoch > 0) and (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial > 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
+                if (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial > 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
                     self.in_to_hid.pull_var_from_device("w")
-                    np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
+                    np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
                     self.hid_to_out.pull_var_from_device("w")
-                    np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_e{}_t{}.npy".format(epoch,trial)), self.hid_to_out.vars["w"].view.copy())
+                    np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_e{}_t{}.npy".format(epoch,trial)), self.hid_to_out.vars["w"].view.copy())
 
             if N_train > 0:
                 correct= good["train"]/(N_train*p["N_BATCH"])
@@ -828,14 +828,14 @@ class mnist_model:
         
         if p["WRITE_TO_DISK"]:            # Saving results
             for pop in p["REC_SPIKES"]:
-                np.save(p["OUT_DIR"]+"/"+pop+"_spike_t", spike_t[pop])
-                np.save(p["OUT_DIR"]+"/"+pop+"_spike_ID", spike_ID[pop])
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+pop+"_spike_t"), spike_t[pop])
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+pop+"_spike_ID"), spike_ID[pop])
 
             for pop, var in p["REC_NEURONS"]:
-                np.save(p["OUT_DIR"]+"/"+var+pop, rec_vars_n[var+pop])
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+var+pop), rec_vars_n[var+pop])
 
             for pop, var in p["REC_SYNAPSES"]:
-                np.save(p["OUT_DIR"]+"/"+var+pop, rec_vars_s[var+pop])
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+var+pop), rec_vars_s[var+pop])
 
         self.in_to_hid.pull_var_from_device("w")
         self.hid_to_out.pull_var_from_device("w")
