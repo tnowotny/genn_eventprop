@@ -553,12 +553,7 @@ class mnist_model:
                     "variable": genn_model.create_wu_var_ref(self.hid_to_out, "w")}
         self.hid_to_out_learn= self.model.add_custom_update("hid_to_out_learn","EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs)
         self.hid_to_out.pre_target_var= "revIsyn"
-
         self.optimisers= [self.in_to_hid_learn, self.hid_to_out_learn]
-        #self.optimisers= [self.hid_to_out_learn]
-        # global normalisation of hid to out synapses
-        #var_refs = {"w": genn_model.create_wu_var_ref(self.hid_to_out, "w")}
-        #self.normalize_out=  self.model.add_custom_update("normalize_hid_to_out", "Normalize", normalize_model, {}, {}, var_refs)
         
         # DEBUG hidden layer spike numbers
         if p["DEBUG_HIDDEN_N"]:
@@ -731,15 +726,13 @@ class mnist_model:
                         self.in_to_hid.push_in_syn_to_device()
                         self.hid_to_out.in_syn[:]= 0.0
                         self.hid_to_out.push_in_syn_to_device()
-                
-                if (phase == "train") and ((trial+1)%p["SUPER_BATCH"]) == 0:
+                # do not learn after the 0th trial where lambdas are meaningless
+                if (phase == "train") and trial > 0 and ((trial+1)%p["SUPER_BATCH"]) == 0:
                     update_adam(learning_rate, adam_step, self.optimisers)
                     adam_step += 1
                     self.model.custom_update("EVPReduce")
                     #if trial%2 == 1:
                     self.model.custom_update("EVPLearn")
-                    #self.normalize_out.extra_global_params["expsum"].view[:]= np.mean(self.output.vars["expsum"].view[:][0])
-                    #self.model.custom_update("Normalize")
                 self.in_to_hid.in_syn[:]= 0.0
                 self.in_to_hid.push_in_syn_to_device()
                 self.hid_to_out.in_syn[:]= 0.0
@@ -795,8 +788,11 @@ class mnist_model:
                 print("Hidden spikes: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
             if resfile is not None:
-                resfile.write("{} {} {} {} {} {} {} {} {}\n".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]),
-                                                                    np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
+                resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
+                if p["DEBUG_HIDDEN_N"]:
+                    resfile.write(" {} {} {} {} {}\n".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
+                else:
+                    resfile.write("\n")
                 resfile.flush()
             predict[phase]= np.hstack(predict[phase])
             learning_rate *= p["ETA_DECAY"]
@@ -849,13 +845,16 @@ class mnist_model:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
-        if p["EVALUATION"] == "random":
-            X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
-        if p["EVALUATION"] == "speaker":
-            X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, 0, p)
-        return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
+        if p["DATASET"] == "SHD":
+            if p["EVALUATION"] == "random":
+                X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
+            if p["EVALUATION"] == "speaker":
+                X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, 0, p)
+            return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
+        if p["DATASET"] == "MNIST":
+            return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= self.X_train_orig, labels= self.Y_train_orig, X_t_eval= self.X_val_orig, labels_eval= self.Y_val_orig, resfile= resfile)
 
-    def cross_validate(self, p):
+    def cross_validate_SHD(self, p):
         self.define_model(p, p["SHUFFLE"])
         if p["BUILD"]:
             self.model.build()

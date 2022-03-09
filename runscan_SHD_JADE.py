@@ -9,7 +9,7 @@ with open(fname,"r") as f:
     p= json.load(f)
 
 mn= mnist_model(p)
-res= mn.cross_validate(p)
+res= mn.cross_validate_SHD(p)
 
 with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_summary.json')) as f:
     json.dump(res, f)

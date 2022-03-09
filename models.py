@@ -46,16 +46,6 @@ adam_optimizer_model = genn_model.create_custom_custom_update_class(
     """
 )
 
-normalize_model =genn_model.create_custom_custom_update_class(
-    "normalize_by_expsum",
-    param_names= [],
-    extra_global_params=[("expsum", "scalar")],
-    var_refs=[("w", "scalar")],
-    update_code="""
-    $(w) /= $(expsum);
-    """
-)
-
 """
 This custom update class is for doing the switchover from one input to the next for 
 the input spike sources.
@@ -114,10 +104,12 @@ Note that V_reset should be the correct initial value for V as used to initialis
 EVP_neuron_reset= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset",
     param_names=["V_reset","N_max_spike"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t")],
     update_code= """
         $(rp_ImV)= $(wp_ImV)-1;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        $(fwd_start)= $(new_fwd_start);
+        $(new_fwd_start)= $(rp_ImV);       // this is one to the left of the actual writing start but that avoids trouble for 0 spikes in a trial
         $(rev_t)= $(t);
         $(lambda_V)= 0.0;
         $(lambda_I)= 0.0;
@@ -465,7 +457,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     "EVP_LIF",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
@@ -496,10 +488,16 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     """,
     reset_code="""
     // this is after a forward spike
-    $(t_k)[buf_idx+$(wp_ImV)]= $(t);
-    $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
-    $(wp_ImV)++;
-    if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    if ($(wp_ImV) != $(fwd_start)) {
+        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+        $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+        $(wp_ImV)++;
+        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    } 
+    else {
+        printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        assert(0);
+    }
     $(V)= $(V_reset);
     """,
     is_auto_refractory_required=False
