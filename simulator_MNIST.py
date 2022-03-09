@@ -82,6 +82,7 @@ p["LOAD_LAST"]= False
 p["LOSS_TYPE"]= "max"
 p["EVALUATION"]= "random"
 p["CUDA_VISIBLE_DEVICES"]= False
+p["AVG_SNSUM"]= False
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -413,7 +414,7 @@ class mnist_model:
             from pygenn.genn_wrapper.CUDABackend import DeviceSelect_MANUAL
             kwargs["selectGPUByDeviceID"] = True
             kwargs["deviceSelectMethod"] = DeviceSelect_MANUAL
-        self.model = genn_model.GeNNModel("float", "eventprop_MNIST", generateLineInfo=True, time_precision="double", **kwargs)
+        self.model = genn_model.GeNNModel("float", p["NAME"], generateLineInfo=True, time_precision="double", **kwargs)
         self.model.dT = p["DT_MS"]
         self.model.timing_enabled = p["TIMING"]
         self.model.batch_size = p["N_BATCH"]
@@ -495,14 +496,14 @@ class mnist_model:
         if p["REG_TYPE"] == "Thomas1":
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg_global, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"], "N_neurons": p["NUM_HIDDEN"]}, {}, hidden_var_refs)
             self.hidden_reset.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
-        if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
+        if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
             var_refs= {"sNSum": genn_model.create_var_ref(self.hidden, "sNSum")}
             self.hidden_reg_reduce= self.model.add_custom_update("hidden_reg_reduce","sNSumReduce", EVP_reg_reduce, {}, {"reduced_sNSum": 0.0}, var_refs)
             var_refs= {
                 "reduced_sNSum": genn_model.create_var_ref(self.hidden_reg_reduce, "reduced_sNSum"),
                 "sNSum": genn_model.create_var_ref(self.hidden, "sNSum")
             }
-            self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply","sNSumApply", EVP_sNSum_apply, {}, {}, var_refs)
+            self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply","sNSumApply", EVP_sNSum_apply, {"N_batch": p["N_BATCH"]}, {}, var_refs)
         if p["REG_TYPE"] == "none":
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
 
@@ -742,9 +743,9 @@ class mnist_model:
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
                 self.model.custom_update("neuronReset")
-                #if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
-                    #self.model.custom_update("sNSumReduce")
-                    #self.model.custom_update("sNSumApply")
+                if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
+                    self.model.custom_update("sNSumReduce")
+                    self.model.custom_update("sNSumApply")
                 if p["REG_TYPE"] == "Thomas1": 
                     self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
                     #self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)
@@ -769,11 +770,11 @@ class mnist_model:
                 the_loss[phase].append(losses)
                 if p["DEBUG_HIDDEN_N"]:
                     all_hidden_n.append(spike_N_hidden)
-                if (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
+                if (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial > 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
                     self.in_to_hid.pull_var_from_device("w")
-                    np.save(os.path.join(p["OUT_DIR"], "w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
+                    np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
                     self.hid_to_out.pull_var_from_device("w")
-                    np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_e{}_t{}.npy".format(epoch,trial)), self.hid_to_out.vars["w"].view.copy())
+                    np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_e{}_t{}.npy".format(epoch,trial)), self.hid_to_out.vars["w"].view.copy())
 
             if N_train > 0:
                 correct= good["train"]/(N_train*p["N_BATCH"])
@@ -823,14 +824,14 @@ class mnist_model:
         
         if p["WRITE_TO_DISK"]:            # Saving results
             for pop in p["REC_SPIKES"]:
-                np.save(p["OUT_DIR"]+"/"+pop+"_spike_t", spike_t[pop])
-                np.save(p["OUT_DIR"]+"/"+pop+"_spike_ID", spike_ID[pop])
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+pop+"_spike_t"), spike_t[pop])
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+pop+"_spike_ID"), spike_ID[pop])
 
             for pop, var in p["REC_NEURONS"]:
-                np.save(p["OUT_DIR"]+"/"+var+pop, rec_vars_n[var+pop])
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+var+pop), rec_vars_n[var+pop])
 
             for pop, var in p["REC_SYNAPSES"]:
-                np.save(p["OUT_DIR"]+"/"+var+pop, rec_vars_s[var+pop])
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+var+pop), rec_vars_s[var+pop])
 
         self.in_to_hid.pull_var_from_device("w")
         self.hid_to_out.pull_var_from_device("w")

@@ -184,11 +184,12 @@ EVP_reg_reduce= genn_model.create_custom_custom_update_class(
 # custom update class for reducing regularisation terms across a batch
 EVP_sNSum_apply= genn_model.create_custom_custom_update_class(
     "EVP_sNSum_apply",
+    param_names=["N_batch"],
     var_refs=[
         ("reduced_sNSum", "scalar", VarAccessMode_READ_ONLY),
         ("sNSum", "scalar")],
     update_code="""
-        $(sNSum)= $(reduced_sNSum);
+        $(sNSum)= $(reduced_sNSum)/$(N_batch);
     """
 )
 

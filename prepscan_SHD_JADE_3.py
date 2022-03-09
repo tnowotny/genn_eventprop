@@ -49,8 +49,8 @@ p["CUDA_VISIBLE_DEVICES"]= True
 
 wd= 4
 ht= 4
-eta= [ 1e-3, 2e-3, 5e-3, 1e-2 ]
-lup= [ 1e-15, 1e-14, 1e-13, 1e-12 ] 
+eta= [ 2e-2, 5e-2, 1e-1, 2e-1 ]
+lup= [ 5e-17, 1e-16, 2e-16, 5e-16 ] 
 
 for i in range(ht):
     for j in range(wd):
