@@ -791,7 +791,7 @@ class mnist_model:
             if resfile is not None:
                 resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
                 if p["DEBUG_HIDDEN_N"]:
-                    resfile.write(" {} {} {} {} {}\n".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
+                    resfile.write(" {} {} {} {}\n".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
                 else:
                     resfile.write("\n")
                 resfile.flush()
