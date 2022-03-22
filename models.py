@@ -508,7 +508,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
 # Regularisation: each neuron towards a desired spike number; parameters lbd_upper/ nu_upper; uses sNSum
 EVP_LIF_reg = genn_model.create_custom_neuron_class(
     "EVP_LIF",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","lbd_upper","nu_upper"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
@@ -533,7 +533,7 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
         printf("sNSum: %e, nu_upper: %e, lbd_upper: %e\\n", $(sNSum), $(nu_upper), $(lbd_upper));
     printf("%e \\n", -$(lbd_upper)*($(sNSum) - $(nu_upper));
 }*/
-        $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper));
+        $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
         /* 
         if ($(sNSum) > $(nu_upper)) {
             $(lambda_V) -= $(lbd_upper)/$(N_neurons);

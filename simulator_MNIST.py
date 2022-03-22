@@ -270,12 +270,24 @@ class mnist_model:
         return (newX_t, newY_t, newX_e, newY_e)
 
     # split off one speaker to form evaluation set
-    def split_SHD_speaker(self, X, Y, Z, speaker, p):
+    def split_SHD_speaker(self, X, Y, Z, speaker, p, shuffle= True):
         speaker= np.array(speaker)
         newX_t= X[Z != speaker]
         newY_t= Y[Z != speaker]
+        train_idx= np.arange(len(newY_t))
+        if shuffle:
+            self.datarng.shuffle(train_idx)
+        train_idx= train_idx[:p["N_TRAIN"]]
+        newX_t= newX_t[train_idx]
+        newY_t= newY_t[train_idx]
         newX_e= X[Z == speaker]
         newY_e= Y[Z == speaker]
+        eval_idx= np.arange(len(newY_e))
+        if shuffle:
+            self.datarng.shuffle(eval_idx)
+        eval_idx= eval_idx[:p["N_VALIDATE"]]
+        newX_e= newX_e[eval_idx]
+        newY_e= newY_e[eval_idx]
         return (newX_t, newY_t, newX_e, newY_e)
     
     def spike_time_from_gray(self,t):
@@ -356,6 +368,7 @@ class mnist_model:
                         "V_thresh": p["V_THRESH"],
                         "V_reset": p["V_RESET"],
                         "N_neurons": p["NUM_HIDDEN"],
+                        "N_batch": p["N_BATCH"],
                         "N_max_spike": p["N_MAX_SPIKE"],
                         "tau_syn": p["TAU_SYN"],
         }
