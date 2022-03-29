@@ -680,6 +680,7 @@ class mnist_model:
             self.model.custom_update("EVPReduce")  # this zeros dw (so as to ignore eval gradients from last epoch!
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= []
+                all_sNSum= []
             for trial in range(N_trial):
                 trial_end= (trial+1)*p["TRIAL_MS"]
                 # assign the input spike train and corresponding labels
@@ -783,6 +784,8 @@ class mnist_model:
                 the_loss[phase].append(losses)
                 if p["DEBUG_HIDDEN_N"]:
                     all_hidden_n.append(spike_N_hidden)
+                    self.hidden.pull_var_from_device('sNSum')
+                    all_sNSum.append(self.hidden.vars['sNSum'].view.copy())
                 if (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial > 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
                     self.in_to_hid.pull_var_from_device("w")
                     np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
@@ -799,12 +802,15 @@ class mnist_model:
                 correct_eval= 0
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= np.hstack(all_hidden_n)
-                print("Hidden spikes: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
+                all_sNSum= np.hstack(all_sNSum)
+                print("Hidden spikes in batch across neurons: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
+                print("Hidden spikes per neuron across batches: {} +/- {}, min {}, max {}".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum)))
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
             if resfile is not None:
                 resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
                 if p["DEBUG_HIDDEN_N"]:
-                    resfile.write(" {} {} {} {}\n".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
+                    resfile.write(" {} {} {} {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
+                    resfile.write(" {} {} {} {}\n".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum)))
                 else:
                     resfile.write("\n")
                 resfile.flush()
