@@ -23,4 +23,4 @@
 
 # run the application
 . ~/test2/bin/activate
-python runscan_SHD_JADE_3.py scan3/scan3_${SLURM_ARRAY_TASK_ID}.json
+python runscan_SHD_JADE.py scan3/scan3_${SLURM_ARRAY_TASK_ID}.json

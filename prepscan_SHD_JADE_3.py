@@ -2,7 +2,7 @@ from simulator_MNIST import p
 import os
 import json
 
-p["OUT_DIR"]= "scan1/"
+p["OUT_DIR"]= "scan3/"
 p["TRIAL_MS"]= 1400
 p["DATASET"]= "SHD"
 p["TRAIN_DATA_SEED"]= 372
@@ -56,7 +56,7 @@ for i in range(ht):
     for j in range(wd):
         p["ETA"]= eta[i]
         p["LBD_UPPER"]= lup[j]
-        p["NAME"]= "scan_"+str(i*wd+j)
+        p["NAME"]= "scan3_"+str(i*wd+j)
         
         with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as f:
             json.dump(p, f)

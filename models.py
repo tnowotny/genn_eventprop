@@ -601,7 +601,7 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
             $(lambda_V) -= $(glb_upper)/$(N_neurons)/$(N_batch);
         }
         if ($(sNSum) < $(nu_lower)) {
-            $(lambda_V) += 5*$(lbd_lower)*pow($(nu_lower) - $(sNSum),4)/$(N_neurons)/$(N_batch);
+            $(lambda_V) += 2*$(lbd_lower)*($(nu_lower) - $(sNSum))/$(N_neurons)/$(N_batch);
         }
         $(back_spike)= 0;
     }   
