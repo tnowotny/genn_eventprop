@@ -577,7 +577,7 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
 # Regularisation almost a la Zenke with exponent L=1 (but individual neuron activity averaged over batch before comparing to lower threshold); parameters rho_upper/ glb_upper, nu_lower/lbd_lower; uses sNSum and sNSum_all
 EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_Thomas1",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","tau_syn","lbd_lower","nu_lower","rho_upper","glb_upper"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","tau_syn","lbd_lower","nu_lower","lbd_upper","nu_upper","rho_upper","glb_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
@@ -599,6 +599,9 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
         // contributions from regularisation
         if ($(sNSum_all)[$(batch)] > $(rho_upper)) {
             $(lambda_V) -= $(glb_upper)/$(N_neurons)/$(N_batch);
+        }
+        if ($(sNSum) > $(nu_upper)) {
+            $(lambda_V) += 2*$(lbd_upper)*($(nu_upper) - $(sNSum))/$(N_neurons)/$(N_batch);
         }
         if ($(sNSum) < $(nu_lower)) {
             $(lambda_V) += 2*$(lbd_lower)*($(nu_lower) - $(sNSum))/$(N_neurons)/$(N_batch);

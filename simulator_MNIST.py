@@ -449,6 +449,8 @@ class mnist_model:
         if p["REG_TYPE"] == "Thomas1":
             hidden_params["lbd_lower"]= p["LBD_LOWER"]
             hidden_params["nu_lower"]= p["NU_LOWER"]
+            hidden_params["lbd_upper"]= p["LBD_UPPER"]
+            hidden_params["nu_upper"]= p["NU_UPPER"]
             hidden_params["rho_upper"]= p["RHO_UPPER"]
             hidden_params["glb_upper"]= p["GLB_UPPER"]
             hidden_params["N_batch"]= p["N_BATCH"]
