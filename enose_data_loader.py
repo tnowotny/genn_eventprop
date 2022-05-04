@@ -53,7 +53,12 @@ for label, cycles in all_events_test.items():
         
         y_test.append(labels2num[label])
         X_test.append(sample)
-        
+
+y_train = np.array(y_train)
+X_train = np.array(X_train)
+y_test = np.array(y_test)
+X_test = np.array(X_test)
+
 print(len(y_train))
 print(len(X_train))        
 print(len(y_test))
