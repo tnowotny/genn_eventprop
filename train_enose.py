@@ -4,17 +4,17 @@ import numpy as np
 import json
 
 p["TRIAL_MS"]= 1400
-p["DATASET"]= "SHD"
+p["DATASET"]= "enose"
 p["TRAIN_DATA_SEED"]= 372
 p["TEST_DATA_SEED"]= 814
-p["NAME"]= "test31"
+p["NAME"]= "enose0"
 p["NUM_HIDDEN"]= 256
 p["N_MAX_SPIKE"]= 1500
 p["DT_MS"]= 1
 p["PDROP_INPUT"]= 0.0
 p["ADAM_BETA1"]= 0.9
 p["ADAM_BETA2"]= 0.999   
-p["DEBUG"]= False
+p["DEBUG"]= True
 p["DEBUG_HIDDEN_N"]= True
 p["LOAD_LAST"]= False
 p["N_EPOCH"]= 200
@@ -66,7 +66,7 @@ print("correct: {}".format(correct))
 print("correct_eval: {}".format(correct_eval))
 if p["DEBUG"]:
     plt.figure()
-    plt.scatter(spike_t["input"],700-spike_ID["input"],s=0.5)
+    plt.scatter(spike_t["input"],8-spike_ID["input"],s=0.5)
     plt.figure()
     plt.scatter(spike_t["hidden"],spike_ID["hidden"],s=0.5)
     #tmax= np.max(spike_t["hidden"])

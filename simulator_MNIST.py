@@ -43,6 +43,8 @@ p["W_EPOCH_INTERVAL"] = 10
 # Network structure
 p["NUM_HIDDEN"] = 350
 
+p["RECURRENT"] = False
+
 # Model parameters
 p["TAU_SYN"] = 5.0
 p["TAU_MEM"] = 20.0
@@ -52,6 +54,8 @@ p["INPUT_HIDDEN_MEAN"]= 0.078
 p["INPUT_HIDDEN_STD"]= 0.045
 p["HIDDEN_OUTPUT_MEAN"]= 0.2
 p["HIDDEN_OUTPUT_STD"]= 0.37
+p["HIDDEN_HIDDEN_MEAN"]= 0.2   # only used when recurrent
+p["HIDDEN_HIDDEN_STD"]= 0.37   # only used when recurrent
 p["PDROP_INPUT"] = 0.2
 p["REG_TYPE"]= "none"
 p["LBD_UPPER"]= 0.000005
@@ -114,7 +118,10 @@ class mnist_model:
             
         if p["DATASET"] == "SHD":
             self.load_data_SHD_Zenke(p)
-        
+
+        if p["DATASET"] == "enose":
+            self.load_data_enose(p)
+            
     def loss_func(self, Y, p):
         expsum= self.output.vars["expsum"].view
         exp_V= self.output.vars["exp_V"].view
@@ -150,7 +157,7 @@ class mnist_model:
         self.Y_test_orig= Y[:p["N_TEST"]]
 
     """
-    For now I will disable this - uses tonic,which might be niver but doesn't give access to speaker info
+    For now I will disable this - uses tonic,which might be nicer but doesn't give access to speaker info
     def load_data_SHD(self, p, shuffle= True):
         if p["TRAIN_DATA_SEED"] is not None:
             self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
@@ -199,6 +206,7 @@ class mnist_model:
         cache_subdir="SHD"
         print("Using cache dir: %s"%cache_dir)
         """
+        #(uncomment this if you need to download the data and have internet access; comment when not connected to the public internet)
         # The remote directory with the data files
         base_url = "https://zenkelab.org/datasets"
         # Retrieve MD5 hashes from remote
@@ -220,10 +228,12 @@ class mnist_model:
                   "shd_test.h5.gz",
         ]
         hdf5_file_path= []
+        # (end of download code)
         """
         self.num_input= 700
         self.num_output= 32   # first power of two greater than class number
         self.data_full_length= 0
+        # (use below when freshly downloading data)
         #fn= files[0]
         #origin= "%s/%s"%(base_url,fn)
         #hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
@@ -240,6 +250,7 @@ class mnist_model:
             self.X_train_orig.append({"x": units[i], "t": times[i]})
         self.X_train_orig= np.array(self.X_train_orig)
 
+        # (use below when freshly downloading data)
         #fn= files[1]
         #origin= "%s/%s"%(base_url,fn)
         #hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
@@ -254,7 +265,16 @@ class mnist_model:
         for i in range(len(units)):
             self.X_test_orig.append({"x": units[i], "t": times[i]})
         self.X_test_orig= np.array(self.X_test_orig)
-        
+
+    def load_enose(self,p):
+        self.num_input= 8
+        self.num_output= 32   # first power of two greater than class number
+        self.data_full_length= 0
+        self.X_train_orig=
+        self.Y_train_orig=
+        self.X_test_orig=
+        self.Y_test_orig=
+    
     def split_SHD_random(self, X, Y, p, shuffle= True):
         idx= np.arange(len(X),dtype= int)
         if (shuffle):
@@ -413,6 +433,9 @@ class mnist_model:
         self.hid_to_out_init_vars= {"dw": 0}
         self.hid_to_out_init_vars["w"]= genn_model.init_var("Normal", {"mean": p["HIDDEN_OUTPUT_MEAN"], "sd": p["HIDDEN_OUTPUT_STD"]})
 
+        if p["RECURRENT"]:
+            self.hid_to_hid_init_vars= {"dw": 0}
+            self.hid_to_hid_init_vars["w"]= genn_model.init_var("Normal", {"mean": p["HIDDEN_HIDDEN_MEAN"], "sd": p["HIDDEN_HIDDEN_STD"]})
         # ----------------------------------------------------------------------------
         # Optimiser initialisation
         # ----------------------------------------------------------------------------
@@ -552,25 +575,40 @@ class mnist_model:
 
         # synapse populations
         self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
-                                                {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}
-        )
+                                                          {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+        
         self.hid_to_out= self.model.add_synapse_population("hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden, self.output, EVP_synapse,
-                                                 {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}
-        )        
+                                                           {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+        
+        if p["RECURRENT"]:
+            self.hid_to_hid= self.model.add_synapse_population("hid_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden, self.hidden, EVP_synapse,
+                                                               {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+
+        self.optimisers= []
         var_refs = {"dw": genn_model.create_wu_var_ref(self.in_to_hid, "dw")}
         self.in_to_hid_reduce= self.model.add_custom_update("in_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
         var_refs = {"gradient": genn_model.create_wu_var_ref(self.in_to_hid_reduce, "reduced_dw"),
                     "variable": genn_model.create_wu_var_ref(self.in_to_hid, "w")}
         self.in_to_hid_learn= self.model.add_custom_update("in_to_hid_learn","EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs)
-
+        self.optimisers.append(self.in_to_hid_learn)
+        
         var_refs = {"dw": genn_model.create_wu_var_ref(self.hid_to_out, "dw")}
         self.hid_to_out_reduce= self.model.add_custom_update("hid_to_out_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
         var_refs = {"gradient": genn_model.create_wu_var_ref(self.hid_to_out_reduce, "reduced_dw"),
                     "variable": genn_model.create_wu_var_ref(self.hid_to_out, "w")}
         self.hid_to_out_learn= self.model.add_custom_update("hid_to_out_learn","EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs)
         self.hid_to_out.pre_target_var= "revIsyn"
-        self.optimisers= [self.in_to_hid_learn, self.hid_to_out_learn]
-        
+        self.optimisers.append(self.hid_to_out_learn)
+
+        if p["RECURRENT"]:
+            var_refs = {"dw": genn_model.create_wu_var_ref(self.hid_to_hid, "dw")}
+            self.hid_to_hid_reduce= self.model.add_custom_update("hid_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
+            var_refs = {"gradient": genn_model.create_wu_var_ref(self.hid_to_hid_reduce, "reduced_dw"),
+                        "variable": genn_model.create_wu_var_ref(self.hid_to_hid, "w")}
+            self.hid_to_hid_learn= self.model.add_custom_update("hid_to_hid_learn","EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs)
+            self.hid_to_hid.pre_target_var= "revIsyn"
+            self.optimisers.append(self.hid_to_hid_learn)
+
         # DEBUG hidden layer spike numbers
         if p["DEBUG_HIDDEN_N"]:
             if p["REG_TYPE"] != "Thomas1":
@@ -875,7 +913,13 @@ class mnist_model:
             return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
         if p["DATASET"] == "MNIST":
             return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= self.X_train_orig, labels= self.Y_train_orig, X_t_eval= self.X_val_orig, labels_eval= self.Y_val_orig, resfile= resfile)
-
+        if p["DATASET"] == "enose":
+            X_train= self.X_train_orig
+            Y_train= self.Y_train_orig
+            X_eval= []
+            Y_eval= []
+            return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= self.X_train, labels= self.Y_train, X_t_eval= self.X_eval, labels_eval= self.Y_eval, resfile= resfile)
+        
     def cross_validate_SHD(self, p):
         self.define_model(p, p["SHUFFLE"])
         if p["BUILD"]:
