@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import json
 
-p["TRIAL_MS"]= 1400
+p["TRIAL_MS"]= 100
 p["DATASET"]= "enose"
 p["TRAIN_DATA_SEED"]= 372
 p["TEST_DATA_SEED"]= 814
@@ -17,21 +17,21 @@ p["ADAM_BETA2"]= 0.999
 p["DEBUG"]= True
 p["DEBUG_HIDDEN_N"]= True
 p["LOAD_LAST"]= False
-p["N_EPOCH"]= 200
-p["N_BATCH"]= 256
+p["N_EPOCH"]= 10
+p["N_BATCH"]= 32
 p["SUPER_BATCH"]= 1
-p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
-p["N_VALIDATE"]= 512 # 256 # p["N_BATCH"] 
+p["N_TRAIN"]= 1004 #20*p["N_BATCH"] #7756 
+p["N_VALIDATE"]= 0 # 256 # p["N_BATCH"] 
 p["ETA"]= 5e-3 #5e-3
 p["SHUFFLE"]= True
-p["INPUT_HIDDEN_MEAN"]= 0.02
-p["INPUT_HIDDEN_STD"]= 0.01
+p["INPUT_HIDDEN_MEAN"]= 2.
+p["INPUT_HIDDEN_STD"]= 1.
 p["HIDDEN_OUTPUT_MEAN"]= 0.0
 p["HIDDEN_OUTPUT_STD"]= 0.3
 p["W_REPORT_INTERVAL"] = 11000  # this should be at the end of the epoch (at first trial of evaluation)
 p["TAU_MEM"] = 20.0
 p["TAU_SYN"] = 5.0
-p["REG_TYPE"]= "Thomas1"
+p["REG_TYPE"]= "none"
 p["LBD_UPPER"]= 8e-16 # keep in mind that the term is applied to all contributing spikes ...
 p["LBD_LOWER"]= 1e-5
 p["NU_UPPER"]= 15 #*p["N_BATCH"]
@@ -47,7 +47,7 @@ p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["LOSS_TYPE"]= "sum"
 p["EVALUATION"]= "speaker"
 
-p["RECURRENT"]= True
+p["RECURRENT"]= False
 p["HIDDEN_HIDDEN_MEAN"]= 0.0
 p["HIDDEN_HIDDEN_STD"]= 0.02
 

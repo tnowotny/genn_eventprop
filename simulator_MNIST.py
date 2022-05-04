@@ -11,6 +11,7 @@ import urllib.request
 import gzip, shutil
 from tensorflow.keras.utils import get_file
 import tables
+from enose_data_loader import enose_data_load
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -266,14 +267,12 @@ class mnist_model:
             self.X_test_orig.append({"x": units[i], "t": times[i]})
         self.X_test_orig= np.array(self.X_test_orig)
 
-    def load_enose(self,p):
+    def load_data_enose(self,p):
         self.num_input= 8
-        self.num_output= 32   # first power of two greater than class number
-        self.data_full_length= 0
-        self.X_train_orig=
-        self.Y_train_orig=
-        self.X_test_orig=
-        self.Y_test_orig=
+        self.num_output= 8   # first power of two greater than class number
+        self.N_class= 5
+        self.X_train_orig, self.Y_train_orig, self.X_test_orig, self.Y_test_orig= enose_data_load()
+        self.data_full_length= len(self.Y_train_orig)
     
     def split_SHD_random(self, X, Y, p, shuffle= True):
         idx= np.arange(len(X),dtype= int)
@@ -351,7 +350,7 @@ class mnist_model:
                 self.max_stim_time= max(self.max_stim_time, np.amax(tx))
                 #tx= self.spike_time_from_gray2(tx)
                 i_end= np.cumsum(ix)+stidx_offset
-            if p["DATASET"] == "SHD":
+            if p["DATASET"] == "SHD" or p["DATASET"] == "enose":
                 events= X[i]
                 spike_event_ids = events["x"]
                 i_end = np.cumsum(np.bincount(spike_event_ids.astype(int), 
@@ -388,7 +387,6 @@ class mnist_model:
                         "V_thresh": p["V_THRESH"],
                         "V_reset": p["V_RESET"],
                         "N_neurons": p["NUM_HIDDEN"],
-                        "N_batch": p["N_BATCH"],
                         "N_max_spike": p["N_MAX_SPIKE"],
                         "tau_syn": p["TAU_SYN"],
         }
@@ -464,12 +462,14 @@ class mnist_model:
         self.input.set_extra_global_param("spikeTimes", np.zeros(200000000,dtype=np.float32)) # reserve enough space for any set of input spikes that is likely
 
         if p["REG_TYPE"] == "simple":
+            hidden_params["N_batch"]= p["N_BATCH"]
             hidden_params["lbd_upper"]= p["LBD_UPPER"]
             hidden_params["nu_upper"]= p["NU_UPPER"]
             self.hidden_init_vars["sNSum"]= 0.0
             self.hidden_init_vars["new_sNSum"]= 0.0
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars) 
         if p["REG_TYPE"] == "Thomas1":
+            hidden_params["N_batch"]= p["N_BATCH"]
             hidden_params["lbd_lower"]= p["LBD_LOWER"]
             hidden_params["nu_lower"]= p["NU_LOWER"]
             hidden_params["lbd_upper"]= p["LBD_UPPER"]
@@ -918,7 +918,7 @@ class mnist_model:
             Y_train= self.Y_train_orig
             X_eval= []
             Y_eval= []
-            return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= self.X_train, labels= self.Y_train, X_t_eval= self.X_eval, labels_eval= self.Y_eval, resfile= resfile)
+            return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
         
     def cross_validate_SHD(self, p):
         self.define_model(p, p["SHUFFLE"])
