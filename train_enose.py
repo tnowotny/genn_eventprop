@@ -14,18 +14,18 @@ p["DT_MS"]= 1
 p["PDROP_INPUT"]= 0.0
 p["ADAM_BETA1"]= 0.9
 p["ADAM_BETA2"]= 0.999   
-p["DEBUG"]= True
-p["DEBUG_HIDDEN_N"]= True
+p["DEBUG"]= False
+p["DEBUG_HIDDEN_N"]= False
 p["LOAD_LAST"]= False
-p["N_EPOCH"]= 10
+p["N_EPOCH"]= 500
 p["N_BATCH"]= 32
 p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 1004 #20*p["N_BATCH"] #7756 
 p["N_VALIDATE"]= 0 # 256 # p["N_BATCH"] 
 p["ETA"]= 5e-3 #5e-3
 p["SHUFFLE"]= True
-p["INPUT_HIDDEN_MEAN"]= 2.
-p["INPUT_HIDDEN_STD"]= 1.
+p["INPUT_HIDDEN_MEAN"]= 0.4
+p["INPUT_HIDDEN_STD"]= 0.2
 p["HIDDEN_OUTPUT_MEAN"]= 0.0
 p["HIDDEN_OUTPUT_STD"]= 0.3
 p["W_REPORT_INTERVAL"] = 11000  # this should be at the end of the epoch (at first trial of evaluation)
@@ -45,7 +45,7 @@ p["ETA_REDUCE_PERIOD"]= 50
 p["TIMING"]= False
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["LOSS_TYPE"]= "sum"
-p["EVALUATION"]= "speaker"
+p["EVALUATION"]= "random"
 
 p["RECURRENT"]= False
 p["HIDDEN_HIDDEN_MEAN"]= 0.0
@@ -53,7 +53,7 @@ p["HIDDEN_HIDDEN_STD"]= 0.02
 
 if p["DEBUG"]:
     p["REC_SPIKES"]= ["input", "hidden"]
-    #p["REC_NEURONS"]= [("output", "V"), ("output", "lambda_V"), ("output", "lambda_I")]
+    p["REC_NEURONS"]= [("output", "V")] #, ("output", "lambda_V"), ("output", "lambda_I")]
     #p["REC_SYNAPSES"]= [("hid_to_out", "w")]
 
 with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as file:
@@ -75,8 +75,8 @@ if p["DEBUG"]:
     #t= np.reshape(t,(1,len(t)))
     #t= np.vstack([ t, t ])
     #plt.plot(t,v, lw=0.1)
-    #plt.figure()
-    #plt.plot(rec_vars_n["Voutput"])
+    plt.figure()
+    plt.plot(rec_vars_n["Voutput"])
     #plt.figure()
     #plt.plot(rec_vars_n["lambda_Voutput"])
     #plt.figure()

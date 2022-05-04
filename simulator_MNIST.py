@@ -357,7 +357,7 @@ class mnist_model:
                                               minlength=self.num_input))+stidx_offset    
                 assert len(i_end) == self.num_input
                 tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
-                tx *= 1000.0
+                #tx *= 1000.0
                 self.max_stim_time= max(self.max_stim_time, np.amax(tx))
             all_sts.append(tx)
             i_start= np.empty(i_end.shape)
@@ -567,7 +567,7 @@ class mnist_model:
                
         if p["DATASET"] == "MNIST":
             self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_MNIST, output_reset_params, {}, output_var_refs)
-        if p["DATASET"] == "SHD":
+        if p["DATASET"] == "SHD" or p["DATASET"] == "enose":
             if p["LOSS_TYPE"] == "max":
                 self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD, output_reset_params, {}, output_var_refs)
             if p["LOSS_TYPE"] == "sum":
@@ -638,7 +638,7 @@ class mnist_model:
             self.hid_to_out.vars["w"].view[mask]= 0
             self.hid_to_out.push_var_to_device("w")
             print("connections zeroed")
-        # set up run 
+        # set up run
         N_trial= 0
         if X_t_orig is not None:
             assert(labels is not None)
@@ -812,6 +812,7 @@ class mnist_model:
                 self.output.pull_var_from_device("exp_V")
                 #print(self.output.vars["exp_V"].view)
                 pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
+                Y= Y.astype(np.int8)
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
                 if p["DEBUG"]:
                     print(pred)
@@ -905,7 +906,7 @@ class mnist_model:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
-        if p["DATASET"] == "SHD":
+        if p["DATASET"] == "SHD" or p["DATASET"] == "enose":
             if p["EVALUATION"] == "random":
                 X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
             if p["EVALUATION"] == "speaker":
