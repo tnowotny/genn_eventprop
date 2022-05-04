@@ -53,9 +53,9 @@ def enose_data_load():
         
             y_test.append(labels2num[label])
             X_test.append(sample)
-    y_train = np.array(y_train)
+    y_train = np.array(y_train).astype(np.int8)
     X_train = np.array(X_train)
-    y_test = np.array(y_test)
+    y_test = np.array(y_test).astype(np.int8)
     X_test = np.array(X_test)
 
     print(len(y_train))
@@ -65,4 +65,5 @@ def enose_data_load():
     return (X_train, y_train, X_test, y_test)
 
 if __name__ == '__main__':
-    enose_data_load()
+    X_train, y_train, X_test, y_test = enose_data_load()
+    print(y_train)
