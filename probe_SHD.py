@@ -6,7 +6,7 @@ p["TRIAL_MS"]= 1400
 p["DATASET"]= "SHD"
 p["TRAIN_DATA_SEED"]= 372
 p["TEST_DATA_SEED"]= 814
-p["NAME"]= "test19"
+p["NAME"]= "test20"
 p["NUM_HIDDEN"]= 256
 p["N_MAX_SPIKE"]= 500
 p["DT_MS"]= 1
@@ -15,11 +15,11 @@ p["ADAM_BETA1"]= 0.999
 p["ADAM_BETA2"]= 0.99999   
 p["DEBUG"]= True
 p["DEBUG_HIDDEN_N"]= True
-p["LOAD_LAST"]= True
+p["LOAD_LAST"]= False
 p["N_EPOCH"]= 1
 p["N_BATCH"]= 128
-p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
-p["N_VALIDATE"]= 256 # 256 # p["N_BATCH"] 
+p["N_TRAIN"]= 2*p["N_BATCH"] #7900 #20*p["N_BATCH"] #7756 
+p["N_VALIDATE"]= 0 # 256 # p["N_BATCH"] 
 p["ETA"]= 0 #1e-2 #5e-3
 p["SHUFFLE"]= True
 p["INPUT_HIDDEN_MEAN"]= 0.018
@@ -56,17 +56,28 @@ if p["DEBUG"]:
     v= np.vstack([ np.zeros((1,len(t))), np.ones((1,len(t)))*p["NUM_HIDDEN"]])
     t= np.reshape(t,(1,len(t)))
     t= np.vstack([ t, t ])
-    print(t)
-    print(v)
-    #plt.plot(t,v, lw=0.1)
-    plt.plot(t.T,v.T, lw=0.1)
+    plt.plot(t,v, lw=1)
     plt.figure()
-    plt.plot(rec_vars_n["Voutput"])
+    plt.plot(rec_vars_n["Voutput"][:,:20])
+    plt.legend(np.arange(20))
+    plt.title("Voutput")
     plt.figure()
-    plt.plot(rec_vars_n["lambda_Voutput"])
+    plt.plot(rec_vars_n["Voutput"][:,20:])
+    plt.legend(np.arange(20)+20)
+    plt.title("Voutput")
     plt.figure()
-    plt.plot(rec_vars_n["lambda_Ioutput"])
-    print(mn.output.extra_global_params["label"].view[0:20*p["N_BATCH"]:p["N_BATCH"]])
+    plt.plot(rec_vars_n["lambda_Voutput"][:,:20])
+    plt.title("lambda_Voutput up to 20")
+    plt.figure()
+    plt.plot(rec_vars_n["lambda_Voutput"][:,20:])
+    plt.title("lambda_Voutput 20 onwards")
+    plt.figure()
+    plt.plot(rec_vars_n["lambda_Ioutput"][:,:20])
+    plt.title("lambda_Voutput up to 20")
+    plt.figure()
+    plt.plot(rec_vars_n["lambda_Ioutput"][:,20:])
+    plt.title("lambda_Voutput 20 onwards")
+    print(mn.output.extra_global_params["label"].view[0:2*p["N_BATCH"]])
     plt.figure()
     h, x= np.histogram(spike_ID["hidden"],p["NUM_HIDDEN"])
     h= np.sort(h)

@@ -160,13 +160,14 @@ class yingyang:
                         "tau_syn": p["TAU_SYN"],
         }
         self.hidden_init_vars= {"V": p["V_RESET"],
-                           "lambda_V": 0.0,
-                           "lambda_I": 0.0,
-                           "rev_t": 0.0,
-                           "rp_ImV": 0,
-                           "wp_ImV": 0,
-                           "back_spike": 0,
-                           "lambda_jump": 0.0,
+                                "lambda_V": 0.0,
+                                "lambda_I": 0.0,
+                                "rev_t": 0.0,
+                                "rp_ImV": p["N_MAX_SPIKE"]-1,
+                                "wp_ImV": 0,
+                                "fwd_start": p["N_MAX_SPIKE"]-1,
+                                "new_fwd_start": p["N_MAX_SPIKE"]-1,
+                                "back_spike": 0,
         }
         output_params= {"tau_m": p["TAU_MEM"],
                         "V_thresh": p["V_THRESH"],
@@ -191,7 +192,6 @@ class yingyang:
                            "new_first_spike_t": -1e5,
                            "expsum": 1.0,
                            "trial": 0,
-                           "lambda_jump": 0.0,
         }
         # ----------------------------------------------------------------------------
         # Synapse initialisation
@@ -248,7 +248,9 @@ class yingyang:
                           "lambda_V": genn_model.create_var_ref(self.hidden, "lambda_V"),
                           "lambda_I": genn_model.create_var_ref(self.hidden, "lambda_I"),
                           "rev_t": genn_model.create_var_ref(self.hidden, "rev_t"),
-                          "back_spike": genn_model.create_var_ref(self.hidden, "back_spike")
+                          "fwd_start": genn_model.create_var_ref(self.hidden, "fwd_start"),
+                          "new_fwd_start": genn_model.create_var_ref(self.hidden, "new_fwd_start"),
+                          "back_spike": genn_model.create_var_ref(self.hidden, "back_spike"),
         }
         self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
 
