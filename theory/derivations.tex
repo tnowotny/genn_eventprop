@@ -1114,6 +1114,11 @@ Hence we get altogether
 
 As the forward equations are identical for $V$ (i.e. like the $\lambda_I$ equation), the equivalent equation can be used for $V$ in the forward pass.
 
+\scetion(Insight of the day 2022-02-16}
+  Do {\em not} taper the learning rate aggressively (\verb+p["ETA_DECAY"]= 0.95+) while at the same time using an Adam optimizer. Should have known this. Removing the decay, with not too unusual settings otherwise, now reached almost 60\% training correct. Though now some over-fitting has become evident in lower evaluation set scores. This fits the narrative from teh eprop work.
+
+  TODO: Re-investigate different regularisations ...
+
 \section{GeNN Implementation Notes (OUTDATED)}
 \begin{itemize}
 \item In the normal forward pass we need to save:
