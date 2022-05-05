@@ -357,7 +357,8 @@ class mnist_model:
                                               minlength=self.num_input))+stidx_offset    
                 assert len(i_end) == self.num_input
                 tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
-                #tx *= 1000.0
+                if p["DATASET"] == "SHD":
+                    tx *= 1000.0
                 self.max_stim_time= max(self.max_stim_time, np.amax(tx))
             all_sts.append(tx)
             i_start= np.empty(i_end.shape)
@@ -812,7 +813,6 @@ class mnist_model:
                 self.output.pull_var_from_device("exp_V")
                 #print(self.output.vars["exp_V"].view)
                 pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
-                Y= Y.astype(np.int8)
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
                 if p["DEBUG"]:
                     print(pred)
