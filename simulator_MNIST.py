@@ -11,6 +11,7 @@ import urllib.request
 import gzip, shutil
 from tensorflow.keras.utils import get_file
 import tables
+from enose_data_loader import enose_data_load
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -43,6 +44,8 @@ p["W_EPOCH_INTERVAL"] = 10
 # Network structure
 p["NUM_HIDDEN"] = 350
 
+p["RECURRENT"] = False
+
 # Model parameters
 p["TAU_SYN"] = 5.0
 p["TAU_MEM"] = 20.0
@@ -52,6 +55,8 @@ p["INPUT_HIDDEN_MEAN"]= 0.078
 p["INPUT_HIDDEN_STD"]= 0.045
 p["HIDDEN_OUTPUT_MEAN"]= 0.2
 p["HIDDEN_OUTPUT_STD"]= 0.37
+p["HIDDEN_HIDDEN_MEAN"]= 0.2   # only used when recurrent
+p["HIDDEN_HIDDEN_STD"]= 0.37   # only used when recurrent
 p["PDROP_INPUT"] = 0.2
 p["REG_TYPE"]= "none"
 p["LBD_UPPER"]= 0.000005
@@ -114,7 +119,10 @@ class mnist_model:
             
         if p["DATASET"] == "SHD":
             self.load_data_SHD_Zenke(p)
-        
+
+        if p["DATASET"] == "enose":
+            self.load_data_enose(p)
+            
     def loss_func(self, Y, p):
         expsum= self.output.vars["expsum"].view
         exp_V= self.output.vars["exp_V"].view
@@ -150,7 +158,7 @@ class mnist_model:
         self.Y_test_orig= Y[:p["N_TEST"]]
 
     """
-    For now I will disable this - uses tonic,which might be niver but doesn't give access to speaker info
+    For now I will disable this - uses tonic,which might be nicer but doesn't give access to speaker info
     def load_data_SHD(self, p, shuffle= True):
         if p["TRAIN_DATA_SEED"] is not None:
             self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
@@ -199,6 +207,7 @@ class mnist_model:
         cache_subdir="SHD"
         print("Using cache dir: %s"%cache_dir)
         """
+        #(uncomment this if you need to download the data and have internet access; comment when not connected to the public internet)
         # The remote directory with the data files
         base_url = "https://zenkelab.org/datasets"
         # Retrieve MD5 hashes from remote
@@ -220,10 +229,12 @@ class mnist_model:
                   "shd_test.h5.gz",
         ]
         hdf5_file_path= []
+        # (end of download code)
         """
         self.num_input= 700
         self.num_output= 32   # first power of two greater than class number
         self.data_full_length= 0
+        # (use below when freshly downloading data)
         #fn= files[0]
         #origin= "%s/%s"%(base_url,fn)
         #hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
@@ -240,6 +251,7 @@ class mnist_model:
             self.X_train_orig.append({"x": units[i], "t": times[i]})
         self.X_train_orig= np.array(self.X_train_orig)
 
+        # (use below when freshly downloading data)
         #fn= files[1]
         #origin= "%s/%s"%(base_url,fn)
         #hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
@@ -254,7 +266,14 @@ class mnist_model:
         for i in range(len(units)):
             self.X_test_orig.append({"x": units[i], "t": times[i]})
         self.X_test_orig= np.array(self.X_test_orig)
-        
+
+    def load_data_enose(self,p):
+        self.num_input= 8
+        self.num_output= 8   # first power of two greater than class number
+        self.N_class= 5
+        self.X_train_orig, self.Y_train_orig, self.X_test_orig, self.Y_test_orig= enose_data_load()
+        self.data_full_length= len(self.Y_train_orig)
+    
     def split_SHD_random(self, X, Y, p, shuffle= True):
         idx= np.arange(len(X),dtype= int)
         if (shuffle):
@@ -331,14 +350,15 @@ class mnist_model:
                 self.max_stim_time= max(self.max_stim_time, np.amax(tx))
                 #tx= self.spike_time_from_gray2(tx)
                 i_end= np.cumsum(ix)+stidx_offset
-            if p["DATASET"] == "SHD":
+            if p["DATASET"] == "SHD" or p["DATASET"] == "enose":
                 events= X[i]
                 spike_event_ids = events["x"]
                 i_end = np.cumsum(np.bincount(spike_event_ids.astype(int), 
                                               minlength=self.num_input))+stidx_offset    
                 assert len(i_end) == self.num_input
                 tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
-                tx *= 1000.0
+                if p["DATASET"] == "SHD":
+                    tx *= 1000.0
                 self.max_stim_time= max(self.max_stim_time, np.amax(tx))
             all_sts.append(tx)
             i_start= np.empty(i_end.shape)
@@ -368,7 +388,6 @@ class mnist_model:
                         "V_thresh": p["V_THRESH"],
                         "V_reset": p["V_RESET"],
                         "N_neurons": p["NUM_HIDDEN"],
-                        "N_batch": p["N_BATCH"],
                         "N_max_spike": p["N_MAX_SPIKE"],
                         "tau_syn": p["TAU_SYN"],
         }
@@ -413,6 +432,9 @@ class mnist_model:
         self.hid_to_out_init_vars= {"dw": 0}
         self.hid_to_out_init_vars["w"]= genn_model.init_var("Normal", {"mean": p["HIDDEN_OUTPUT_MEAN"], "sd": p["HIDDEN_OUTPUT_STD"]})
 
+        if p["RECURRENT"]:
+            self.hid_to_hid_init_vars= {"dw": 0}
+            self.hid_to_hid_init_vars["w"]= genn_model.init_var("Normal", {"mean": p["HIDDEN_HIDDEN_MEAN"], "sd": p["HIDDEN_HIDDEN_STD"]})
         # ----------------------------------------------------------------------------
         # Optimiser initialisation
         # ----------------------------------------------------------------------------
@@ -441,12 +463,14 @@ class mnist_model:
         self.input.set_extra_global_param("spikeTimes", np.zeros(200000000,dtype=np.float32)) # reserve enough space for any set of input spikes that is likely
 
         if p["REG_TYPE"] == "simple":
+            hidden_params["N_batch"]= p["N_BATCH"]
             hidden_params["lbd_upper"]= p["LBD_UPPER"]
             hidden_params["nu_upper"]= p["NU_UPPER"]
             self.hidden_init_vars["sNSum"]= 0.0
             self.hidden_init_vars["new_sNSum"]= 0.0
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars) 
         if p["REG_TYPE"] == "Thomas1":
+            hidden_params["N_batch"]= p["N_BATCH"]
             hidden_params["lbd_lower"]= p["LBD_LOWER"]
             hidden_params["nu_lower"]= p["NU_LOWER"]
             hidden_params["lbd_upper"]= p["LBD_UPPER"]
@@ -544,7 +568,7 @@ class mnist_model:
                
         if p["DATASET"] == "MNIST":
             self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_MNIST, output_reset_params, {}, output_var_refs)
-        if p["DATASET"] == "SHD":
+        if p["DATASET"] == "SHD" or p["DATASET"] == "enose":
             if p["LOSS_TYPE"] == "max":
                 self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD, output_reset_params, {}, output_var_refs)
             if p["LOSS_TYPE"] == "sum":
@@ -552,25 +576,40 @@ class mnist_model:
 
         # synapse populations
         self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
-                                                {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}
-        )
+                                                          {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+        
         self.hid_to_out= self.model.add_synapse_population("hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden, self.output, EVP_synapse,
-                                                 {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}
-        )        
+                                                           {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+        
+        if p["RECURRENT"]:
+            self.hid_to_hid= self.model.add_synapse_population("hid_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden, self.hidden, EVP_synapse,
+                                                               {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+
+        self.optimisers= []
         var_refs = {"dw": genn_model.create_wu_var_ref(self.in_to_hid, "dw")}
         self.in_to_hid_reduce= self.model.add_custom_update("in_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
         var_refs = {"gradient": genn_model.create_wu_var_ref(self.in_to_hid_reduce, "reduced_dw"),
                     "variable": genn_model.create_wu_var_ref(self.in_to_hid, "w")}
         self.in_to_hid_learn= self.model.add_custom_update("in_to_hid_learn","EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs)
-
+        self.optimisers.append(self.in_to_hid_learn)
+        
         var_refs = {"dw": genn_model.create_wu_var_ref(self.hid_to_out, "dw")}
         self.hid_to_out_reduce= self.model.add_custom_update("hid_to_out_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
         var_refs = {"gradient": genn_model.create_wu_var_ref(self.hid_to_out_reduce, "reduced_dw"),
                     "variable": genn_model.create_wu_var_ref(self.hid_to_out, "w")}
         self.hid_to_out_learn= self.model.add_custom_update("hid_to_out_learn","EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs)
         self.hid_to_out.pre_target_var= "revIsyn"
-        self.optimisers= [self.in_to_hid_learn, self.hid_to_out_learn]
-        
+        self.optimisers.append(self.hid_to_out_learn)
+
+        if p["RECURRENT"]:
+            var_refs = {"dw": genn_model.create_wu_var_ref(self.hid_to_hid, "dw")}
+            self.hid_to_hid_reduce= self.model.add_custom_update("hid_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
+            var_refs = {"gradient": genn_model.create_wu_var_ref(self.hid_to_hid_reduce, "reduced_dw"),
+                        "variable": genn_model.create_wu_var_ref(self.hid_to_hid, "w")}
+            self.hid_to_hid_learn= self.model.add_custom_update("hid_to_hid_learn","EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs)
+            self.hid_to_hid.pre_target_var= "revIsyn"
+            self.optimisers.append(self.hid_to_hid_learn)
+
         # DEBUG hidden layer spike numbers
         if p["DEBUG_HIDDEN_N"]:
             if p["REG_TYPE"] != "Thomas1":
@@ -600,7 +639,7 @@ class mnist_model:
             self.hid_to_out.vars["w"].view[mask]= 0
             self.hid_to_out.push_var_to_device("w")
             print("connections zeroed")
-        # set up run 
+        # set up run
         N_trial= 0
         if X_t_orig is not None:
             assert(labels is not None)
@@ -867,7 +906,7 @@ class mnist_model:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
-        if p["DATASET"] == "SHD":
+        if p["DATASET"] == "SHD" or p["DATASET"] == "enose":
             if p["EVALUATION"] == "random":
                 X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
             if p["EVALUATION"] == "speaker":
@@ -875,7 +914,13 @@ class mnist_model:
             return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
         if p["DATASET"] == "MNIST":
             return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= self.X_train_orig, labels= self.Y_train_orig, X_t_eval= self.X_val_orig, labels_eval= self.Y_val_orig, resfile= resfile)
-
+        if p["DATASET"] == "enose":
+            X_train= self.X_train_orig
+            Y_train= self.Y_train_orig
+            X_eval= []
+            Y_eval= []
+            return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
+        
     def cross_validate_SHD(self, p):
         self.define_model(p, p["SHUFFLE"])
         if p["BUILD"]:
