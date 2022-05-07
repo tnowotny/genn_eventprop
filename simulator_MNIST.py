@@ -13,6 +13,7 @@ from tensorflow.keras.utils import get_file
 import tables
 from enose_data_loader import enose_data_load
 
+from src.data_loader import EnoseDataLoader
 # ----------------------------------------------------------------------------
 # Parameters
 # ----------------------------------------------------------------------------
@@ -267,12 +268,13 @@ class mnist_model:
             self.X_test_orig.append({"x": units[i], "t": times[i]})
         self.X_test_orig= np.array(self.X_test_orig)
 
-    def load_data_enose(self,p):
-        self.num_input= 8
-        self.num_output= 8   # first power of two greater than class number
-        self.N_class= 5
-        self.X_train_orig, self.Y_train_orig, self.X_test_orig, self.Y_test_orig= enose_data_load()
-        self.data_full_length= len(self.Y_train_orig)
+    # def load_data_enose(self,p):
+    #     self.num_input= 8
+    #     self.num_output= 8   # first power of two greater than class number
+    #     self.N_class= 5
+    #     self.X_train_orig, self.Y_train_orig, self.X_test_orig, self.Y_test_orig= enose_data_load()
+    #     self.data_full_length= len(self.Y_train_orig)
+    
     
     def split_SHD_random(self, X, Y, p, shuffle= True):
         idx= np.arange(len(X),dtype= int)
@@ -935,6 +937,25 @@ class mnist_model:
             self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
             X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, i, p)
             res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
+            all_res.append([ res[4], res[5] ])
+        return all_res
+    
+    def crossvalidate_enose(self, p):
+        self.define_model(p, p["SHUFFLE"])
+        if p["BUILD"]:
+            self.model.build()
+        resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
+        file_train = p["FILE_TRAIN"]   # -> add in p
+        data_loader = EnoseDataLoader(file_train)
+        folds = data_loader.get_train_val(kfold_cv=p["N_FOLDS"]) # -> add in p
+        
+        all_res = []
+        for fold in folds:
+            X_train, y_train, X_val, y_val = fold
+            X_train, y_train = data_loader.format_genn(X_train, y_train)
+            X_val, y_val = data_loader.format_genn(X_val, y_val)
+            
+            res = self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= y_train, X_t_eval= X_val, labels_eval= y_val, resfile= resfile)
             all_res.append([ res[4], res[5] ])
         return all_res
     
