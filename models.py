@@ -1035,6 +1035,9 @@ EVP_input_synapse_rewire= genn_model.create_custom_weight_update_class(
     sim_code="""
         $(addToInSyn, $(w));
     """,
+    # should be ($(back_spike_pre) || $(rewire_post))
+    # but this is obviously not supported/possible
+    # we need the equivalent of post_learn_code for events!
     event_threshold_condition_code="""
          $(back_spike_pre) 
     """,
