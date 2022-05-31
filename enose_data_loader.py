@@ -5,7 +5,7 @@ import numpy as np
 def enose_data_load():
     ## Enose spikes
     model = "gas_minus_heater"
-    delta = 0.1
+    delta = 0.01
     with open(f"data/events_train_{model}_{str(delta).replace('.', 'p')}.json", 'r', encoding='utf-8-sig') as fp:
         all_events_train = json.load(fp)
     with open(f"data/events_test_{model}_{str(delta).replace('.', 'p')}.json", 'r', encoding='utf-8-sig') as fp:

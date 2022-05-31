@@ -11,9 +11,9 @@ import urllib.request
 import gzip, shutil
 from tensorflow.keras.utils import get_file
 import tables
-from enose_data_loader import enose_data_load
+#from enose_data_loader import enose_data_load
 
-from src.data_loader import EnoseDataLoader
+#from src.data_loader import EnoseDataLoader
 # ----------------------------------------------------------------------------
 # Parameters
 # ----------------------------------------------------------------------------
@@ -431,6 +431,11 @@ class mnist_model:
         self.in_to_hid_init_vars= {"dw": 0}
         self.in_to_hid_init_vars["w"]= genn_model.init_var("Normal", {"mean": p["INPUT_HIDDEN_MEAN"], "sd": p["INPUT_HIDDEN_STD"]})
 
+        if (p["REWIRE"]):
+            self.hidden_init_vars["rewire"]= 1   # NOTE: unintuitively, this will avoid rewiring at t == 0.0
+            self.in_to_hid_init_vars["mean"]= p["INPUT_HIDDEN_MEAN"]
+            self.in_to_hid_init_vars["sd"]= p["INPUT_HIDDEN_STD"]
+
         self.hid_to_out_init_vars= {"dw": 0}
         self.hid_to_out_init_vars["w"]= genn_model.init_var("Normal", {"mean": p["HIDDEN_OUTPUT_MEAN"], "sd": p["HIDDEN_OUTPUT_STD"]})
 
@@ -470,7 +475,11 @@ class mnist_model:
             hidden_params["nu_upper"]= p["NU_UPPER"]
             self.hidden_init_vars["sNSum"]= 0.0
             self.hidden_init_vars["new_sNSum"]= 0.0
-            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars) 
+            if p["REWIRE"]:
+                hidden_model= EVP_LIF_reg_rewire
+            else:
+                hidden_model= EVP_LIF_reg
+            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], hidden_model, hidden_params, self.hidden_init_vars) 
         if p["REG_TYPE"] == "Thomas1":
             hidden_params["N_batch"]= p["N_BATCH"]
             hidden_params["lbd_lower"]= p["LBD_LOWER"]
@@ -482,8 +491,18 @@ class mnist_model:
             hidden_params["N_batch"]= p["N_BATCH"]
             self.hidden_init_vars["sNSum"]= 0.0
             self.hidden_init_vars["new_sNSum"]= 0.0
-            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg_Thomas1, hidden_params, self.hidden_init_vars) 
+            if p["REWIRE"]:
+                hidden_model= EVP_LIF_reg_Thomas1_rewire
+            else:
+                hidden_model= EVP_LIF_reg_Thomas1
+            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], hidden_model, hidden_params, self.hidden_init_vars) 
         if p["REG_TYPE"] == "none":
+            if p["REWIRE"]:
+                self.hidden_init_vars["sNSum"]= 0.0
+                self.hidden_init_vars["new_sNSum"]= 0.0
+                hidden_model= EVP_LIF_rewire
+            else:
+                hidden_model= EVP_LIF
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars) 
         self.hidden.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
         self.hidden.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
@@ -529,13 +548,13 @@ class mnist_model:
                           "new_fwd_start": genn_model.create_var_ref(self.hidden, "new_fwd_start"),
                           "back_spike": genn_model.create_var_ref(self.hidden, "back_spike")
         }
-        if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1":
+        if p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1" or p["rewire"]:
             hidden_var_refs["sNSum"]= genn_model.create_var_ref(self.hidden, "sNSum")
             hidden_var_refs["new_sNSum"]= genn_model.create_var_ref(self.hidden, "new_sNSum")
         if p["REG_TYPE"] == "simple":
-            self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"], "N_neurons": p["NUM_HIDDEN"]}, {}, hidden_var_refs)
+            self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
         if p["REG_TYPE"] == "Thomas1":
-            self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg_global, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"], "N_neurons": p["NUM_HIDDEN"]}, {}, hidden_var_refs)
+            self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg_global, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
             self.hidden_reset.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
         if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
             var_refs= {"sNSum": genn_model.create_var_ref(self.hidden, "sNSum")}
@@ -546,7 +565,11 @@ class mnist_model:
             }
             self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply","sNSumApply", EVP_sNSum_apply, {"N_batch": p["N_BATCH"]}, {}, var_refs)
         if p["REG_TYPE"] == "none":
-            self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
+            if p["rewire"]:
+                reset_type= EVP_neuron_reset_reg
+            else:
+                reset_type= EVP_neuron_reset
+            self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", reset_type, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
 
         output_reset_params= {"V_reset": p["V_RESET"],
                               "N_class": self.N_class
@@ -577,7 +600,11 @@ class mnist_model:
                 self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD_sum, output_reset_params, {}, output_var_refs)
 
         # synapse populations
-        self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
+        if p["REWIRE"]:
+            in_to_hid_synapse_type= EVP_input_synapse_rewire
+        else:
+            in_to_hid_synapse_type= EVP_input_synapse
+        self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, in_to_hid_synapse_type,
                                                           {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
         
         self.hid_to_out= self.model.add_synapse_population("hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden, self.output, EVP_synapse,

@@ -7,7 +7,7 @@ p["TRIAL_MS"]= 1400
 p["DATASET"]= "SHD"
 p["TRAIN_DATA_SEED"]= 372
 p["TEST_DATA_SEED"]= 814
-p["NAME"]= "test31"
+p["NAME"]= "test32"
 p["NUM_HIDDEN"]= 256
 p["N_MAX_SPIKE"]= 1500
 p["DT_MS"]= 1
@@ -47,9 +47,11 @@ p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["LOSS_TYPE"]= "sum"
 p["EVALUATION"]= "speaker"
 
-p["RECURRENT"]= True
+p["RECURRENT"]= False
 p["HIDDEN_HIDDEN_MEAN"]= 0.0
 p["HIDDEN_HIDDEN_STD"]= 0.02
+p["REWIRE"]= True
+
 
 if p["DEBUG"]:
     p["REC_SPIKES"]= ["input", "hidden"]

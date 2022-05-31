@@ -119,9 +119,10 @@ EVP_neuron_reset= genn_model.create_custom_custom_update_class(
 )
 
 # custom update class for resetting neurons at trial end with hidden layer rate normalisation terms
+# also used for neurons w/o regilarisation but rewiring
 EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_reg",
-    param_names=["V_reset","N_max_spike","N_neurons"],
+    param_names=["V_reset","N_max_spike"],
     var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     update_code= """
         $(sNSum)= $(new_sNSum);
@@ -141,7 +142,7 @@ EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
 # custom update class for resetting neurons at trial end with hidden layer rate normalisation terms
 EVP_neuron_reset_reg_global= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_reg_global",
-    param_names=["V_reset","N_max_spike","N_neurons"],
+    param_names=["V_reset","N_max_spike"],
     extra_global_params=[("sNSum_all", "scalar*")],
     var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     update_code= """
@@ -453,6 +454,7 @@ Extra input variables:
 revIsyn - gets the reverse input from postsynaptic neurons
 """
 
+# =============================================================================================================
 # LIF neuron model for internal neurons for both YingYang and MNIST tasks (no dl_p/dt_k cost function term or jumps on max voltage)
 EVP_LIF = genn_model.create_custom_neuron_class(
     "EVP_LIF",
@@ -504,10 +506,69 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+# =============================================================================================================
+# LIF neuron model for internal neurons for both YingYang and MNIST tasks (no dl_p/dt_k cost function term or jumps on max voltage) - with rewiring
+EVP_LIF_rewire = genn_model.create_custom_neuron_class(
+    "EVP_LIF_rewire",
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("SNsum","scalar"),("new_sNSum","scalar"),("rewire","uint8_t")],
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*")],
+    additional_input_vars=[("revIsyn", "scalar", 0.0)],
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
+    if ($(back_spike)) {
+        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+        // decrease read pointer (on ring buffer)
+        $(rp_ImV)--;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        $(back_spike)= 0;
+    }   
+    // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+        $(back_spike)= 1;
+    }
+    // forward pass
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    // rewiring
+    if (!$(rewire) && (abs($(t)-$(rev_t) < 1e-3*DT)) && ($(sNSum) == 0.0))
+        $(rewire)= 1;
+    else
+        $(rewire)= 0;
+    """,
+    threshold_condition_code="""
+    $(V) >= $(V_thresh)
+    """,
+    reset_code="""
+    // this is after a forward spike
+    if ($(wp_ImV) != $(fwd_start)) {
+        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+        $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+        $(wp_ImV)++;
+        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    } 
+    else {
+        printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        assert(0);
+    }
+    $(V)= $(V_reset);
+    $(new_sNSum)+= 1.0;
+    """,
+    is_auto_refractory_required=False
+)
+
+# =============================================================================================================
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
 # Regularisation: each neuron towards a desired spike number; parameters lbd_upper/ nu_upper; uses sNSum
 EVP_LIF_reg = genn_model.create_custom_neuron_class(
-    "EVP_LIF",
+    "EVP_LIF_reg",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
@@ -573,6 +634,83 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+# =============================================================================================================
+# LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
+# Regularisation: each neuron towards a desired spike number; parameters lbd_upper/ nu_upper; uses sNSum
+# Uses rewiring
+EVP_LIF_reg_rewire = genn_model.create_custom_neuron_class(
+    "EVP_LIF_reg_rewire",
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("rewire","uint8_t")],
+    # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*")],
+    additional_input_vars=[("revIsyn", "scalar", 0.0)],
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
+    if ($(back_spike)) {
+        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+        // decrease read pointer (on ring buffer)
+        $(rp_ImV)--;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        // contributions from regularisation
+        // printf("%f\\n",$(lbd_upper)*($(sNSum) - $(nu_upper)));
+    /*if ($(id) == 0 && $(batch) == 0) {
+        printf("sNSum: %e, nu_upper: %e, lbd_upper: %e\\n", $(sNSum), $(nu_upper), $(lbd_upper));
+    printf("%e \\n", -$(lbd_upper)*($(sNSum) - $(nu_upper));
+}*/
+        $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
+        /* 
+        if ($(sNSum) > $(nu_upper)) {
+            $(lambda_V) -= $(lbd_upper)/$(N_neurons);
+        }
+        else {
+            $(lambda_V) += $(lbd_upper)/$(N_neurons);
+        }
+        */
+        $(back_spike)= 0;
+    }   
+    // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+        $(back_spike)= 1;
+    }
+    // forward pass
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    // rewiring
+    if (!$(rewire) && (abs($(t)-$(rev_t) < 1e-3*DT)) && ($(sNSum) == 0.0))
+        $(rewire)= 1;
+    else
+        $(rewire)= 0;
+    """,
+    threshold_condition_code="""
+    $(V) >= $(V_thresh)
+    """,
+    reset_code="""
+    // this is after a forward spike
+    if ($(wp_ImV) != $(fwd_start)) {
+        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+        $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+        $(wp_ImV)++;
+        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    } 
+    else {
+        printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        assert(0);
+    }
+    $(V)= $(V_reset);
+    $(new_sNSum)+= 1.0;
+    """,
+    is_auto_refractory_required=False
+)
+
+# =============================================================================================================
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
 # Regularisation almost a la Zenke with exponent L=1 (but individual neuron activity averaged over batch before comparing to lower threshold); parameters rho_upper/ glb_upper, nu_lower/lbd_lower; uses sNSum and sNSum_all
 EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
@@ -637,6 +775,78 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+# =============================================================================================================
+# LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
+# Regularisation almost a la Zenke with exponent L=1 (but individual neuron activity averaged over batch before comparing to lower threshold); parameters rho_upper/ glb_upper, nu_lower/lbd_lower; uses sNSum and sNSum_all
+# uses rewiring
+EVP_LIF_reg_Thomas1_rewire = genn_model.create_custom_neuron_class(
+    "EVP_LIF_reg_Thomas1_rewire",
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","tau_syn","lbd_lower","nu_lower","lbd_upper","nu_upper","rho_upper","glb_upper"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("rewire","uint8_t")],
+    # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("sNSum_all","scalar*")],
+    additional_input_vars=[("revIsyn", "scalar", 0.0)],
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
+    if ($(back_spike)) {
+        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+        // decrease read pointer (on ring buffer)
+        $(rp_ImV)--;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        // contributions from regularisation
+        if ($(sNSum_all)[$(batch)] > $(rho_upper)) {
+            $(lambda_V) -= $(glb_upper)/$(N_neurons)/$(N_batch);
+        }
+        if ($(sNSum) > $(nu_upper)) {
+            $(lambda_V) += 2*$(lbd_upper)*($(nu_upper) - $(sNSum))/$(N_neurons)/$(N_batch);
+        }
+        if ($(sNSum) < $(nu_lower)) {
+            $(lambda_V) += 2*$(lbd_lower)*($(nu_lower) - $(sNSum))/$(N_neurons)/$(N_batch);
+        }
+        $(back_spike)= 0;
+    }   
+    // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+        $(back_spike)= 1;
+    }
+    // forward pass
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    // rewiring
+    if (!$(rewire) && (abs($(t)-$(rev_t) < 1e-3*DT)) && ($(sNSum) == 0.0))
+        $(rewire)= 1;
+    else
+        $(rewire)= 0;
+    """,
+    threshold_condition_code="""
+    $(V) >= $(V_thresh)
+    """,
+    reset_code="""
+    // this is after a forward spike
+    if ($(wp_ImV) != $(fwd_start)) {
+        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+        $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+        $(wp_ImV)++;
+        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    } 
+    else {
+        printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        assert(0);
+    }
+    $(V)= $(V_reset);
+    $(new_sNSum)+= 1.0;
+    """,
+    is_auto_refractory_required=False
+)
+
+# =============================================================================================================
 # LIF neuron model for output neurons of YingYang task (includes contribution from dl_p/dt_k loss function term at jumps)
 EVP_LIF_output = genn_model.create_custom_neuron_class(
     "EVP_LIF_output",
@@ -709,6 +919,7 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+# =============================================================================================================
 # LIF neuron model for output neurons in the MNIST task - non-spiking and jumps in backward
 # pass at times where the voltage reaches its maximum
 EVP_LIF_output_MNIST = genn_model.create_custom_neuron_class(
@@ -751,6 +962,7 @@ EVP_LIF_output_MNIST = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+# =============================================================================================================
 # LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
 # by dlV/dV (this is for a "sum-based loss function"
 EVP_LIF_output_MNIST_sum = genn_model.create_custom_neuron_class(
@@ -786,6 +998,7 @@ EVP_LIF_output_MNIST_sum = genn_model.create_custom_neuron_class(
 )
 
 
+# =============================================================================================================
 # synapses
 EVP_synapse= genn_model.create_custom_weight_update_class(
     "EVP_synapse",
@@ -794,7 +1007,7 @@ EVP_synapse= genn_model.create_custom_weight_update_class(
         $(addToInSyn, $(w));
     """,
     event_threshold_condition_code="""
-       $(back_spike_pre)
+       ($(back_spike_pre) || $(rewire_pre))
     """,
     event_code="""
         $(addToPre, $(w)*($(lambda_V_post)-$(lambda_I_post)));
@@ -813,6 +1026,26 @@ EVP_input_synapse= genn_model.create_custom_weight_update_class(
     """,
     event_code="""
         $(dw)+= $(lambda_I_post);
+    """,
+)
+
+EVP_input_synapse_rewire= genn_model.create_custom_weight_update_class(
+    "EVP_input_synapse",
+    var_name_types=[("w","scalar", VarAccess_READ_ONLY),("dw","scalar"),("mean","scalar"),("sd","scalar")],
+    sim_code="""
+        $(addToInSyn, $(w));
+    """,
+    event_threshold_condition_code="""
+         $(back_spike_pre) 
+    """,
+    event_code="""
+        if ($(back_spike_pre)) {
+            $(dw)+= $(lambda_I_post);
+        }
+        if ($(rewire_post)) {
+            $(w)= $(mean) + $(gennrand_normal)*$(sd);
+            printf(\"Rewired %d to %d synapse to w == %f\\n\", $(id_pre), $(id_post), $(w));
+        }
     """,
 )
 
