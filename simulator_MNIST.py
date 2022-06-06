@@ -11,9 +11,9 @@ import urllib.request
 import gzip, shutil
 from tensorflow.keras.utils import get_file
 import tables
-from enose_data_loader import enose_data_load
+#from enose_data_loader import enose_data_load
 
-from src.data_loader import EnoseDataLoader
+#from src.data_loader import EnoseDataLoader
 # ----------------------------------------------------------------------------
 # Parameters
 # ----------------------------------------------------------------------------
@@ -94,6 +94,7 @@ p["AVG_SNSUM"]= False
 # Helper functions
 # ----------------------------------------------------------------------------
 
+rng= np.random.default_rng()
 
 def update_adam(learning_rate, adam_step, optimiser_custom_updates):
     first_moment_scale = 1.0 / (1.0 - (p["ADAM_BETA1"] ** adam_step))
@@ -810,6 +811,20 @@ class mnist_model:
                     self.hidden.push_extra_global_param_to_device("sNSum_all")
                     if p["DEBUG_HIDDEN_N"]:
                         spike_N_hidden= self.hidden_reset.extra_global_params["sNSum_all"].view[:].copy()
+                # Apply rewiring rule for silent neurons
+                if p["REWIRE_SILENT"]:
+                    self.hidden.pull_var_from_device("sNSum")
+                    sNSum_sum= np.sum(self.hidden.vars["sNSum"].view[:],axis=0)
+                    silent= sNSum_sum == 0
+                    self.in_to_hid.pull_var_from_device("w")
+                    ith_w= self.in_to_hid.vars["w"].view[:]
+                    ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
+                    n_silent= np.sum(silent)
+                    n_new= self.num_input*n_silent
+                    ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent))
+                    if (n_silent > 0 ):
+                        print(n_silent)
+                    self.in_to_hid.push_var_to_device("w")
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V
                 self.output.pull_var_from_device("exp_V")
@@ -828,7 +843,7 @@ class mnist_model:
                 if p["DEBUG_HIDDEN_N"]:
                     all_hidden_n.append(spike_N_hidden)
                     self.hidden.pull_var_from_device('sNSum')
-                    all_sNSum.append(self.hidden.vars['sNSum'].view.copy())
+                    all_sNSum.append(np.mean(self.hidden.vars['sNSum'].view.copy(),axis= 0))
                 if (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial > 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
                     self.in_to_hid.pull_var_from_device("w")
                     np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
@@ -846,8 +861,8 @@ class mnist_model:
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= np.hstack(all_hidden_n)
                 all_sNSum= np.hstack(all_sNSum)
-                print("Hidden spikes in batch across neurons: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
-                print("Hidden spikes per neuron across batches: {} +/- {}, min {}, max {}".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum)))
+                print("Hidden spikes in model per trial: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
+                print("Hidden spikes per trial per neuron across batches: {} +/- {}, min {}, max {}".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum)))
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
             if resfile is not None:
                 resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))

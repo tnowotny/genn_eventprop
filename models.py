@@ -507,7 +507,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
 # Regularisation: each neuron towards a desired spike number; parameters lbd_upper/ nu_upper; uses sNSum
 EVP_LIF_reg = genn_model.create_custom_neuron_class(
-    "EVP_LIF",
+    "EVP_LIF_reg",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
