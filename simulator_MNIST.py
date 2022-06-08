@@ -819,11 +819,14 @@ class mnist_model:
                     self.in_to_hid.pull_var_from_device("w")
                     ith_w= self.in_to_hid.vars["w"].view[:]
                     ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
+                    old_w= ith_w.copy()
                     n_silent= np.sum(silent)
                     n_new= self.num_input*n_silent
                     ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent))
                     if (n_silent > 0 ):
-                        print(n_silent)
+                        print(np.where(silent))
+                        change= np.linalg.norm(ith_w-old_w,axis=0)
+                        print(np.where(change > 0))
                     self.in_to_hid.push_var_to_device("w")
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V
