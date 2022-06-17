@@ -7,7 +7,7 @@ p["TRIAL_MS"]= 1400
 p["DATASET"]= "SHD"
 p["TRAIN_DATA_SEED"]= 372
 p["TEST_DATA_SEED"]= 814
-p["NAME"]= "test32"
+p["NAME"]= "test34"
 p["NUM_HIDDEN"]= 256
 p["N_MAX_SPIKE"]= 1500
 p["DT_MS"]= 1
@@ -60,10 +60,12 @@ if p["DEBUG"]:
     #p["REC_SYNAPSES"]= [("hid_to_out", "w")]
 
 p["REC_SPIKES"]= ["input","hidden"]
-p["REC_SPIKES_EPOCH_TRIAL"]= [(0,0), (100,0), (799,0)]
+p["REC_SPIKES_EPOCH_TRIAL"]= [(0,0), (100,0), (100,1), (100,2), (100,28), (100,29),
+                              (799,0), (799,1), (799,2), (799,28), (799,29),]
 
 p["REC_NEURONS"]= [("output","V")]
-p["REC_NEURONS_EPOCH_TRIAL"]= [(0,0), (100,0), (799,0)]
+p["REC_NEURONS_EPOCH_TRIAL"]= [(0,0), (100,0), (100,1), (100,2), (100,28), (100,29),
+                              (799,0), (799,1), (799,2), (799,28), (799,29),]
 
 p["W_OUTPUT_EPOCH_TRIAL"]= [(0,0), (100,0), (799,0)]
 

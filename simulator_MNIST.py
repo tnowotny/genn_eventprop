@@ -671,16 +671,21 @@ class mnist_model:
             spike_t[pop]= []
             spike_ID[pop]= []
         rec_spk_lbl= []
+        rec_spk_pred= []
         rec_vars_n= {}
         for pop, var in p["REC_NEURONS"]:
             rec_vars_n[var+pop]= []
+        rec_exp_V= []
+        rec_expsum= []
         rec_n_t= []
         rec_n_lbl= []
+        rec_n_pred= []
         rec_vars_s= {}
         for pop, var in p["REC_SYNAPSES"]:
             rec_vars_s[var+pop]= []
         rec_s_t= []
         rec_s_lbl= []
+        rec_s_pred= []
         # build and assign the input spike train and corresponding labels
         X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_t_orig, labels, X_t_eval, labels_eval)
         self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
@@ -771,7 +776,7 @@ class mnist_model:
                                 x= the_pop.spike_recording_data
                                 if p["N_BATCH"] > 1:
                                     for i in range(p["N_BATCH"]):
-                                        spike_t[pop].append(x[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i-trial)*p["TRIAL_MS"])
+                                        spike_t[pop].append(x[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i-trial)*p["TRIAL_MS"]) # subtracting trial to compensate the progression of model.t by p["TRIAL_MS"] each trial
                                         spike_ID[pop].append(x[i][1])
                                 else:
                                     spike_t[pop].append(x[0]+epoch*N_trial*p["TRIAL_MS"])
@@ -866,17 +871,26 @@ class mnist_model:
                 pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
                 if ((epoch, trial) in p["REC_SPIKES_EPOCH_TRIAL"]):
-                    rec_spk_lbl.append(lbl)
+                    rec_spk_lbl.append(lbl.copy())
+                    rec_spk_pred.append(pred.copy())
                 if ((epoch, trial) in p["REC_NEURONS_EPOCH_TRIAL"]):
-                    rec_n_lbl.append(lbl)
+                    rec_n_lbl.append(lbl.copy())
+                    rec_n_pred.append(pred.copy())
                 if ((epoch, trial) in p["REC_SYNAPSES_EPOCH_TRIAL"]):
-                    rec_s_lbl.append(lbl)
+                    rec_s_lbl.append(lbl.copy())
+                    rec_s_pred.append(pred.copy())
                 if p["DEBUG"]:
                     print(pred)
                     print(lbl)
                     print("---------------------------------------")
                 self.output.pull_var_from_device("expsum")
                 losses= self.loss_func(lbl,p)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+                if ((epoch, trial) in p["REC_NEURONS_EPOCH_TRIAL"]):
+                    print(pred)
+                    print(lbl)
+                    print("---------------------------------------")
+                    rec_exp_V.append(self.output.vars["exp_V"].view.copy())
+                    rec_expsum.append(self.output.vars["expsum"].view.copy())
                 good[phase] += np.sum(pred == lbl)
                 predict[phase].append(pred)
                 the_loss[phase].append(losses)
@@ -931,26 +945,37 @@ class mnist_model:
                 rec_var[var+pop]= np.array(rec_var[var+pop])
                 print(rec_var[var+pop].shape)
             rec_t= np.array(rec_t)
+
+        rec_exp_V= np.array(rec_exp_V)
+        rec_expsum= np.array(rec_expsum)          
         rec_spk_lbl= np.array(rec_spk_lbl)
+        rec_spk_pred= np.array(rec_spk_pred)
         rec_n_lbl= np.array(rec_n_lbl)
+        rec_n_pred= np.array(rec_n_pred)
         rec_s_lbl= np.array(rec_s_lbl)
+        rec_s_pred= np.array(rec_s_pred)
             
         if p["WRITE_TO_DISK"]:            # Saving results
             if len(p["REC_SPIKES"]) > 0:
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_spk_lbl"), rec_spk_lbl)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_spk_pred"), rec_spk_pred)
             for pop in p["REC_SPIKES"]:
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+pop+"_spike_t"), spike_t[pop])
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+pop+"_spike_ID"), spike_ID[pop])
 
             if len(p["REC_NEURONS"]) > 0:
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_exp_V"), rec_exp_V)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_expsum"), rec_expsum)
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_t"), rec_n_t)
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_lbl"), rec_n_lbl)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_pred"), rec_n_pred)
             for pop, var in p["REC_NEURONS"]:
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+var+pop), rec_vars_n[var+pop])
 
             if len(p["REC_SYNAPSES"]) > 0:
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_t"), rec_s_t)
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_s_lbl"), rec_s_lbl)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_s_pred"), rec_s_pred)
             for pop, var in p["REC_SYNAPSES"]:
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+var+pop), rec_vars_s[var+pop])
 
