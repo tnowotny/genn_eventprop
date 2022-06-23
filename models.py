@@ -411,8 +411,8 @@ EVP_SSA_MNIST_SHUFFLE = genn_model.create_custom_neuron_class(
             if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
         }
         else {
-            printf("%f: input: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
-            assert(0);
+            //printf("%f: input: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+            // assert(0);
         }
     """,
     extra_global_params= [("spikeTimes", "scalar*"), ("t_offset","scalar"), ("t_k", "scalar*"),("pDrop", "scalar")],
@@ -496,8 +496,8 @@ EVP_LIF = genn_model.create_custom_neuron_class(
         if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
     } 
     else {
-        printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
-        assert(0);
+        //printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        // assert(0);
     }
     $(V)= $(V_reset);
     """,
@@ -507,7 +507,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
 # Regularisation: each neuron towards a desired spike number; parameters lbd_upper/ nu_upper; uses sNSum
 EVP_LIF_reg = genn_model.create_custom_neuron_class(
-    "EVP_LIF",
+    "EVP_LIF_reg",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
@@ -564,8 +564,8 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
         if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
     } 
     else {
-        printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
-        assert(0);
+        //printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        // assert(0);
     }
     $(V)= $(V_reset);
     $(new_sNSum)+= 1.0;
@@ -628,8 +628,8 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
         if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
     } 
     else {
-        printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
-        assert(0);
+        //printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        // assert(0);
     }
     $(V)= $(V_reset);
     $(new_sNSum)+= 1.0;
@@ -666,7 +666,7 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
         else {
             $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
             //if (back_t - $(first_spike_t) <= -1e-2*DT) printf("back_t: %e, fst: %e",back_t,$(first_spike_t)); 
-            assert(back_t - $(first_spike_t) > -1e-2*DT);
+            // assert(back_t - $(first_spike_t) > -1e-2*DT);
             if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
                 scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
                 if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
