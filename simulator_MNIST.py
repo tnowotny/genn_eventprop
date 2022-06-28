@@ -326,6 +326,9 @@ class mnist_model:
     generate a spikeTimes array and startSpike and endSpike arrays to allow indexing into the 
     spikeTimes in a shuffled way
     """
+    # ISSUE: here we are not rounding to the multiples of batch size!
+    # When data loading, we are doing that for N_trial ...
+    # Needs tidying up!
     def generate_input_spiketimes_shuffle_fast(self, p, Xtrain, Ytrain, Xeval, Yeval):
         # N is the number of training/testing images: always use all images given
         if Xtrain is None:
@@ -1011,9 +1014,6 @@ class mnist_model:
             return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
         
     def cross_validate_SHD(self, p):
-        self.define_model(p, p["SHUFFLE"])
-        if p["BUILD"]:
-            self.model.build()
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         speakers= set(self.Z_train_orig)
         all_res= []
