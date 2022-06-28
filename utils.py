@@ -5,9 +5,19 @@ this is an augmentation for SHD spoken digits
 spiking data is shifted by a random number of neurons along the neuron ID axis
 """
 def random_shift(X,rng,max_shift):
-    for x in X:
-        shift= rng.uniform(-max_shift,max_shift)
-        x["x"]= np.maximum(np.minimum(x["x"]+shift,699),0)
+    for i in range(len(X)):
+        shift= int(rng.uniform(-max_shift,max_shift))
+        X[i]["x"]= X[i]["x"]+shift
+        if shift > 0:
+            idx= X[i]["x"] < 700
+            X[i]["x"]= X[i]["x"][idx]
+            X[i]["t"]= X[i]["t"][idx]
+        else:
+            idx= X[i]["x"] > 0
+            X[i]["x"]= X[i]["x"][idx]
+            X[i]["t"]= X[i]["t"][idx]
+            
+    return X
 
 """
 dilate or compress time
@@ -15,6 +25,10 @@ dilate or compress time
 def random_dilate(X,rng,min_factor,max_factor):
     mn= np.log(min_factor)
     mx= np.log(max_factor)
-    for x in X:
+    for i in range(len(X)):
         fac= np.exp(rng.uniform(mn,mx))
-        x["t"]= np.minimum(x["t"]*fac,1400)
+        X[i]["t"]= X[i]["t"]*fac
+        idx= X[i]["t"] < 1.4
+        X[i]["t"]= X[i]["t"][idx]
+        X[i]["x"]= X[i]["x"][idx]
+    return X

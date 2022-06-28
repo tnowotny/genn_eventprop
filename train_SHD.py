@@ -7,7 +7,7 @@ p["TRIAL_MS"]= 1400
 p["DATASET"]= "SHD"
 p["TRAIN_DATA_SEED"]= 372
 p["TEST_DATA_SEED"]= 814
-p["NAME"]= "test34"
+p["NAME"]= "test35"
 p["NUM_HIDDEN"]= 256
 p["N_MAX_SPIKE"]= 1500
 p["DT_MS"]= 1
@@ -68,6 +68,11 @@ p["REC_NEURONS_EPOCH_TRIAL"]= [(0,0), (100,0), (100,1), (100,2), (100,28), (100,
                               (799,0), (799,1), (799,2), (799,28), (799,29),]
 
 p["W_OUTPUT_EPOCH_TRIAL"]= [(0,0), (100,0), (799,0)]
+
+p["AUGMENTATION"]= {
+    "random_shift": 50.0,
+    "random_dilate": (0.8,1.2)
+    }
 
 with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as file:
     json.dump(p, file)

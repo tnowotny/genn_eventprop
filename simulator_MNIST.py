@@ -12,6 +12,7 @@ import urllib.request
 import gzip, shutil
 from tensorflow.keras.utils import get_file
 import tables
+import copy
 #from enose_data_loader import enose_data_load
 
 #from src.data_loader import EnoseDataLoader
@@ -691,14 +692,15 @@ class mnist_model:
         rec_s_lbl= []
         rec_s_pred= []
 
-        lX= X_t_orig.copy()
-        random_shift(lX,self.datarng,10)
+        """
         for x,y in zip(lX[:10],X_t_orig[:10]):
-            fig,ax = plt.subplots(1,2)
-            ax[0].scatter(x["t"],x["x"])
-            ax[1].scatter(y["t"],y["x"])
+            fig,ax = plt.subplots(1,2,sharex= True, sharey= True)
+            ax[0].scatter(x["t"],x["x"],s=0.2)
+            ax[1].scatter(y["t"],y["x"],s=0.2)
+        plt.show()
         exit(1)
-        # build and assign the input spike train and corresponding labels
+        """
+# build and assign the input spike train and corresponding labels
         X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_t_orig, labels, X_t_eval, labels_eval)
         self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
         self.input.push_extra_global_param_to_device("spikeTimes")
@@ -715,6 +717,22 @@ class mnist_model:
         self.input_set.push_extra_global_param_to_device("allInputID")
         for epoch in range(number_epochs):
 
+            # if we are doing augmentation, the entore spike time array needs to be set up anew.
+            if N_train > 0 and len(p["AUGMENTATION"]) > 0:
+                lX= copy.deepcopy(X_t_orig)
+                for aug in p["AUGMENTATION"]:
+                    if aug == "random_shift":
+                        lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug])
+                    if aug == "random_dilate":
+                        lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1])
+                X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, labels, X_t_eval, labels_eval)
+                self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
+                self.input.push_extra_global_param_to_device("spikeTimes")
+                self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
+                self.input_set.push_extra_global_param_to_device("allStartSpike")
+                self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
+                self.input_set.push_extra_global_param_to_device("allEndSpike")
+            
             if N_train > 0 and shuffle:
                 self.datarng.shuffle(input_id)
                 all_input_id[:len(input_id)]= input_id
