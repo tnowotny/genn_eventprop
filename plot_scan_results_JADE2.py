@@ -5,7 +5,7 @@ import json
 
 basename= sys.argv[1]
 wd= 4
-ht= 4
+ht= 9
 
 fname= basename+"_6.json"
 with open(fname,"r") as f:

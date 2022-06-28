@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
+from utils import random_shift, random_dilate
 import mnist
 #import tonic
 from models import *
@@ -689,6 +690,14 @@ class mnist_model:
         rec_s_t= []
         rec_s_lbl= []
         rec_s_pred= []
+
+        lX= X_t_orig.copy()
+        random_shift(lX,self.datarng,10)
+        for x,y in zip(lX[:10],X_t_orig[:10]):
+            fig,ax = plt.subplots(1,2)
+            ax[0].scatter(x["t"],x["x"])
+            ax[1].scatter(y["t"],y["x"])
+        exit(1)
         # build and assign the input spike train and corresponding labels
         X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_t_orig, labels, X_t_eval, labels_eval)
         self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
