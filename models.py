@@ -512,7 +512,7 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
-    extra_global_params=[("t_k","scalar*"),("ImV","scalar*")],
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
@@ -553,7 +553,7 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
     """,
     threshold_condition_code="""
-    $(V) >= $(V_thresh)
+    ($(V) >= $(V_thresh)) && ($(gennrand_uniform) > $(pDrop))
     """,
     reset_code="""
     // this is after a forward spike

@@ -1,3 +1,4 @@
+
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
@@ -5,7 +6,7 @@ import json
 
 basename= sys.argv[1]
 wd= 4
-ht= 9
+ht= 10
 
 fname= basename+"_6.json"
 with open(fname,"r") as f:
@@ -111,13 +112,13 @@ print(final_loss)
 print(final_loss_e)
 
 fig, ax= plt.subplots(2,2)
-im= ax[0,0].imshow(final_cor,vmin= 0.0, vmax= 1.0)
+im= ax[0,0].imshow(final_cor,interpolation='none',vmin= 0.0, vmax= 1.0)
 fig.colorbar(im,ax=ax[0,0])
-im= ax[0,1].imshow(final_cor_e,vmin= 0.65, vmax= 0.75)
+im= ax[0,1].imshow(final_cor_e,interpolation='none',vmin= 0.65, vmax= 0.8)
 fig.colorbar(im,ax=ax[0,1])
-im= ax[1,0].imshow(final_loss,vmin=0.0,vmax=0.4)
+im= ax[1,0].imshow(final_loss,interpolation='none',vmin=0.0,vmax=0.8)
 fig.colorbar(im,ax=ax[1,0])
-im= ax[1,1].imshow(final_loss_e,vmin=0.0,vmax=2.0)
+im= ax[1,1].imshow(final_loss_e,interpolation='none',vmin=0.0,vmax=2.0)
 fig.colorbar(im,ax=ax[1,1])
 
 plt.show()
