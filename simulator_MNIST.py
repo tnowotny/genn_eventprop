@@ -59,6 +59,7 @@ p["HIDDEN_OUTPUT_STD"]= 0.37
 p["HIDDEN_HIDDEN_MEAN"]= 0.2   # only used when recurrent
 p["HIDDEN_HIDDEN_STD"]= 0.37   # only used when recurrent
 p["PDROP_INPUT"] = 0.2
+p["PDROP_HIDDEN"] = 0.0
 p["REG_TYPE"]= "none"
 p["LBD_UPPER"]= 0.000005
 p["LBD_LOWER"]= 0.001
@@ -762,6 +763,7 @@ class mnist_model:
             for var, val in self.hidden_init_vars.items():
                 self.hidden.vars[var].view[:]= val
             self.hidden.push_state_to_device()
+            self.hidden.extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
@@ -779,6 +781,7 @@ class mnist_model:
                 else:
                     phase= "eval"
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
+                    self.hidden.extra_global_params["pDrop"].view[:]= 0.0
                 self.input_set.extra_global_params["trial"].view[:]= trial
                 self.model.custom_update("inputUpdate")
                 self.input.extra_global_params["t_offset"].view[:]= self.model.t
