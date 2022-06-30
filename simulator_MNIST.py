@@ -921,6 +921,7 @@ class mnist_model:
                     print("---------------------------------------")
                     rec_exp_V.append(self.output.vars["exp_V"].view.copy())
                     rec_expsum.append(self.output.vars["expsum"].view.copy())
+                print(f'{np.min(self.output.vars["expsum"].view)} {np.mean(self.output.vars["expsum"].view)} {np.max(self.output.vars["expsum"].view)}')
                 good[phase] += np.sum(pred == lbl)
                 predict[phase].append(pred)
                 the_loss[phase].append(losses)
