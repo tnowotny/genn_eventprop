@@ -11,8 +11,8 @@ p["NAME"]= "test36"
 p["NUM_HIDDEN"]= 256
 p["N_MAX_SPIKE"]= 1500
 p["DT_MS"]= 1
-p["PDROP_INPUT"]= 0.1
-p["PDROP_HIDDEN"]= 0.1
+p["PDROP_INPUT"]= 0.0
+p["PDROP_HIDDEN"]= 0.0
 p["ADAM_BETA1"]= 0.9
 p["ADAM_BETA2"]= 0.999   
 p["DEBUG"]= False
@@ -23,19 +23,19 @@ p["N_BATCH"]= 256
 p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
 p["N_VALIDATE"]= 512 # 256 # p["N_BATCH"] 
-p["ETA"]= 1e-2 #5e-3
+p["ETA"]= 1e-3 #5e-3
 p["SHUFFLE"]= True
-p["INPUT_HIDDEN_MEAN"]= 0.02
-p["INPUT_HIDDEN_STD"]= 0.01
+p["INPUT_HIDDEN_MEAN"]= 0.02 # 0.02
+p["INPUT_HIDDEN_STD"]= 0.01 # 0.01
 p["HIDDEN_OUTPUT_MEAN"]= 0.0
-p["HIDDEN_OUTPUT_STD"]= 0.3
+p["HIDDEN_OUTPUT_STD"]= 0.03 # 0.3
 p["W_REPORT_INTERVAL"] = 11000  # this should be at the end of the epoch (at first trial of evaluation)
-p["TAU_MEM"] = 20.0
-p["TAU_SYN"] = 5.0
+p["TAU_MEM"] = 20.0 #20
+p["TAU_SYN"] = 10.0 #5
 p["REG_TYPE"]= "simple"
 p["LBD_UPPER"]= 5e-12 # 5e-12 keep in mind that the term is applied to all contributing spikes ...
 p["LBD_LOWER"]= 1e-5
-p["NU_UPPER"]= 10 #*p["N_BATCH"]
+p["NU_UPPER"]= 15 #*p["N_BATCH"]
 p["NU_LOWER"]= 5
 p["RHO_UPPER"]= 10000.0
 p["GLB_UPPER"]= 1e-8
@@ -50,7 +50,7 @@ p["EVALUATION"]= "speaker"
 
 p["RECURRENT"]= True
 p["HIDDEN_HIDDEN_MEAN"]= 0.0
-p["HIDDEN_HIDDEN_STD"]= 0.02
+p["HIDDEN_HIDDEN_STD"]= 0.02 # 0.02
 
 p["REWIRE_SILENT"]= True
 p["AVG_SNSUM"]= True
@@ -71,8 +71,8 @@ p["REC_NEURONS_EPOCH_TRIAL"]= [(0,0), (100,0), (100,1), (100,2), (100,28), (100,
 p["W_OUTPUT_EPOCH_TRIAL"]= [(0,0), (100,0), (799,0)]
 
 p["AUGMENTATION"]= {
-    "random_shift": 50.0,
-    "random_dilate": (0.8,1.2)
+    "random_shift": 20.0,
+    "random_dilate": (0.9,1.1)
     }
 
 with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as file:
