@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
-from utils import random_shift, random_dilate
+from utils import random_shift, random_dilate, ID_jitter
 import mnist
 #import tonic
 from models import *

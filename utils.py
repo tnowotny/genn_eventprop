@@ -25,7 +25,7 @@ jitter the ID of neurons that spiked as an augmentation (see SHD paper)
 """
 def ID_jitter(X,rng,sigma):
     for i in range(len(X)):
-        shift= rng.standard_normal(len(X[i]))*sigma
+        shift= rng.standard_normal(len(X[i]["x"]))*sigma
         X[i]["x"]= X[i]["x"]+shift
         idx= np.logical_and(X[i]["x"] < 700, X[i]["x"] >= 0)
         X[i]["x"]= X[i]["x"][idx]
