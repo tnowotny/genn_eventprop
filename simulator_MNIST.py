@@ -138,11 +138,9 @@ class mnist_model:
             print("exp_V flushed to 0 exception!")
             print(exp_V_correct)
             print(exp_V[np.where(exp_V_correct == 0),:])
-            exp_V= exp_V.copy() # make local copy to not disturb anything else
-            exp_V+= 2e-45 # make sure all exp_V are > 0
-            exp_V_correct= np.array([ exp_V[i,y] for i, y in enumerate(Y) ])
+            exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0
             
-        loss= -np.sum(np.log(exp_V_correct/expsum[:,0]))/p["N_BATCH"]
+        loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/p["N_BATCH"]
         return loss
     
     def load_data_MNIST(self, p, shuffle= True):
