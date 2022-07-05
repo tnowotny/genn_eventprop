@@ -13,11 +13,25 @@ def random_shift(X,rng,max_shift):
             X[i]["x"]= X[i]["x"][idx]
             X[i]["t"]= X[i]["t"][idx]
         else:
-            idx= X[i]["x"] > 0
+            idx= X[i]["x"] >= 0
             X[i]["x"]= X[i]["x"][idx]
             X[i]["t"]= X[i]["t"][idx]
             
     return X
+
+
+"""
+jitter the ID of neurons that spiked as an augmentation (see SHD paper)
+"""
+def ID_jitter(X,rng,sigma):
+    for i in range(len(X)):
+        shift= np.round(rng.standard_normal(len(X[i]["x"]))*sigma).astype(int)
+        X[i]["x"]= X[i]["x"]+shift
+        idx= np.logical_and(X[i]["x"] < 700, X[i]["x"] >= 0)
+        X[i]["x"]= X[i]["x"][idx]
+        X[i]["t"]= X[i]["t"][idx]
+    return X
+    
 
 """
 dilate or compress time
