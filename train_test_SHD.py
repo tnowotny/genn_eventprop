@@ -68,14 +68,20 @@ if p["DEBUG"]:
 
 with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as file:
     json.dump(p, file)
-    
+
 mn= mnist_model(p)
-spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
 
-print("training correct: {}".format(correct))
-print("training correct_eval: {}".format(correct_eval))
-
-spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.test(p)
-
-print("test correct: {}".format(correct))
-print("test correct_eval: {}".format(correct_eval))
+for i in range(5):
+    p["LOAD_LAST"]= False
+    spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
+    print("training correct: {}".format(correct))
+    print("training correct_eval: {}".format(correct_eval))
+    tc= correct
+    p["TRAIN_DATA_SEED"]+= 31
+    p["LOAD_LAST"]= True
+    spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.test(p)
+    print("test correct: {}".format(correct))
+    print("test correct_eval: {}".format(correct_eval))
+    p["TEST_DATA_SEED"]+= 31
+    with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_allresult.txt'),'a') as f:
+        f.write("{} {}\n".format(tc,correct))
