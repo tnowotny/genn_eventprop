@@ -5,17 +5,18 @@ import sys
 import json
 
 basename= sys.argv[1]
-wd= 4
-ht= 10
+wd= 16
+ht= 4
 
 fname= basename+"_6.json"
 with open(fname,"r") as f:
     p= json.load(f)
 
-N_E= p["N_EPOCH"]
+N_E= p["N_EPOCH"] # total number of epochs for each speaker
+N_S= 300 # show results at this epoch
 
 mn= 10.0
-idx= np.outer(np.arange(N_E-10,10*N_E,N_E),np.ones(10))+np.outer(np.ones(10),np.arange(10))
+idx= np.outer(np.arange(N_S-10,10*N_E,N_E),np.ones(10))+np.outer(np.ones(10),np.arange(10))
 print(idx)
 idx= np.array(idx.flatten(), dtype= int)
 final_cor= np.zeros((ht,wd))
