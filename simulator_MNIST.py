@@ -1033,6 +1033,18 @@ class mnist_model:
             if p["RECURRENT"]:
                 self.hid_to_hid.pull_var_from_device("w")
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_last.npy"), self.hid_to_hid.vars["w"].view)
+        if p["TIMING"]:
+            print("Init: %f" % self.model.init_time)
+            print("Init sparse: %f" % self.model.init_sparse_time)
+            print("Neuron update: %f" % self.model.neuron_update_time)
+            print("Presynaptic update: %f" % self.model.presynaptic_update_time)
+            print("Synapse dynamics: %f" % self.model.synapse_dynamics_time)
+            print("Neuron reset: %f" % self.model.get_custom_update_time("neuronReset"))
+            print("sNSumReduce: %f" % self.model.get_custom_update_time("sNSumReduce"))
+            print("sNSumApply: %f" % self.model.get_custom_update_time("sNSumApply"))
+            print("EVPReduce: %f" % self.model.get_custom_update_time("EVPReduce"))
+            print("EVPLearn: %f" % self.model.get_custom_update_time("EVPLearn"))
+            print("inputUpdate: %f" % self.model.get_custom_update_time("inputUpdate"))
         return (spike_t, spike_ID, rec_vars_n, rec_vars_s, correct, correct_eval)
         
     def train(self, p):
