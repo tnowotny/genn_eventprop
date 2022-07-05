@@ -13,6 +13,7 @@ import gzip, shutil
 from tensorflow.keras.utils import get_file
 import tables
 import copy
+from time import perf_counter
 #from enose_data_loader import enose_data_load
 
 #from src.data_loader import EnoseDataLoader
@@ -1072,7 +1073,9 @@ class mnist_model:
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         speakers= set(self.Z_train_orig)
         all_res= []
+        times= []
         for i in speakers:
+            start_t= perf_counter()
             self.define_model(p, p["SHUFFLE"])
             if p["BUILD"]:
                 self.model.build()
@@ -1080,7 +1083,8 @@ class mnist_model:
             X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, i, p)
             res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
             all_res.append([ res[4], res[5] ])
-        return all_res
+            times.append(perf_counter()-start_t)
+        return all_res, times
     
     def crossvalidate_enose(self, p):
         self.define_model(p, p["SHUFFLE"])
