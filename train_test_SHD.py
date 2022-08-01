@@ -21,8 +21,8 @@ p["LOAD_LAST"]= False
 p["N_EPOCH"]= 1
 p["N_BATCH"]= 256
 p["SUPER_BATCH"]= 1
-p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
-p["N_VALIDATE"]= 512 # 256 # p["N_BATCH"] 
+p["N_TRAIN"]= 8156 # that is all of them
+p["N_VALIDATE"]= 0 # no validation
 p["ETA"]= 5e-3 #5e-3
 p["SHUFFLE"]= True
 p["INPUT_HIDDEN_MEAN"]= 0.02 # 0.02
@@ -66,49 +66,22 @@ if p["DEBUG"]:
     #p["REC_NEURONS"]= [("output", "V"), ("output", "lambda_V"), ("output", "lambda_I")]
     #p["REC_SYNAPSES"]= [("hid_to_out", "w")]
 
-"""
-p["REC_SPIKES"]= ["input","hidden"]
-p["REC_SPIKES_EPOCH_TRIAL"]= [(0,0), (100,0), (100,1), (100,2), (100,28), (100,29),
-                              (799,0), (799,1), (799,2), (799,28), (799,29),]
-
-p["REC_NEURONS"]= [("output","V")]
-p["REC_NEURONS_EPOCH_TRIAL"]= [(0,0), (100,0), (100,1), (100,2), (100,28), (100,29),
-                              (799,0), (799,1), (799,2), (799,28), (799,29),]
-
-p["W_OUTPUT_EPOCH_TRIAL"]= [(0,0), (100,0), (799,0)]
-"""
-
 with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as file:
     json.dump(p, file)
-    
-mn= mnist_model(p)
-spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
 
-print("correct: {}".format(correct))
-print("correct_eval: {}".format(correct_eval))
-if p["DEBUG"]:
-    plt.figure()
-    plt.scatter(spike_t["input"],700-spike_ID["input"],s=0.5)
-    plt.figure()
-    plt.scatter(spike_t["hidden"],spike_ID["hidden"],s=0.5)
-    #tmax= np.max(spike_t["hidden"])
-    #t= np.arange(0,tmax,p["TRIAL_MS"])
-    #v= np.vstack([ np.zeros(1,lent(t)), np.ones(1,len(t))])
-    #t= np.reshape(t,(1,len(t)))
-    #t= np.vstack([ t, t ])
-    #plt.plot(t,v, lw=0.1)
-    #plt.figure()
-    #plt.plot(rec_vars_n["Voutput"])
-    #plt.figure()
-    #plt.plot(rec_vars_n["lambda_Voutput"])
-    #plt.figure()
-    #plt.plot(rec_vars_n["lambda_Ioutput"])
-    #print(mn.output.extra_global_params["label"].view[0:20*p["N_BATCH"]:p["N_BATCH"]])
-    #plt.figure()
-    #h, x= np.histogram(spike_ID["hidden"],p["NUM_HIDDEN"])
-    #h= np.sort(h)
-    #plt.bar(np.arange(len(h)),np.log(h+2))
-#mn.hid_to_out.pull_var_from_device("w")
-#plt.figure()
-#plt.hist(mn.hid_to_out.vars["w"].view[:],100)
-plt.show()
+mn= mnist_model(p)
+
+for i in range(5):
+    p["LOAD_LAST"]= False
+    spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
+    print("training correct: {}".format(correct))
+    print("training correct_eval: {}".format(correct_eval))
+    tc= correct
+    p["TRAIN_DATA_SEED"]+= 31
+    p["LOAD_LAST"]= True
+    spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.test(p)
+    print("test correct: {}".format(correct))
+    print("test correct_eval: {}".format(correct_eval))
+    p["TEST_DATA_SEED"]+= 31
+    with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_allresult.txt'),'a') as f:
+        f.write("{} {}\n".format(tc,correct))

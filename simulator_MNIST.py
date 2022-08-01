@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
+from utils import random_shift, random_dilate, ID_jitter
 import mnist
 #import tonic
 from models import *
@@ -11,8 +12,11 @@ import urllib.request
 import gzip, shutil
 from tensorflow.keras.utils import get_file
 import tables
-from enose_data_loader import enose_data_load
+import copy
+from time import perf_counter
+#from enose_data_loader import enose_data_load
 
+#from src.data_loader import EnoseDataLoader
 # ----------------------------------------------------------------------------
 # Parameters
 # ----------------------------------------------------------------------------
@@ -39,8 +43,6 @@ p["N_VALIDATE"]= 5000
 p["N_EPOCH"]= 10
 p["SHUFFLE"]= True
 p["N_TEST"]= 10000
-p["W_REPORT_INTERVAL"] = 100
-p["W_EPOCH_INTERVAL"] = 10
 # Network structure
 p["NUM_HIDDEN"] = 350
 
@@ -58,6 +60,7 @@ p["HIDDEN_OUTPUT_STD"]= 0.37
 p["HIDDEN_HIDDEN_MEAN"]= 0.2   # only used when recurrent
 p["HIDDEN_HIDDEN_STD"]= 0.37   # only used when recurrent
 p["PDROP_INPUT"] = 0.2
+p["PDROP_HIDDEN"] = 0.0
 p["REG_TYPE"]= "none"
 p["LBD_UPPER"]= 0.000005
 p["LBD_LOWER"]= 0.001
@@ -77,10 +80,14 @@ p["ETA_FIDDELING"]= False
 p["ETA_REDUCE"]= 0.1
 p["ETA_REDUCE_PERIOD"]= 50
 
-# spike recording
+# recording
+p["W_OUTPUT_EPOCH_TRIAL"] = []
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
+p["REC_SPIKES_EPOCH_TRIAL"] = []
 p["REC_SPIKES"] = []
+p["REC_NEURONS_EPOCH_TRIAL"] = []
 p["REC_NEURONS"] = []
+p["REC_SYNAPSES_EPOCH_TRIAL"] = []
 p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
@@ -93,6 +100,7 @@ p["AVG_SNSUM"]= False
 # Helper functions
 # ----------------------------------------------------------------------------
 
+rng= np.random.default_rng()
 
 def update_adam(learning_rate, adam_step, optimiser_custom_updates):
     first_moment_scale = 1.0 / (1.0 - (p["ADAM_BETA1"] ** adam_step))
@@ -127,7 +135,13 @@ class mnist_model:
         expsum= self.output.vars["expsum"].view
         exp_V= self.output.vars["exp_V"].view
         exp_V_correct= np.array([ exp_V[i,y] for i, y in enumerate(Y) ])
-        loss= -np.sum(np.log(exp_V_correct/expsum[:,0]))/p["N_BATCH"]
+        if (np.sum(exp_V_correct == 0) > 0):
+            print("exp_V flushed to 0 exception!")
+            print(exp_V_correct)
+            print(exp_V[np.where(exp_V_correct == 0),:])
+            exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0
+            
+        loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/p["N_BATCH"]
         return loss
     
     def load_data_MNIST(self, p, shuffle= True):
@@ -267,12 +281,13 @@ class mnist_model:
             self.X_test_orig.append({"x": units[i], "t": times[i]})
         self.X_test_orig= np.array(self.X_test_orig)
 
-    def load_data_enose(self,p):
-        self.num_input= 8
-        self.num_output= 8   # first power of two greater than class number
-        self.N_class= 5
-        self.X_train_orig, self.Y_train_orig, self.X_test_orig, self.Y_test_orig= enose_data_load()
-        self.data_full_length= len(self.Y_train_orig)
+    # def load_data_enose(self,p):
+    #     self.num_input= 8
+    #     self.num_output= 8   # first power of two greater than class number
+    #     self.N_class= 5
+    #     self.X_train_orig, self.Y_train_orig, self.X_test_orig, self.Y_test_orig= enose_data_load()
+    #     self.data_full_length= len(self.Y_train_orig)
+    
     
     def split_SHD_random(self, X, Y, p, shuffle= True):
         idx= np.arange(len(X),dtype= int)
@@ -321,6 +336,9 @@ class mnist_model:
     generate a spikeTimes array and startSpike and endSpike arrays to allow indexing into the 
     spikeTimes in a shuffled way
     """
+    # ISSUE: here we are not rounding to the multiples of batch size!
+    # When data loading, we are doing that for N_trial ...
+    # Needs tidying up!
     def generate_input_spiketimes_shuffle_fast(self, p, Xtrain, Ytrain, Xeval, Yeval):
         # N is the number of training/testing images: always use all images given
         if Xtrain is None:
@@ -627,9 +645,12 @@ class mnist_model:
     def run_model(self, number_epochs, p, shuffle, X_t_orig= None, labels= None, X_t_eval= None, labels_eval= None, resfile= None):
         if p["LOAD_LAST"]:
             self.in_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_last.npy"))
-            self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"))
             self.in_to_hid.push_var_to_device("w")
+            self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"))
             self.hid_to_out.push_var_to_device("w")
+            if p["RECURRENT"]:
+                self.hid_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_last.npy"))
+                self.hid_to_hid.push_var_to_device("w")
         else:
             # zero the weights of synapses to "padding output neurons" - this should remove them from influencing the backward pass
             mask= np.zeros((p["NUM_HIDDEN"],self.num_output))
@@ -662,14 +683,32 @@ class mnist_model:
         for pop in p["REC_SPIKES"]:
             spike_t[pop]= []
             spike_ID[pop]= []
-
+        rec_spk_lbl= []
+        rec_spk_pred= []
         rec_vars_n= {}
         for pop, var in p["REC_NEURONS"]:
             rec_vars_n[var+pop]= []
+        rec_exp_V= []
+        rec_expsum= []
+        rec_n_t= []
+        rec_n_lbl= []
+        rec_n_pred= []
         rec_vars_s= {}
         for pop, var in p["REC_SYNAPSES"]:
             rec_vars_s[var+pop]= []
-        # build and assign the input spike train and corresponding labels
+        rec_s_t= []
+        rec_s_lbl= []
+        rec_s_pred= []
+
+        """
+        for x,y in zip(lX[:10],X_t_orig[:10]):
+            fig,ax = plt.subplots(1,2,sharex= True, sharey= True)
+            ax[0].scatter(x["t"],x["x"],s=0.2)
+            ax[1].scatter(y["t"],y["x"],s=0.2)
+        plt.show()
+        exit(1)
+        """
+# build and assign the input spike train and corresponding labels
         X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_t_orig, labels, X_t_eval, labels_eval)
         self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
         self.input.push_extra_global_param_to_device("spikeTimes")
@@ -686,6 +725,24 @@ class mnist_model:
         self.input_set.push_extra_global_param_to_device("allInputID")
         for epoch in range(number_epochs):
 
+            # if we are doing augmentation, the entore spike time array needs to be set up anew.
+            if N_train > 0 and len(p["AUGMENTATION"]) > 0:
+                lX= copy.deepcopy(X_t_orig)
+                for aug in p["AUGMENTATION"]:
+                    if aug == "random_shift":
+                        lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug])
+                    if aug == "random_dilate":
+                        lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1])
+                    if aug == "ID_jitter":
+                        lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug])
+                X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, labels, X_t_eval, labels_eval)
+                self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
+                self.input.push_extra_global_param_to_device("spikeTimes")
+                self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
+                self.input_set.push_extra_global_param_to_device("allStartSpike")
+                self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
+                self.input_set.push_extra_global_param_to_device("allEndSpike")
+            
             if N_train > 0 and shuffle:
                 self.datarng.shuffle(input_id)
                 all_input_id[:len(input_id)]= input_id
@@ -715,6 +772,7 @@ class mnist_model:
             for var, val in self.hidden_init_vars.items():
                 self.hidden.vars[var].view[:]= val
             self.hidden.push_state_to_device()
+            self.hidden.extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
@@ -722,6 +780,8 @@ class mnist_model:
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= []
                 all_sNSum= []
+            if p["REWIRE_SILENT"]:
+                rewire_sNSum= []
             for trial in range(N_trial):
                 trial_end= (trial+1)*p["TRIAL_MS"]
                 # assign the input spike train and corresponding labels
@@ -730,6 +790,7 @@ class mnist_model:
                 else:
                     phase= "eval"
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
+                    self.hidden.extra_global_params["pDrop"].view[:]= 0.0
                 self.input_set.extra_global_params["trial"].view[:]= trial
                 self.model.custom_update("inputUpdate")
                 self.input.extra_global_params["t_offset"].view[:]= self.model.t
@@ -749,7 +810,7 @@ class mnist_model:
                                 x= self.model.neuron_populations["hidden"].spike_recording_data
                                 for btch in range(p["N_BATCH"]):
                                     spike_N_hidden[btch]+= len(x[btch][0])
-                    if len(p["REC_SPIKES"]) > 0:
+                    if ((epoch,trial) in p["REC_SPIKES_EPOCH_TRIAL"]) and (len(p["REC_SPIKES"]) > 0):
                         if int_t%p["SPK_REC_STEPS"] == 0:
                             self.model.pull_recording_buffers_from_device()
                             for pop in p["REC_SPIKES"]:
@@ -757,25 +818,29 @@ class mnist_model:
                                 x= the_pop.spike_recording_data
                                 if p["N_BATCH"] > 1:
                                     for i in range(p["N_BATCH"]):
-                                        spike_t[pop].append(x[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i-trial)*p["TRIAL_MS"])
+                                        spike_t[pop].append(x[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i-trial)*p["TRIAL_MS"]) # subtracting trial to compensate the progression of model.t by p["TRIAL_MS"] each trial
                                         spike_ID[pop].append(x[i][1])
                                 else:
                                     spike_t[pop].append(x[0]+epoch*N_trial*p["TRIAL_MS"])
                                     spike_ID[pop].append(x[1])
 
-                    for pop, var in p["REC_NEURONS"]:
-                        the_pop= self.model.neuron_populations[pop]
-                        the_pop.pull_var_from_device(var)
-                        rec_vars_n[var+pop].append(the_pop.vars[var].view.copy())
-
-                    for pop, var in p["REC_SYNAPSES"]:
-                        the_pop= self.model.synapse_populations[pop]
-                        if var == "in_syn":
-                            the_pop.pull_in_syn_from_device()
-                            rec_vars_s[var+pop].append(the_pop.in_syn.copy())
-                        else:
+                    if ((epoch,trial) in p["REC_NEURONS_EPOCH_TRIAL"]):
+                        for pop, var in p["REC_NEURONS"]:
+                            the_pop= self.model.neuron_populations[pop]
                             the_pop.pull_var_from_device(var)
-                            rec_vars_s[var+pop].append(the_pop.vars[var].view.copy())
+                            rec_vars_n[var+pop].append(the_pop.vars[var].view.copy())
+                        rec_n_t.append(self.model.t)
+                            
+                    if ((epoch,trial) in p["REC_SYNAPSES_EPOCH_TRIAL"]):
+                        for pop, var in p["REC_SYNAPSES"]:
+                            the_pop= self.model.synapse_populations[pop]
+                            if var == "in_syn":
+                                the_pop.pull_in_syn_from_device()
+                                rec_vars_s[var+pop].append(the_pop.in_syn.copy())
+                            else:
+                                the_pop.pull_var_from_device(var)
+                                rec_vars_s[var+pop].append(the_pop.vars[var].view.copy())
+                        rec_s_t.append(self.model.t)
                     # clamp in_syn to 0 one timestep before trial end to avoid bleeding spikes into the next trial
                     if np.abs(self.model.t + p["DT_MS"] - trial_end) < 1e-1*p["DT_MS"]:
                         self.in_to_hid.in_syn[:]= 0.0
@@ -808,31 +873,54 @@ class mnist_model:
                     self.hidden.push_extra_global_param_to_device("sNSum_all")
                     if p["DEBUG_HIDDEN_N"]:
                         spike_N_hidden= self.hidden_reset.extra_global_params["sNSum_all"].view[:].copy()
+                # collect data for rewiring rule for silent neurons
+                if p["REWIRE_SILENT"]:
+                    self.hidden.pull_var_from_device("sNSum")
+                    rewire_sNSum.append(np.sum(self.hidden.vars["sNSum"].view.copy(),axis= 0))
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V
                 self.output.pull_var_from_device("exp_V")
                 #print(self.output.vars["exp_V"].view)
                 pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
+                if ((epoch, trial) in p["REC_SPIKES_EPOCH_TRIAL"]):
+                    rec_spk_lbl.append(lbl.copy())
+                    rec_spk_pred.append(pred.copy())
+                if ((epoch, trial) in p["REC_NEURONS_EPOCH_TRIAL"]):
+                    rec_n_lbl.append(lbl.copy())
+                    rec_n_pred.append(pred.copy())
+                if ((epoch, trial) in p["REC_SYNAPSES_EPOCH_TRIAL"]):
+                    rec_s_lbl.append(lbl.copy())
+                    rec_s_pred.append(pred.copy())
                 if p["DEBUG"]:
                     print(pred)
                     print(lbl)
                     print("---------------------------------------")
                 self.output.pull_var_from_device("expsum")
                 losses= self.loss_func(lbl,p)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+                if ((epoch, trial) in p["REC_NEURONS_EPOCH_TRIAL"]):
+                    print(pred)
+                    print(lbl)
+                    print("---------------------------------------")
+                    rec_exp_V.append(self.output.vars["exp_V"].view.copy())
+                    rec_expsum.append(self.output.vars["expsum"].view.copy())
+                #print(f'{np.min(self.output.vars["expsum"].view)} {np.mean(self.output.vars["expsum"].view)} {np.max(self.output.vars["expsum"].view)}')
                 good[phase] += np.sum(pred == lbl)
                 predict[phase].append(pred)
                 the_loss[phase].append(losses)
                 if p["DEBUG_HIDDEN_N"]:
                     all_hidden_n.append(spike_N_hidden)
-                    self.hidden.pull_var_from_device('sNSum')
-                    all_sNSum.append(self.hidden.vars['sNSum'].view.copy())
-                if (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial > 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
+                    self.hidden.pull_var_from_device("sNSum")
+                    all_sNSum.append(np.mean(self.hidden.vars['sNSum'].view.copy(),axis= 0))
+                if ((epoch, trial) in p["W_OUTPUT_EPOCH_TRIAL"]): 
                     self.in_to_hid.pull_var_from_device("w")
                     np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
                     self.hid_to_out.pull_var_from_device("w")
                     np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_e{}_t{}.npy".format(epoch,trial)), self.hid_to_out.vars["w"].view.copy())
-
+                    if p["RECURRENT"]:
+                        self.hid_to_hid.pull_var_from_device("w")
+                        np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_e{}_t{}.npy".format(epoch,trial)), self.hid_to_hid.vars["w"].view.copy())
+                    
             if N_train > 0:
                 correct= good["train"]/(N_train*p["N_BATCH"])
             else:
@@ -841,17 +929,50 @@ class mnist_model:
                 correct_eval= good["eval"]/(N_eval*p["N_BATCH"])
             else:
                 correct_eval= 0
+            if p["REWIRE_SILENT"]:
+                rewire_sNSum= np.sum(np.array(rewire_sNSum),axis= 0)
+                print(rewire_sNSum.shape)
+                silent= rewire_sNSum == 0
+                # rewire input to hidden
+                self.in_to_hid.pull_var_from_device("w")
+                ith_w= self.in_to_hid.vars["w"].view[:]
+                ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
+                n_silent= np.sum(silent)
+                n_new= self.num_input*n_silent
+                ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent))
+                ## rewire hidden to output
+                #self.hid_to_out.pull_var_from_device("w")
+                #hto_w= self.hid_to_out.vars["w"].view[:]
+                #hto_w.shape= (p["NUM_HIDDEN"],self.num_output)
+                #n_new= n_silent*self.num_output
+                #hto_w[silent,:]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_OUTPUT_STD"]+p["HIDDEN_OUTPUT_MEAN"], (n_silent,self.num_output))
+                ## rewire recurrent connections
+                #if p["RECURRENT"]:
+                #    self.hid_to_hid.pull_var_from_device("w")
+                #    hth_w= self.hid_to_hid.vars["w"].view[:]
+                #    hth_w.shape= (p["NUM_HIDDEN"],p["NUM_HIDDEN"])
+                #    n_new= n_silent*p["NUM_HIDDEN"]
+                #    hth_w[silent,:]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_HIDDEN_STD"]+p["HIDDEN_HIDDEN_MEAN"], (n_silent,p["NUM_HIDDEN"]))
+                #    hth_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_HIDDEN_STD"]+p["HIDDEN_HIDDEN_MEAN"], (p["NUM_HIDDEN"],n_silent))
+                #if (n_silent > 0 ):
+                #print(np.where(silent))
+                self.in_to_hid.push_var_to_device("w")
+                #self.hid_to_out.push_var_to_device("w")
+                #if p["RECURRENT"]:
+                #    self.hid_to_hid.push_var_to_device("w")
+            else:
+                n_silent= 0
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= np.hstack(all_hidden_n)
                 all_sNSum= np.hstack(all_sNSum)
-                print("Hidden spikes in batch across neurons: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
-                print("Hidden spikes per neuron across batches: {} +/- {}, min {}, max {}".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum)))
-            print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
+                print("Hidden spikes in model per trial: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
+                print("Hidden spikes per trial per neuron across batches: {} +/- {}, min {}, max {}".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum)))
+            print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}, Rewired: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]),n_silent))
             if resfile is not None:
                 resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
                 if p["DEBUG_HIDDEN_N"]:
                     resfile.write(" {} {} {} {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
-                    resfile.write(" {} {} {} {}\n".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum)))
+                    resfile.write(" {} {} {} {} {}\n".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum),n_silent))
                 else:
                     resfile.write("\n")
                 resfile.flush()
@@ -866,38 +987,65 @@ class mnist_model:
             spike_t[pop]= np.hstack(spike_t[pop])
             spike_ID[pop]= np.hstack(spike_ID[pop])
 
-        for rec_var, rec_list in [ (rec_vars_n, p["REC_NEURONS"]), (rec_vars_s, p["REC_SYNAPSES"])]:
+        for rec_t, rec_var, rec_list in [ (rec_n_t, rec_vars_n, p["REC_NEURONS"]), (rec_s_t, rec_vars_s, p["REC_SYNAPSES"])]:
             for pop, var in rec_list:
-                rec_steps= int(p["TRIAL_MS"]/p["DT_MS"])
-                the_rec= np.empty((len(rec_var[var+pop])*p["N_BATCH"],rec_var[var+pop][0].shape[-1]))
-                # unfortunately need to unwind batches in a rather awkward way ...
-                for i in range(p["N_EPOCH"]*N_trial):
-                    x= np.array(rec_var[var+pop][(i*rec_steps):((i+1)*rec_steps)])
-                    for j in range(p["N_BATCH"]):
-                        strt= (i*p["N_BATCH"]+j)*rec_steps
-                        stp= strt+rec_steps
-                        if len(x.shape) == 3:
-                            the_rec[strt:stp,:]= x[:,j,:]
-                        else:  # shared var between batches
-                            the_rec[strt:stp,:]= x
-                rec_var[var+pop]= the_rec
-        
+                rec_var[var+pop]= np.array(rec_var[var+pop])
+                print(rec_var[var+pop].shape)
+            rec_t= np.array(rec_t)
+
+        rec_exp_V= np.array(rec_exp_V)
+        rec_expsum= np.array(rec_expsum)          
+        rec_spk_lbl= np.array(rec_spk_lbl)
+        rec_spk_pred= np.array(rec_spk_pred)
+        rec_n_lbl= np.array(rec_n_lbl)
+        rec_n_pred= np.array(rec_n_pred)
+        rec_s_lbl= np.array(rec_s_lbl)
+        rec_s_pred= np.array(rec_s_pred)
+            
         if p["WRITE_TO_DISK"]:            # Saving results
+            if len(p["REC_SPIKES"]) > 0:
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_spk_lbl"), rec_spk_lbl)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_spk_pred"), rec_spk_pred)
             for pop in p["REC_SPIKES"]:
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+pop+"_spike_t"), spike_t[pop])
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+pop+"_spike_ID"), spike_ID[pop])
 
+            if len(p["REC_NEURONS"]) > 0:
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_exp_V"), rec_exp_V)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_expsum"), rec_expsum)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_t"), rec_n_t)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_lbl"), rec_n_lbl)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_pred"), rec_n_pred)
             for pop, var in p["REC_NEURONS"]:
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+var+pop), rec_vars_n[var+pop])
 
+            if len(p["REC_SYNAPSES"]) > 0:
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_t"), rec_s_t)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_s_lbl"), rec_s_lbl)
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_s_pred"), rec_s_pred)
             for pop, var in p["REC_SYNAPSES"]:
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+var+pop), rec_vars_s[var+pop])
 
-        self.in_to_hid.pull_var_from_device("w")
-        self.hid_to_out.pull_var_from_device("w")
         if p["WRITE_TO_DISK"]:            # Saving results
+            self.in_to_hid.pull_var_from_device("w")
             np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_last.npy"), self.in_to_hid.vars["w"].view)
+            self.hid_to_out.pull_var_from_device("w")
             np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"), self.hid_to_out.vars["w"].view)
+            if p["RECURRENT"]:
+                self.hid_to_hid.pull_var_from_device("w")
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_last.npy"), self.hid_to_hid.vars["w"].view)
+        if p["TIMING"]:
+            print("Init: %f" % self.model.init_time)
+            print("Init sparse: %f" % self.model.init_sparse_time)
+            print("Neuron update: %f" % self.model.neuron_update_time)
+            print("Presynaptic update: %f" % self.model.presynaptic_update_time)
+            print("Synapse dynamics: %f" % self.model.synapse_dynamics_time)
+            print("Neuron reset: %f" % self.model.get_custom_update_time("neuronReset"))
+            print("sNSumReduce: %f" % self.model.get_custom_update_time("sNSumReduce"))
+            print("sNSumApply: %f" % self.model.get_custom_update_time("sNSumApply"))
+            print("EVPReduce: %f" % self.model.get_custom_update_time("EVPReduce"))
+            print("EVPLearn: %f" % self.model.get_custom_update_time("EVPLearn"))
+            print("inputUpdate: %f" % self.model.get_custom_update_time("inputUpdate"))
         return (spike_t, spike_ID, rec_vars_n, rec_vars_s, correct, correct_eval)
         
     def train(self, p):
@@ -922,19 +1070,38 @@ class mnist_model:
             return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
         
     def cross_validate_SHD(self, p):
-        self.define_model(p, p["SHUFFLE"])
-        if p["BUILD"]:
-            self.model.build()
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         speakers= set(self.Z_train_orig)
         all_res= []
+        times= []
         for i in speakers:
+            start_t= perf_counter()
             self.define_model(p, p["SHUFFLE"])
             if p["BUILD"]:
                 self.model.build()
             self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
             X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, i, p)
             res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
+            all_res.append([ res[4], res[5] ])
+            times.append(perf_counter()-start_t)
+        return all_res, times
+    
+    def crossvalidate_enose(self, p):
+        self.define_model(p, p["SHUFFLE"])
+        if p["BUILD"]:
+            self.model.build()
+        resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
+        file_train = p["FILE_TRAIN"]   # -> add in p
+        data_loader = EnoseDataLoader(file_train)
+        folds = data_loader.get_train_val(kfold_cv=p["N_FOLDS"]) # -> add in p
+        
+        all_res = []
+        for fold in folds:
+            X_train, y_train, X_val, y_val = fold
+            X_train, y_train = data_loader.format_genn(X_train, y_train)
+            X_val, y_val = data_loader.format_genn(X_val, y_val)
+            
+            res = self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= y_train, X_t_eval= X_val, labels_eval= y_val, resfile= resfile)
             all_res.append([ res[4], res[5] ])
         return all_res
     

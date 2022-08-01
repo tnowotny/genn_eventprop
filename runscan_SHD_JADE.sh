@@ -4,16 +4,19 @@
 #SBATCH --nodes=1
 
 # set max wallclock time
-#SBATCH --time=36:00:00
+#SBATCH --time=24:00:00
 
 # set name of job
 #SBATCH --job-name=job1
 
+# set number of jobs per node
+#SBATCH --ntasks-per-node=4
+
 # set number of GPUs
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:4
 
 # set the partition to use
-#SBATCH --partition=small
+#SBATCH --partition=booster
 
 # mail alert at start, end and abortion of execution
 #SBATCH --mail-type=ALL
@@ -23,4 +26,7 @@
 
 # run the application
 . ~/test2/bin/activate
-python runscan_SHD_JADE.py scan1/scan_${SLURM_ARRAY_TASK_ID}.json
+srun python runscan_SHD_JUWELS.py scan1/scan1_$[$SLURM_ARRAY_TASK_ID*4].json
+srun python runscan_SHD_JUWELS.py scan1/scan1_$[$SLURM_ARRAY_TASK_ID*4+1].json
+srun python runscan_SHD_JUWELS.py scan1/scan1_$[$SLURM_ARRAY_TASK_ID*4+2].json
+srun python runscan_SHD_JUWELS.py scan1/scan1_$[$SLURM_ARRAY_TASK_ID*4+3].json

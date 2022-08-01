@@ -1190,8 +1190,9 @@ And accordingly for $t' = \Delta t$,
   \exp\left(-\frac{\Delta t}{\tau_{\text{syn}}}\right)
 \end{align}
 
-  
-\section{GeNN Implementation Notes}
+ As the forward equations are identical for $V$ (i.e. like the $\lambda_I$ equation), the equivalent equation can be used for $V$ in the forward pass.
+
+\section{GeNN Implementation Notes (Outdated?)}
 \begin{itemize}
 \item In the normal forward pass we need to save:
   \begin{itemize}
