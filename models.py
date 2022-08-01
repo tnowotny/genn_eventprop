@@ -334,6 +334,21 @@ EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
     """
 )
 
+# This version for "average xentropy loss function"
+EVP_neuron_reset_output_avg_xentropy= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_output_avg_xentropy",
+    param_names=["V_reset","N_class","trial_steps"],
+    var_refs=[("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("trial","int"),("rp_V","int"),("wp_V","int")],
+    update_code= """
+        $(lambda_V)= 0.0;
+        $(lambda_I)= 0.0;
+        $(V)= $(V_reset);
+        $(trial)++;
+        $(rp_V)= $(wp_V);
+        $(wp_V)= $(wp_V)%(2* (int) $(trial_steps));
+    """
+)
+
 #----------------------------------------------------------------------------
 # Neuron models
 #----------------------------------------------------------------------------
@@ -711,6 +726,7 @@ EVP_LIF_output = genn_model.create_custom_neuron_class(
 
 # LIF neuron model for output neurons in the MNIST task - non-spiking and jumps in backward
 # pass at times where the voltage reaches its maximum
+# NOTE TO SELF: why 1/trial_t on the jumps?
 EVP_LIF_output_MNIST = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_MINST",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
@@ -752,7 +768,9 @@ EVP_LIF_output_MNIST = genn_model.create_custom_neuron_class(
 )
 
 # LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
-# by dlV/dV (this is for a "sum-based loss function"
+# by dlV/dV (this is for a "sum-based loss function)"
+# NOTE TO SELF: why 1/trial_t on the lambda_V equation?
+# NOTE: this is not correct/ strange loss function (if it can even be mapped to one)
 EVP_LIF_output_MNIST_sum = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_MINST_sum",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
@@ -785,6 +803,61 @@ EVP_LIF_output_MNIST_sum = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+
+# LIF neuron model for output neurons in the SHD task - non-spiking;
+# use the average cross-entropy loss of instantaneous V values instead of cross-entropy
+# of average Vs
+# NOTE TO SELF: not using 1/trial_t on the lambda_V equation
+EVP_LIF_output_avg_xentropy = genn_model.create_custom_neuron_class(
+    "EVP_LIF_output_avg_xentropy",
+    param_names=["tau_m","tau_syn","N_neurons","N_batch","trial_steps"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
+                    ("trial","int"),("rp_V","int"),("wp_V","int")],
+    extra_global_params=[("label","int*"), ("Vbuf","scalar*")], 
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
+    // backward pass
+    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
+    if ($(trial) > 0) {
+        $(rp_V)--;
+        scalar mexp= 0.0;
+        scalar expV= 0.0;
+        scalar m= 0.0;
+        if ($(id) < $(N_neurons)) m= $(Vbuf)[buf_idx+$(rp_V)];
+        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
+        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
+        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
+        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
+        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x10));
+        printf("%d \\n",buf_idx+$(rp_V));
+        if ($(id) < $(N_neurons)) {
+            mexp= exp($(Vbuf)[buf_idx+$(rp_V)] - m);
+            expV= mexp;
+        } else expV= 0.0;
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
+        if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
+            $(lambda_V) += (1.0-expV/mexp)/$(N_batch)*DT; // simple Euler
+        }
+        else {
+            $(lambda_V) -= expV/mexp/$(N_batch)*DT; // simple Euler
+        }
+    }
+    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
+    // forward pass
+    // update the maximum voltage
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    $(Vbuf)[buf_idx+$(wp_V)]= $(V);
+    $(wp_V)++;
+    """,
+    threshold_condition_code="",
+    reset_code="",
+    is_auto_refractory_required=False
+)
 
 # synapses
 EVP_synapse= genn_model.create_custom_weight_update_class(

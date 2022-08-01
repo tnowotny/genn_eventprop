@@ -25,7 +25,7 @@ p["N_MAX_SPIKE"]= 400    # make buffers for maximally 60 spikes (30 in a 30 ms t
 p["N_BATCH"]= 32
 p["N_TRAIN"]= p["N_BATCH"]*1000
 p["N_EPOCH"]= 10
-p["N_TEST"]= p["N_BATCH"]*100
+p["N_TEST"]= p["N_BATCH"]*25
 N_CLASS= 3
 p["W_REPORT_INTERVAL"] = 100
 p["W_EPOCH_INTERVAL"] = 10
@@ -413,7 +413,7 @@ class yingyang:
             predict= np.hstack(predict)
             if p["TRAINING_PLOT"] and epoch%p["TRAINING_PLOT_INTERVAL"] == 0:
                 plt.figure()
-                plt.scatter(X_t_orig[:,0],X_t_orig[:,1],c=predict,s=0.5)
+                plt.scatter(X_t_orig[:,0],X_t_orig[:,1],c=predict,s=2)
                 plt.show()
 
             if p["FANCY_PLOTS"]:
@@ -421,9 +421,13 @@ class yingyang:
                 for i in range(3):
                     plt.figure()
                     plt.set_cmap('hot')
-                    plt.scatter(X_t_orig[np.logical_and(predict == i, pltnfst[:,i] > 0.0),0],X_t_orig[np.logical_and(predict == i,pltnfst[:,i] > 0.0),1],s=50, color=[ 1, 1, 0.7],edgecolors= "black")
-                    plt.scatter(X_t_orig[pltnfst[:,i] < 0.0,0],X_t_orig[pltnfst[:,i] < 0.0,1],s=50, c='g',marker='x')
-                    plt.scatter(X_t_orig[np.logical_and(predict != i, pltnfst[:,i] > 0.0),0],X_t_orig[np.logical_and(predict != i, pltnfst[:,i] > 0.0),1],s=50, c=pltnfst[np.logical_and(predict != i, pltnfst[:,i] > 0.0),i],marker='x')
+                    plt.scatter(X_t_orig[np.logical_and(predict == i, pltnfst[:,i] > 0.0),0],X_t_orig[np.logical_and(predict == i,pltnfst[:,i] > 0.0),1],s=30, color=[ 1, 1, 0.7],edgecolors= "black")
+                    plt.xlabel("x")
+                    plt.ylabel("y")
+                    plt.scatter(X_t_orig[pltnfst[:,i] < 0.0,0],X_t_orig[pltnfst[:,i] < 0.0,1],s=30, c='g',marker='x')
+                    plt.scatter(X_t_orig[np.logical_and(predict != i, pltnfst[:,i] > 0.0),0],X_t_orig[np.logical_and(predict != i, pltnfst[:,i] > 0.0),1],s=30, c=pltnfst[np.logical_and(predict != i, pltnfst[:,i] > 0.0),i],marker='x')
+                    plt.colorbar()
+                    plt.clim(0, 180)
                 plt.show()
         for pop in p["REC_SPIKES"]:
             spike_t[pop]= np.hstack(spike_t[pop])

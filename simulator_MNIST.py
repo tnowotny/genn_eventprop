@@ -91,6 +91,7 @@ p["REC_SYNAPSES_EPOCH_TRIAL"] = []
 p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
+# possible loss types: "max", "sum", "avg_xentropy"
 p["LOSS_TYPE"]= "max"
 p["EVALUATION"]= "random"
 p["CUDA_VISIBLE_DEVICES"]= False
@@ -391,6 +392,7 @@ class mnist_model:
         return (X, Y, input_start, input_end) 
                 
     def define_model(self, p, shuffle):
+        self.trial_steps= int(round(p["TRIAL_MS"]/p["DT_MS"]))
         input_params= {"N_neurons": self.num_input,
                        "N_max_spike": p["N_MAX_SPIKE"] 
         }
@@ -421,15 +423,18 @@ class mnist_model:
         }
         output_params= {"tau_m": p["TAU_MEM"],
                         "tau_syn": p["TAU_SYN"],
-                        "trial_t": p["TRIAL_MS"],
                         "N_batch": p["N_BATCH"],
         }
+
+        if p["LOSS_TYPE"] == "sum" or p["LOSS_TYPE"] == "max":
+            output_params["trial_t"]= p["TRIAL_MS"]
+        if p["LOSS_TYPE"] == "avg_xentropy":
+            output_params["N_neurons"]= self.num_output
+            output_params["trial_steps"]= self.trial_steps
+        
         self.output_init_vars= {"V": p["V_RESET"],
                                 "lambda_V": 0.0,
                                 "lambda_I": 0.0,
-                                "rev_t": 0.0,
-                                "expsum": 1.0,
-                                "exp_V": 1.0,     
                                 "trial": 0,
         }
         if p["LOSS_TYPE"] == "max":
@@ -437,10 +442,21 @@ class mnist_model:
             self.output_init_vars["new_max_V"]= p["V_RESET"]
             self.output_init_vars["max_t"]= 0.0
             self.output_init_vars["new_max_t"]= 0.0
+            self.output_init_vars["rev_t"]= 0.0
+            self.output_init_vars["expsum"]= 1.0
+            self.output_init_vars["exp_V"]= 1.0     
+
         if p["LOSS_TYPE"] == "sum":
             self.output_init_vars["sum_V"]= 0.0
             self.output_init_vars["new_sum_V"]= 0.0
+            self.output_init_vars["rev_t"]= 0.0
+            self.output_init_vars["expsum"]= 1.0
+            self.output_init_vars["exp_V"]= 1.0     
 
+        if p["LOSS_TYPE"] == "avg_xentropy":
+            self.output_init_vars["rp_V"]= 0
+            self.output_init_vars["wp_V"]= 0
+            
         # ----------------------------------------------------------------------------
         # Synapse initialisation
         # ----------------------------------------------------------------------------
@@ -510,9 +526,12 @@ class mnist_model:
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST, output_params, self.output_init_vars)
         if p["LOSS_TYPE"] == "sum":
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST_sum, output_params, self.output_init_vars)
-            
+        if p["LOSS_TYPE"] == "avg_xentropy":
+            self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_avg_xentropy, output_params, self.output_init_vars)
         self.output.set_extra_global_param("label", np.zeros(self.data_full_length,dtype=np.float32)) # reserve space for labels
-
+        if p["LOSS_TYPE"] == "avg_xentropy":
+            self.output.set_extra_global_param("Vbuf", np.zeros(self.num_output*self.trial_steps*2,dtype=np.float32)) # reserve space for voltage buffer
+        
         input_var_refs= {"rp_ImV": genn_model.create_var_ref(self.input, "rp_ImV"),
                          "wp_ImV": genn_model.create_var_ref(self.input, "wp_ImV"),
                          "back_spike": genn_model.create_var_ref(self.input, "back_spike"),
@@ -567,23 +586,33 @@ class mnist_model:
         output_reset_params= {"V_reset": p["V_RESET"],
                               "N_class": self.N_class
         }
+        if p["LOSS_TYPE"] == "avg_xentropy":
+            output_reset_params["trial_steps"]= self.trial_steps
+        
         output_var_refs= {"V": genn_model.create_var_ref(self.output, "V"),
                           "lambda_V": genn_model.create_var_ref(self.output, "lambda_V"),
                           "lambda_I": genn_model.create_var_ref(self.output, "lambda_I"),
-                          "rev_t": genn_model.create_var_ref(self.output, "rev_t"),
-                          "expsum": genn_model.create_var_ref(self.output, "expsum"),
-                          "exp_V": genn_model.create_var_ref(self.output, "exp_V"),
                           "trial": genn_model.create_var_ref(self.output, "trial")
         }
+
         if p["LOSS_TYPE"] == "max":
             output_var_refs["max_V"]= genn_model.create_var_ref(self.output, "max_V")
             output_var_refs["new_max_V"]= genn_model.create_var_ref(self.output, "new_max_V")
             output_var_refs["max_t"]= genn_model.create_var_ref(self.output, "max_t")
             output_var_refs["new_max_t"]= genn_model.create_var_ref(self.output, "new_max_t")
+            output_var_refs["rev_t"]= genn_model.create_var_ref(self.output, "rev_t")
+            output_var_refs["expsum"]= genn_model.create_var_ref(self.output, "expsum")
+            output_var_refs["exp_V"]= genn_model.create_var_ref(self.output, "exp_V")
         if p["LOSS_TYPE"] == "sum":
             output_var_refs["sum_V"]= genn_model.create_var_ref(self.output, "sum_V")
             output_var_refs["new_sum_V"]= genn_model.create_var_ref(self.output, "new_sum_V")
-               
+            output_var_refs["rev_t"]= genn_model.create_var_ref(self.output, "rev_t")
+            output_var_refs["expsum"]= genn_model.create_var_ref(self.output, "expsum")
+            output_var_refs["exp_V"]= genn_model.create_var_ref(self.output, "exp_V")
+        if p["LOSS_TYPE"] == "avg_xentropy":
+            output_var_refs["rp_V"]= genn_model.create_var_ref(self.output, "rp_V")
+            output_var_refs["wp_V"]= genn_model.create_var_ref(self.output, "wp_V")
+            
         if p["DATASET"] == "MNIST":
             self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_MNIST, output_reset_params, {}, output_var_refs)
         if p["DATASET"] == "SHD" or p["DATASET"] == "enose":
@@ -591,6 +620,8 @@ class mnist_model:
                 self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD, output_reset_params, {}, output_var_refs)
             if p["LOSS_TYPE"] == "sum":
                 self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD_sum, output_reset_params, {}, output_var_refs)
+            if p["LOSS_TYPE"] == "avg_xentropy":
+                self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_avg_xentropy, output_reset_params, {}, output_var_refs)
 
         # synapse populations
         self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
