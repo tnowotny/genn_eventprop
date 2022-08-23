@@ -328,7 +328,7 @@ EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
         $(lambda_V)= 0.0;
         $(lambda_I)= 0.0;
         $(V)= $(V_reset);
-        $(sum_V)= $(new_sum_V);
+        $(sum_V)= $(new_sum_V);  // NOTE: sum_V isn't used anywhere -> remove?
         $(new_sum_V)= 0.0;
         $(trial)++;
     """
@@ -338,7 +338,7 @@ EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output_avg_xentropy= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_avg_xentropy",
     param_names=["V_reset","N_class","trial_steps"],
-    var_refs=[("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("trial","int"),("rp_V","int"),("wp_V","int")],
+    var_refs=[("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
     update_code= """
         $(lambda_V)= 0.0;
         $(lambda_I)= 0.0;
@@ -346,6 +346,8 @@ EVP_neuron_reset_output_avg_xentropy= genn_model.create_custom_custom_update_cla
         $(trial)++;
         $(rp_V)= $(wp_V);
         $(wp_V)= $(wp_V)%(2* (int) $(trial_steps));
+        $(loss)= 0.0;
+        $(sum_V)= 0.0;
     """
 )
 
@@ -807,15 +809,20 @@ EVP_LIF_output_MNIST_sum = genn_model.create_custom_neuron_class(
 # LIF neuron model for output neurons in the SHD task - non-spiking;
 # use the average cross-entropy loss of instantaneous V values instead of cross-entropy
 # of average Vs
-# NOTE TO SELF: not using 1/trial_t on the lambda_V equation
 EVP_LIF_output_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_avg_xentropy",
-    param_names=["tau_m","tau_syn","N_neurons","N_batch","trial_steps"],
+    param_names=["tau_m","tau_syn","N_neurons","N_batch","trial_steps","trial_t"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
-                    ("trial","int"),("rp_V","int"),("wp_V","int")],
+                    ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
     extra_global_params=[("label","int*"), ("Vbuf","scalar*")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
+    // forward pass
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    $(Vbuf)[buf_idx+$(wp_V)]= $(V);
+    $(sum_V)+= $(V)/$(trial_t)*DT;
+    $(wp_V)++;
     // backward pass
     $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
     if ($(trial) > 0) {
@@ -823,36 +830,39 @@ EVP_LIF_output_avg_xentropy = genn_model.create_custom_neuron_class(
         scalar mexp= 0.0;
         scalar expV= 0.0;
         scalar m= 0.0;
-        if ($(id) < $(N_neurons)) m= $(Vbuf)[buf_idx+$(rp_V)];
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x10));
-        printf("%d \\n",buf_idx+$(rp_V));
-        if ($(id) < $(N_neurons)) {
-            mexp= exp($(Vbuf)[buf_idx+$(rp_V)] - m);
-            expV= mexp;
-        } else expV= 0.0;
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
-        if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += (1.0-expV/mexp)/$(N_batch)*DT; // simple Euler
-        }
-        else {
-            $(lambda_V) -= expV/mexp/$(N_batch)*DT; // simple Euler
-        }
+        //if ($(id) < $(N_neurons)) m= fabs($(Vbuf)[buf_idx+$(rp_V)]);
+        //m += __shfl_xor_sync(0xFFFF, m, 0x1);
+        //m += __shfl_xor_sync(0xFFFF, m, 0x2);
+        //m += __shfl_xor_sync(0xFFFF, m, 0x4);
+        //m += __shfl_xor_sync(0xFFFF, m, 0x8);
+        //m += __shfl_xor_sync(0xFFFF, m, 0x10);
+        //if (m > 1e-10) {
+            if ($(id) < $(N_neurons)) m= $(Vbuf)[buf_idx+$(rp_V)];
+            m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
+            m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
+            m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
+            m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
+            m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x10));
+            //printf("%d \\n",buf_idx+$(rp_V));
+            if ($(id) < $(N_neurons)) {
+                mexp= exp($(Vbuf)[buf_idx+$(rp_V)] - m);
+                expV= mexp;
+            }
+            mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
+            mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
+            mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
+            mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
+            mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
+            if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
+                $(lambda_V) += (1.0-expV/mexp)/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
+                $(loss) -= log(expV/mexp)/$(N_batch)/$(trial_t)*DT; // calculate contribution to loss
+            }
+            else {
+                $(lambda_V) -= expV/mexp/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
+            }
+        //}
     }
     $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
-    // forward pass
-    // update the maximum voltage
-    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
-    $(Vbuf)[buf_idx+$(wp_V)]= $(V);
-    $(wp_V)++;
     """,
     threshold_condition_code="",
     reset_code="",

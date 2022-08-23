@@ -144,6 +144,11 @@ class mnist_model:
             
         loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/p["N_BATCH"]
         return loss
+
+    def loss_func_avg_xentropy(self, Y, p):
+        loss= self.output.vars["loss"].view
+        loss= np.sum(np.sum(loss))/p["N_BATCH"]
+        return loss
     
     def load_data_MNIST(self, p, shuffle= True):
         X = mnist.train_images()
@@ -424,10 +429,9 @@ class mnist_model:
         output_params= {"tau_m": p["TAU_MEM"],
                         "tau_syn": p["TAU_SYN"],
                         "N_batch": p["N_BATCH"],
+                        "trial_t": p["TRIAL_MS"],
         }
 
-        if p["LOSS_TYPE"] == "sum" or p["LOSS_TYPE"] == "max":
-            output_params["trial_t"]= p["TRIAL_MS"]
         if p["LOSS_TYPE"] == "avg_xentropy":
             output_params["N_neurons"]= self.num_output
             output_params["trial_steps"]= self.trial_steps
@@ -454,8 +458,10 @@ class mnist_model:
             self.output_init_vars["exp_V"]= 1.0     
 
         if p["LOSS_TYPE"] == "avg_xentropy":
+            self.output_init_vars["sum_V"]= 0.0
             self.output_init_vars["rp_V"]= 0
             self.output_init_vars["wp_V"]= 0
+            self.output_init_vars["loss"]= 0
             
         # ----------------------------------------------------------------------------
         # Synapse initialisation
@@ -530,7 +536,7 @@ class mnist_model:
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_avg_xentropy, output_params, self.output_init_vars)
         self.output.set_extra_global_param("label", np.zeros(self.data_full_length,dtype=np.float32)) # reserve space for labels
         if p["LOSS_TYPE"] == "avg_xentropy":
-            self.output.set_extra_global_param("Vbuf", np.zeros(self.num_output*self.trial_steps*2,dtype=np.float32)) # reserve space for voltage buffer
+            self.output.set_extra_global_param("Vbuf", np.zeros(p["N_BATCH"]*self.num_output*self.trial_steps*2,dtype=np.float32)) # reserve space for voltage buffer
         
         input_var_refs= {"rp_ImV": genn_model.create_var_ref(self.input, "rp_ImV"),
                          "wp_ImV": genn_model.create_var_ref(self.input, "wp_ImV"),
@@ -610,8 +616,10 @@ class mnist_model:
             output_var_refs["expsum"]= genn_model.create_var_ref(self.output, "expsum")
             output_var_refs["exp_V"]= genn_model.create_var_ref(self.output, "exp_V")
         if p["LOSS_TYPE"] == "avg_xentropy":
+            output_var_refs["sum_V"]= genn_model.create_var_ref(self.output, "sum_V")
             output_var_refs["rp_V"]= genn_model.create_var_ref(self.output, "rp_V")
             output_var_refs["wp_V"]= genn_model.create_var_ref(self.output, "wp_V")
+            output_var_refs["loss"]= genn_model.create_var_ref(self.output, "loss")
             
         if p["DATASET"] == "MNIST":
             self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_MNIST, output_reset_params, {}, output_var_refs)
@@ -719,8 +727,8 @@ class mnist_model:
         rec_vars_n= {}
         for pop, var in p["REC_NEURONS"]:
             rec_vars_n[var+pop]= []
-        rec_exp_V= []
-        rec_expsum= []
+        #rec_exp_V= []
+        #rec_expsum= []
         rec_n_t= []
         rec_n_lbl= []
         rec_n_pred= []
@@ -893,6 +901,9 @@ class mnist_model:
                     # for hidden regularistation prepare "sNSum_all"
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
+                if p["LOSS_TYPE"] == "avg_xentropy": # need to copy sum_V and loss from device before neuronReset!
+                    self.output.pull_var_from_device("sum_V")
+                    self.output.pull_var_from_device("loss")
                 self.model.custom_update("neuronReset")
                 if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
                     self.model.custom_update("sNSumReduce")
@@ -909,10 +920,13 @@ class mnist_model:
                     self.hidden.pull_var_from_device("sNSum")
                     rewire_sNSum.append(np.sum(self.hidden.vars["sNSum"].view.copy(),axis= 0))
                 # record training loss and error
-                # NOTE: the neuronReset does the calculation of expsum and updates exp_V
-                self.output.pull_var_from_device("exp_V")
-                #print(self.output.vars["exp_V"].view)
-                pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
+                # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
+                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":
+                    self.output.pull_var_from_device("exp_V")
+                    #print(self.output.vars["exp_V"].view)
+                    pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
+                if p["LOSS_TYPE"] == "avg_xentropy":
+                    pred= np.argmax(self.output.vars["sum_V"].view, axis=-1)
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
                 if ((epoch, trial) in p["REC_SPIKES_EPOCH_TRIAL"]):
                     rec_spk_lbl.append(lbl.copy())
@@ -927,14 +941,17 @@ class mnist_model:
                     print(pred)
                     print(lbl)
                     print("---------------------------------------")
-                self.output.pull_var_from_device("expsum")
-                losses= self.loss_func(lbl,p)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":
+                    self.output.pull_var_from_device("expsum")
+                    losses= self.loss_func(lbl,p)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+                if p["LOSS_TYPE"] == "avg_xentropy":
+                    losses= self.loss_func_avg_xentropy(lbl,p)   # uses self.output.vars["loss"].view 
                 if ((epoch, trial) in p["REC_NEURONS_EPOCH_TRIAL"]):
                     print(pred)
                     print(lbl)
                     print("---------------------------------------")
-                    rec_exp_V.append(self.output.vars["exp_V"].view.copy())
-                    rec_expsum.append(self.output.vars["expsum"].view.copy())
+                    #rec_exp_V.append(self.output.vars["exp_V"].view.copy())
+                    #rec_expsum.append(self.output.vars["expsum"].view.copy())
                 #print(f'{np.min(self.output.vars["expsum"].view)} {np.mean(self.output.vars["expsum"].view)} {np.max(self.output.vars["expsum"].view)}')
                 good[phase] += np.sum(pred == lbl)
                 predict[phase].append(pred)
@@ -1024,8 +1041,8 @@ class mnist_model:
                 print(rec_var[var+pop].shape)
             rec_t= np.array(rec_t)
 
-        rec_exp_V= np.array(rec_exp_V)
-        rec_expsum= np.array(rec_expsum)          
+        #rec_exp_V= np.array(rec_exp_V)
+        #rec_expsum= np.array(rec_expsum)          
         rec_spk_lbl= np.array(rec_spk_lbl)
         rec_spk_pred= np.array(rec_spk_pred)
         rec_n_lbl= np.array(rec_n_lbl)
@@ -1042,8 +1059,8 @@ class mnist_model:
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+pop+"_spike_ID"), spike_ID[pop])
 
             if len(p["REC_NEURONS"]) > 0:
-                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_exp_V"), rec_exp_V)
-                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_expsum"), rec_expsum)
+                #np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_exp_V"), rec_exp_V)
+                #np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_expsum"), rec_expsum)
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_t"), rec_n_t)
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_lbl"), rec_n_lbl)
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_pred"), rec_n_pred)
