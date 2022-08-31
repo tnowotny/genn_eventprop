@@ -1290,22 +1290,42 @@ And accordingly for $t' = \Delta t$,
   Pehle and Wunderlich argue that
   \begin{align}
     \max_{t \in [0, T]} V_{k}(t) = \int_0^T V_{k}(t) \delta(t-t_{\text{max}}) dt
-  \end{align}
-  and that one can deduce jumps for $\lambda_V$ at $t_{\text{max}}$ that are equivalent to the jumps normally encountered at spike times. If we follow that logic, we need to jump $\lambda_V$ by $\frac{\partial l_{\text{m}}(t_{\text{max}}^{j})}{\partial t_{\text{max}}^{k}}$ at the times $t_{\text{max}}^{k}$, where
+  \end{align}   
+   and that one can deduce jumps for $\lambda_V$ at $t_{\text{max}}$ that are equivalent to the jumps normally encountered at spike times. If we follow that logic, we need to inject into $\lambda_{V,n}$ the term $\frac{\partial l_{\text{m}}(V(t))}{\partial V_n(t)}$ where
   \begin{align}
-    l_{\text{m}}(t_{\text{max}}^{j}) =
-  - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp\left(\int_0^T V_{l(i)}(t) \delta(t-t_{\text{max}}^{l(i)}) dt\right)}{\sum_{k=1}^{N_{\text{out}}}\exp\left(\int_0^T  V_{k}(t)\delta(t-t_{\text{max}}^k) \right)}
+    &l_{\text{m}}(t_{\text{max}}^{j})  \\
+    &= - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp\left(\int_0^T V_{l(i)}(t) \delta(t-t_{\text{max}}^{l(i)}) dt\right)}{\sum_{k=1}^{N_{\text{out}}}\exp\left(\int_0^T  V_{k}(t)\delta(t-t_{\text{max}}^k) \right)}
   \end{align}
-    
-  However, this does not generate a functional form as in {\blue
-    (1)} on first sight. It is equally difficult to argue with
-  $V_{\text{max}} = V(t_{\text{max}})$ as the $t_{\text{max}}$ are not
+  This only contributes at the times $t_{\text{max}}^{n}$, when we'd inject
+  \begin{align}
+    \left\{\begin{array}{ll}
+    \delta(0) - \frac{\exp(V_{l(i)}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{k}^{\text{max}})} \delta(0) & \text{if} n= l(i) \\
+    - \frac{\exp(V_{n}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{k}^{\text{max}})} \delta(0) & \text{otherwise}
+    \end{array} \right.
+    \end{align}
+This seems to suggest jumps of 
+\begin{align}
+      \left\{\begin{array}{ll}
+  \lambda_{l(i)} +=  1 - \frac{\exp(V_{l(i)}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{l(i)}^{\text{max}})} & \text{at}  t= t_{\text{max}}^{l(i)} \\
+ \lambda_{n} += - \frac{\exp(V_{n}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{k}^{\text{max}})} & \text{at} t= t_{\text{max}}^{n} \text{for} n \neq l(i)
+      \end{array} \right.
+\end{align}
+However, this arises from pretending that $l_m$ was a function $l_V$
+that was integrated over time to obtain the loss of {\blue
+    (1)}
+\begin{align}
+  {\cal L}= \int_{0}^T l_V (t) dt
+\end{align}
+which it is not. I am not sure this is mathematically correct ... though the MNIST example appeared to learn.
+
+ It is equally difficult to argue with
+  $V_{\text{max}} = V(t_{\text{max}})$, i.e. the equivalent of the $l_p(t_k)$, because the $t_{\text{max}}$ are not
   spike times, so the whole machinery used in the proof for
   contributions of $l_p(t_k)$ does not really apply.
 
   \subsection{Alternative average instantaneous cross-entropy loss}
-  The cross-entropy loss functions based on maximal voltages and
-  average voltages above do not really seem to work well in the
+  The cross-entropy loss functions based on maximal voltages (\ref{maxloss}) and
+  average voltages (\ref{sumloss}) above do not really seem to work well in the
   eventprop formalism. An alternative could be the average
   cross-entropy loss,
   \begin{align}
@@ -1331,38 +1351,9 @@ And accordingly for $t' = \Delta t$,
     1 - \frac{\exp(V_{l(i)}^i)}{\sum_{k=1}^{N_{\text{out}}}
       \exp(V_k^i)} \right) 
   \end{align}
-  and that one can deduce jumps for $\lambda_V$ at $t_{\text{max}}$ that are equivalent to the jumps normally encountered at spike times. If we follow that logic, we need to inject into $\lambda_{V,n}$ the term $\frac{\partial l_{\text{m}}(V(t))}{\partial V_n(t)}$ where
-  \begin{align}
-    &l_{\text{m}}(t_{\text{max}}^{j})  \\
-    &= - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp\left(\int_0^T V_{l(i)}(t) \delta(t-t_{\text{max}}^{l(i)}) dt\right)}{\sum_{k=1}^{N_{\text{out}}}\exp\left(\int_0^T  V_{k}(t)\delta(t-t_{\text{max}}^k) \right)}
-  \end{align}
-  This only contributes at the times $t_{\text{max}}^{n}$, when we'd inject
-  \begin{align}
-    \left\{\begin{array}{ll}
-    \delta(0) - \frac{\exp(V_{l(i)}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{k}^{\text{max}})} \delta(0) & \text{if} n= l(i) \\
-    - \frac{\exp(V_{n}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{k}^{\text{max}})} \delta(0) & \text{otherwise}
-    \end{array} \right.
-    \end{align}
-This seems to suggest jumps of 
-\begin{align}
-      \left\{\begin{array}{ll}
-  \lambda_{l(i)} +=  1 - \frac{\exp(V_{l(i)}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{l(i)}^{\text{max}})} & \text{at}  t= t_{\text{max}}^{l(i)} \\
- \lambda_{n} += - \frac{\exp(V_{n}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{k}^{\text{max}})} & \text{at} t= t_{\text{max}}^{n} \text{for} n \neq l(i)
-      \end{array} \right.
-\end{align}
-However, this arises from pretending that $l_m$ was a function $l_V$ that was integrated over time to obtain the loss:
-\begin{align}
-  {\cal L}= \int_{0}^T l_V (t) dt
-\end{align}
-which it is not. I am not sure this is mathematically correct ... though the MNIST example appeared to learn.
 
   \section{Debugging the average cross-entropy results}
-  As an alternative to the loss functions (\ref{maxloss}) and (\ref{sumloss}) which are technically not compliant to the eventProp algorithm I decided to work with the average cross-entropy loss
-  \begin{align}
-    {\cal L}= \int_0^T  - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp(V_{l(i)} (t)}{\sum_{k=1}^{N_{\text{class}}} \exp(V_k(t))}
-  \end{align}
-
-  Using this average cross-entropy, the networks do not learn the SHD task. Learning success is almost 0 (successful prediction at chance level of 5\%) and we note that there is a tendency to drive the hidden layer to silence. While this can be counter-acted by stronger regularisation, I have also discovered that neurons that drive the correct output neuron through strong positive weights appear to get the most weakened input synapses (on average) and eventually fall silent.
+  Using the average cross-entropy loss, the networks do not learn the SHD task. Learning success is almost 0 (successful prediction at chance level of 5\%) and we note that there is a tendency to drive the hidden layer to silence. While this can be counter-acted by stronger regularisation, I have also discovered that neurons that drive the correct output neuron through strong positive weights appear to get the most weakened input synapses (on average) and eventually fall silent.
   This could be due to the local gradient reflecting that spacing out input spikes (to the output layer) into regular intervals and across the entire trial is beneficial for reducing loss (as additional, coincident input spikes with positive weight to the correct output neuron have diminishing return due to the non-linearity of the cross-entropy.)
 
   An interesting minimal illustration of this hypothesis is captured in \verb+single_neuron_analysis.ipynb+. Here, the effect of a pattern of intput spikes ontot the correct output neuron is analysed. One can see how the first spike tends to lead to a positive $\lambda_V-\lambda_I$, i.e. potentiation, while the last spike (first in backward pass) akways leads to negative $\lambda_V-\lambda_I$, i.e. tending to depression -- moving the first spike earlier and the last one later ...
