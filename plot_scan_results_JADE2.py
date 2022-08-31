@@ -109,6 +109,9 @@ fig.savefig(basename+"_activity.png")
 
 print(final_cor)
 print(final_cor_e)
+mx= np.max(np.max(final_cor_e))
+i, j= np.where(final_cor_e == mx)
+print(i,j)
 print(final_loss)
 print(final_loss_e)
 

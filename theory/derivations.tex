@@ -715,7 +715,7 @@ $t^{\text{post}}$ makes $(V)_m$ a function of $t^{\text{post}}$.
   \begin{align}
     \left(\frac{\partial V^+}{\partial w_{ji}}\right)_m =
     \left(\frac{\partial V^-}{\partial w_{ji}}\right)_m -
-    \tau_{\text{mem}}^{-1} w_{mn} \frac{d t^{\text{post}}}{dw_ij}
+    \tau_{\text{mem}}^{-1} w_{mn} \frac{d t^{\text{post}}}{dw_{ji}}
     \tag{43} 
   \end{align}
   }
@@ -736,7 +736,7 @@ and inserting into \blue{(41)} reformatted as
 \blue{
   \begin{align}
     = \left(\frac{\partial V^-}{\partial w_{ji}}\right)_m +
-  \frac{1}{\tau_{\text{mem}} (\dot{V}^-)_n} w_{mn}
+  \frac{1}{\tau_{\text{mem}} (\dot{V}^-)_n} w_{nm}
   \left(\frac{\partial V^-}{\partial w_{ji}} \right)_n \tag{44}
   \end{align}
 }
@@ -1290,6 +1290,46 @@ And accordingly for $t' = \Delta t$,
   Pehle and Wunderlich argue that
   \begin{align}
     \max_{t \in [0, T]} V_{k}(t) = \int_0^T V_{k}(t) \delta(t-t_{\text{max}}) dt
+  \end{align}
+  and that one can deduce jumps for $\lambda_V$ at $t_{\text{max}}$ that are equivalent to the jumps normally encountered at spike times. If we follow that logic, we need to jump $\lambda_V$ by $\frac{\partial l_{\text{m}}(t_{\text{max}}^{j})}{\partial t_{\text{max}}^{k}}$ at the times $t_{\text{max}}^{k}$, where
+  \begin{align}
+    l_{\text{m}}(t_{\text{max}}^{j}) =
+  - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp\left(\int_0^T V_{l(i)}(t) \delta(t-t_{\text{max}}^{l(i)}) dt\right)}{\sum_{k=1}^{N_{\text{out}}}\exp\left(\int_0^T  V_{k}(t)\delta(t-t_{\text{max}}^k) \right)}
+  \end{align}
+    
+  However, this does not generate a functional form as in {\blue
+    (1)} on first sight. It is equally difficult to argue with
+  $V_{\text{max}} = V(t_{\text{max}})$ as the $t_{\text{max}}$ are not
+  spike times, so the whole machinery used in the proof for
+  contributions of $l_p(t_k)$ does not really apply.
+
+  \subsection{Alternative average instantaneous cross-entropy loss}
+  The cross-entropy loss functions based on maximal voltages and
+  average voltages above do not really seem to work well in the
+  eventprop formalism. An alternative could be the average
+  cross-entropy loss,
+  \begin{align}
+    {\mathcal L} = \int_0^T - \frac{1}{N_{\text{batch}}}
+    \sum_{i=1}^{N_{\text{batch}}} \log
+    \frac{\exp(V_{l(i)}(t))}{\sum_{k=1}^{N_{\text{out}}} \exp(V_k(t))} dt
+  \end{align} 
+  i.e., the cross-entropy is taken for each individual time on the
+  voltages at that time and this cross-entropy is averaged over the
+  trial. This loss function has the required functional form of $\int
+  l_V dt$ and hence we simply need to update with $\frac{\partial
+    l_V}{\partial V}$ in the $\lambda_V$ equation.
+  \begin{align}
+    & l_V= - \frac{1}{N_{\text{batch}}}
+    \sum_{i=1}^{N_{\text{batch}}} \log
+    \frac{\exp(V_{l(i)}(t))}{\sum_{k=1}^{N_{\text{out}}} \exp(V_k(t))}
+    \\
+    \Rightarrow \; & \frac{\partial l_V}{\partial V_j^i} =
+    \frac{1}{N_{\text{batch}}}
+    \frac{\exp(V_j^i)}{\sum_{k=1}^{N_{\text{out}}} \exp(V_k^i)} \\
+    & \frac{\partial l_V}{\partial V_{l(i)}^i} =
+    - \frac{1}{N_{\text{batch}}} \left(
+    1 - \frac{\exp(V_{l(i)}^i)}{\sum_{k=1}^{N_{\text{out}}}
+      \exp(V_k^i)} \right) 
   \end{align}
   and that one can deduce jumps for $\lambda_V$ at $t_{\text{max}}$ that are equivalent to the jumps normally encountered at spike times. If we follow that logic, we need to inject into $\lambda_{V,n}$ the term $\frac{\partial l_{\text{m}}(V(t))}{\partial V_n(t)}$ where
   \begin{align}
