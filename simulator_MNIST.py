@@ -96,6 +96,7 @@ p["LOSS_TYPE"]= "max"
 p["EVALUATION"]= "random"
 p["CUDA_VISIBLE_DEVICES"]= False
 p["AVG_SNSUM"]= False
+p["REDUCED_CLASSES"]= None
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -131,6 +132,10 @@ class mnist_model:
 
         if p["DATASET"] == "enose":
             self.load_data_enose(p)
+
+        if p["REDUCED_CLASSES"] is not None:
+            self.X_train_orig, self.Y_train_orig, self.Z_train_orig= self.reduce_classes(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["REDUCED_CLASSES"])
+            self.X_test_orig, self.Y_test_orig, self.Z_test_orig= self.reduce_classes(self.X_test_orig, self.Y_test_orig, self.Z_test_orig, p["REDUCED_CLASSES"])
             
     def loss_func(self, Y, p):
         expsum= self.output.vars["expsum"].view
@@ -147,7 +152,7 @@ class mnist_model:
 
     def loss_func_avg_xentropy(self, Y, p):
         loss= self.output.vars["loss"].view
-        loss= np.sum(np.sum(loss))/p["N_BATCH"]
+        loss= np.sum(np.sum(loss))
         return loss
     
     def load_data_MNIST(self, p, shuffle= True):
@@ -294,6 +299,13 @@ class mnist_model:
     #     self.X_train_orig, self.Y_train_orig, self.X_test_orig, self.Y_test_orig= enose_data_load()
     #     self.data_full_length= len(self.Y_train_orig)
     
+
+    def reduce_classes(self, X, Y, Z, classes):
+        idx= [y in classes for y in Y]
+        newX= X[idx]
+        newY= Y[idx]
+        newZ= Z[idx]
+        return (newX, newY, newZ)
     
     def split_SHD_random(self, X, Y, p, shuffle= True):
         idx= np.arange(len(X),dtype= int)
@@ -435,6 +447,7 @@ class mnist_model:
         if p["LOSS_TYPE"] == "avg_xentropy":
             output_params["N_neurons"]= self.num_output
             output_params["trial_steps"]= self.trial_steps
+            output_params["N_class"]= self.N_class
         
         self.output_init_vars= {"V": p["V_RESET"],
                                 "lambda_V": 0.0,
@@ -494,7 +507,7 @@ class mnist_model:
         self.model.timing_enabled = p["TIMING"]
         self.model.batch_size = p["N_BATCH"]
         if p["MODEL_SEED"] is not None:
-            model._model.set_seed(p["MODEL_SEED"])
+            self.model._model.set_seed(p["MODEL_SEED"])
 
         # Add neuron populations
         self.input = self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, 
@@ -505,6 +518,7 @@ class mnist_model:
         if p["REG_TYPE"] == "simple":
             hidden_params["N_batch"]= p["N_BATCH"]
             hidden_params["lbd_upper"]= p["LBD_UPPER"]
+            hidden_params["lbd_lower"]= p["LBD_LOWER"]
             hidden_params["nu_upper"]= p["NU_UPPER"]
             self.hidden_init_vars["sNSum"]= 0.0
             self.hidden_init_vars["new_sNSum"]= 0.0
@@ -924,9 +938,9 @@ class mnist_model:
                 if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":
                     self.output.pull_var_from_device("exp_V")
                     #print(self.output.vars["exp_V"].view)
-                    pred= np.argmax(self.output.vars["exp_V"].view, axis=-1)
+                    pred= np.argmax(self.output.vars["exp_V"].view[:,:self.N_class], axis=-1)
                 if p["LOSS_TYPE"] == "avg_xentropy":
-                    pred= np.argmax(self.output.vars["sum_V"].view, axis=-1)
+                    pred= np.argmax(self.output.vars["sum_V"].view[:,:self.N_class], axis=-1)
                 lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
                 if ((epoch, trial) in p["REC_SPIKES_EPOCH_TRIAL"]):
                     rec_spk_lbl.append(lbl.copy())
