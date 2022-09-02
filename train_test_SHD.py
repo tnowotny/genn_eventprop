@@ -7,7 +7,7 @@ p["TRIAL_MS"]= 1400
 p["DATASET"]= "SHD"
 p["TRAIN_DATA_SEED"]= 372
 p["TEST_DATA_SEED"]= 814
-p["NAME"]= "test38"
+p["NAME"]= "tt1"
 p["NUM_HIDDEN"]= 256
 p["N_MAX_SPIKE"]= 1500
 p["DT_MS"]= 1
@@ -18,7 +18,7 @@ p["ADAM_BETA2"]= 0.999
 p["DEBUG"]= False
 p["DEBUG_HIDDEN_N"]= True
 p["LOAD_LAST"]= False
-p["N_EPOCH"]= 1
+p["N_EPOCH"]= 300
 p["N_BATCH"]= 256
 p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 8156 # that is all of them
@@ -43,7 +43,7 @@ p["ETA_DECAY"]= 1.0
 p["ETA_FIDDELING"]= False
 p["ETA_REDUCE"]= 0.5
 p["ETA_REDUCE_PERIOD"]= 50
-p["TIMING"]= True
+p["TIMING"]= False
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["LOSS_TYPE"]= "sum"
 p["EVALUATION"]= "speaker"
@@ -84,4 +84,4 @@ for i in range(5):
     print("test correct_eval: {}".format(correct_eval))
     p["TEST_DATA_SEED"]+= 31
     with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_allresult.txt'),'a') as f:
-        f.write("{} {}\n".format(tc,correct))
+        f.write("{} {}\n".format(tc,correct_eval))

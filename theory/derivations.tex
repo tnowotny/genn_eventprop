@@ -4,6 +4,8 @@
 \usepackage{amsfonts}
 \usepackage{graphicx}
 \usepackage{color}
+\usepackage{listings}
+\usepackage{xcolor}
 
 \newcommand{\blue}[1]{{\color{blue}#1}}
 \newcommand{\R}{{\mathbb R}}
@@ -12,6 +14,40 @@
 \addtolength{\textheight}{4cm}
 \hoffset-2cm
 \voffset-2cm
+
+\colorlet{punct}{red!60!black}
+\definecolor{background}{HTML}{EEEEEE}
+\definecolor{delim}{RGB}{20,105,176}
+\colorlet{numb}{magenta!60!black}
+
+\lstdefinelanguage{json}{
+    basicstyle=\normalfont\ttfamily,
+    numbers=left,
+    numberstyle=\scriptsize,
+    stepnumber=1,
+    numbersep=8pt,
+    showstringspaces=false,
+    breaklines=true,
+    frame=lines,
+    backgroundcolor=\color{background},
+    literate=
+     *{0}{{{\color{numb}0}}}{1}
+      {1}{{{\color{numb}1}}}{1}
+      {2}{{{\color{numb}2}}}{1}
+      {3}{{{\color{numb}3}}}{1}
+      {4}{{{\color{numb}4}}}{1}
+      {5}{{{\color{numb}5}}}{1}
+      {6}{{{\color{numb}6}}}{1}
+      {7}{{{\color{numb}7}}}{1}
+      {8}{{{\color{numb}8}}}{1}
+      {9}{{{\color{numb}9}}}{1}
+      {:}{{{\color{punct}{:}}}}{1}
+      {,}{{{\color{punct}{,}}}}{1}
+      {\{}{{{\color{delim}{\{}}}}{1}
+      {\}}{{{\color{delim}{\}}}}}{1}
+      {[}{{{\color{delim}{[}}}}{1}
+      {]}{{{\color{delim}{]}}}}{1},
+}
 
 \begin{document}
 \section{Preliminaries}
@@ -515,8 +551,8 @@ flipped to do the backward derivatives.
   \begin{align}
     \xi_k &\equiv \frac{\partial l_p}{\partial t_k^{\text{post}}} \frac{d
       t_k^{\text{post}}}{d w_{ji}}
-    + l^-_{V,k+1}
-      \frac{dt_{k+1}^{\text{post}}}{d w_{ji}} - l^+_{V,k} \frac{d
+    + l^-_{V,k}
+      \frac{dt_{k}^{\text{post}}}{d w_{ji}} - l^+_{V,k} \frac{d
         t_k^{\text{post}}}{d w_{ji}} \nonumber \\
       &+ \left[\tau_{\text{mem}} \left( \lambda^-_V \cdot
         \frac{\partial V^-}{\partial w_{ji}} - \lambda_V^+ \cdot
@@ -774,7 +810,7 @@ term to the right and then replaces $\big(\dot{I}^-\big)_m -
 
 \blue{
 \begin{align}
-  = \left(\frac{\partial I^i}{\partial w_{ji}}\right)_m -
+  = \left(\frac{\partial I^-}{\partial w_{ji}}\right)_m -
   \frac{1}{\tau_{syn} \big(\dot{V}^-\big)_n} w_{mn}
   \left(\frac{\partial V^-}{\partial w_{ji}}\right)_n +
     \delta_{in}\delta_{jm}, \tag{49} 
@@ -1069,7 +1105,7 @@ at time $t_{\text{max,r}}$ (including the minus sign from table 2, as above).
 
 So, in essence, in the MNIST example with non-spiking output neurons, there are no spike times to jump at. Furthermore, $l_V$ does not jump at other neurons' spike times, so there is no contribution $l_V^- - l_V^+$ to other neurons' jumps. However, in addition to their normal exponential decay $\lambda_V$ equation, output neurons jump at their $t_{\text{max}}$ by the amounts noted above. $t_{\text{max}}$ can obviously easily be recorded in the forward pass.
 
-The same technology can be applied to the spiking Heidelberg digits dataset. Though (as of 2022-02-15) not iwth much success.
+The same technology can be applied to the spiking Heidelberg digits dataset. Though (as of 2022-02-15) not with much success.
 
 \section{Exact integration of forward and backward dynamics}
 Because of the simplicity of the dynamic equations (at least in the absence of the $\frac{\partial l_V}{\partial V}$ term) one can calculate the exact solution for teh $\lambda$ dynamics over a timestep from $t_0$ to $t$.
@@ -1242,11 +1278,11 @@ And accordingly for $t' = \Delta t$,
   \section{Loss functions}
   The desired loss functions for MNIST and SHD are one of the following:
   \begin{align}
-    {\mathcal L}_{\text{max}} = - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp\left(\max_{t \in [0, T]} V_{l(i)}(t)\right)}{\sum_{k=1}^{N_{\text{out}}}\exp\left(\max_{t \in [0, T]} V_{k}(t)\right)}
+    {\mathcal L}_{\text{max}} = - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp\left(\max_{t \in [0, T]} V_{l(i)}(t)\right)}{\sum_{k=1}^{N_{\text{out}}}\exp\left(\max_{t \in [0, T]} V_{k}(t)\right)} \label{maxloss}
   \end{align}
   and
   \begin{align}
-    {\mathcal L_{\text{sum}}} = - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp\left(\int_0^T V_{l(i)}(t) dt\right)}{\sum_{k=1}^{N_{\text{out}}} \exp\left(\int_0^T V_{k}(t) dt\right)}.
+    {\mathcal L_{\text{sum}}} = - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp\left(\int_0^T V_{l(i)}(t) dt\right)}{\sum_{k=1}^{N_{\text{out}}} \exp\left(\int_0^T V_{k}(t) dt\right)}. \label{sumloss}
   \end{align}
   Unfortunately, neither of them have the prescribed functional form \blue{(1)}.
   this means that the original derivation cannot be applied to these loss functions. Repeated attempts to do so have not led to a successful translation.
@@ -1254,22 +1290,42 @@ And accordingly for $t' = \Delta t$,
   Pehle and Wunderlich argue that
   \begin{align}
     \max_{t \in [0, T]} V_{k}(t) = \int_0^T V_{k}(t) \delta(t-t_{\text{max}}) dt
-  \end{align}
-  and that one can deduce jumps for $\lambda_V$ at $t_{\text{max}}$ that are equivalent to the jumps normally encountered at spike times. If we follow that logic, we need to jump $\lambda_V$ by $\frac{\partial l_{\text{m}}(t_{\text{max}}^{j})}{\partial t_{\text{max}}^{k}}$ at the times $t_{\text{max}}^{k}$, where
+  \end{align}   
+   and that one can deduce jumps for $\lambda_V$ at $t_{\text{max}}$ that are equivalent to the jumps normally encountered at spike times. If we follow that logic, we need to inject into $\lambda_{V,n}$ the term $\frac{\partial l_{\text{m}}(V(t))}{\partial V_n(t)}$ where
   \begin{align}
-    l_{\text{m}}(t_{\text{max}}^{j}) =
-  - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp\left(\int_0^T V_{l(i)}(t) \delta(t-t_{\text{max}}^{l(i)}) dt\right)}{\sum_{k=1}^{N_{\text{out}}}\exp\left(\int_0^T  V_{k}(t)\delta(t-t_{\text{max}}^k) \right)}
+    &l_{\text{m}}(t_{\text{max}}^{j})  \\
+    &= - \frac{1}{N_{\text{batch}}} \sum_{i=1}^{N_{\text{batch}}} \log \frac{\exp\left(\int_0^T V_{l(i)}(t) \delta(t-t_{\text{max}}^{l(i)}) dt\right)}{\sum_{k=1}^{N_{\text{out}}}\exp\left(\int_0^T  V_{k}(t)\delta(t-t_{\text{max}}^k) \right)}
   \end{align}
-    
-  However, this does not generate a functional form as in {\blue
-    (1)} on first sight. It is equally difficult to argue with
-  $V_{\text{max}} = V(t_{\text{max}})$ as the $t_{\text{max}}$ are not
+  This only contributes at the times $t_{\text{max}}^{n}$, when we'd inject
+  \begin{align}
+    \left\{\begin{array}{ll}
+    \delta(0) - \frac{\exp(V_{l(i)}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{k}^{\text{max}})} \delta(0) & \text{if} n= l(i) \\
+    - \frac{\exp(V_{n}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{k}^{\text{max}})} \delta(0) & \text{otherwise}
+    \end{array} \right.
+    \end{align}
+This seems to suggest jumps of 
+\begin{align}
+      \left\{\begin{array}{ll}
+  \lambda_{l(i)} +=  1 - \frac{\exp(V_{l(i)}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{l(i)}^{\text{max}})} & \text{at}  t= t_{\text{max}}^{l(i)} \\
+ \lambda_{n} += - \frac{\exp(V_{n}^{\text{max}})}{\sum_{k=1}^{N_{\text{out}}} \exp(V_{k}^{\text{max}})} & \text{at} t= t_{\text{max}}^{n} \text{for} n \neq l(i)
+      \end{array} \right.
+\end{align}
+However, this arises from pretending that $l_m$ was a function $l_V$
+that was integrated over time to obtain the loss of {\blue
+    (1)}
+\begin{align}
+  {\cal L}= \int_{0}^T l_V (t) dt
+\end{align}
+which it is not. I am not sure this is mathematically correct ... though the MNIST example appeared to learn.
+
+ It is equally difficult to argue with
+  $V_{\text{max}} = V(t_{\text{max}})$, i.e. the equivalent of the $l_p(t_k)$, because the $t_{\text{max}}$ are not
   spike times, so the whole machinery used in the proof for
   contributions of $l_p(t_k)$ does not really apply.
 
   \subsection{Alternative average instantaneous cross-entropy loss}
-  The cross-entropy loss functions based on maximal voltages and
-  average voltages above do not really seem to work well in the
+  The cross-entropy loss functions based on maximal voltages (\ref{maxloss}) and
+  average voltages (\ref{sumloss}) above do not really seem to work well in the
   eventprop formalism. An alternative could be the average
   cross-entropy loss,
   \begin{align}
@@ -1295,5 +1351,70 @@ And accordingly for $t' = \Delta t$,
     1 - \frac{\exp(V_{l(i)}^i)}{\sum_{k=1}^{N_{\text{out}}}
       \exp(V_k^i)} \right) 
   \end{align}
+
+  \section{Debugging the average cross-entropy results}
+  Using the average cross-entropy loss, the networks do not learn the SHD task. Learning success is almost 0 (successful prediction at chance level of 5\%) and we note that there is a tendency to drive the hidden layer to silence. While this can be counter-acted by stronger regularisation, I have also discovered that neurons that drive the correct output neuron through strong positive weights appear to get the most weakened input synapses (on average) and eventually fall silent.
+  This could be due to the local gradient reflecting that spacing out input spikes (to the output layer) into regular intervals and across the entire trial is beneficial for reducing loss (as additional, coincident input spikes with positive weight to the correct output neuron have diminishing return due to the non-linearity of the cross-entropy.)
+
+  An interesting minimal illustration of this hypothesis is captured in \verb+single_neuron_analysis.ipynb+. Here, the effect of a pattern of intput spikes ontot the correct output neuron is analysed. One can see how the first spike tends to lead to a positive $\lambda_V-\lambda_I$, i.e. potentiation, while the last spike (first in backward pass) akways leads to negative $\lambda_V-\lambda_I$, i.e. tending to depression -- moving the first spike earlier and the last one later ...
+
+  This is especially true where there is a silence after the last spike until trial end. Note, however, that this is slightly simplistic as it does not take into account the sequential dependency of the $\lambda_V$ in the hidden layer on it's own past.
+
+  Another elucidating experiment is the following set of parameters in \verb+train_SHD.py+:
+
+  \begin{lstlisting}[language=json]
+{"NAME": "test_axe1", "DATASET": "SHD", "DEBUG": false, "DEBUG_HIDDEN_N": true, "OUT_DIR": ".", "DT_MS": 1, "BUILD": true, "TIMING": true, "TRAIN_DATA_SEED": 372, "TEST_DATA_SEED": 814, "MODEL_SEED": 135, "TRIAL_MS": 1400, "N_MAX_SPIKE": 1500, "N_BATCH": 32, "SUPER_BATCH": 1, "N_TRAIN": 256, "N_VALIDATE": 32, "N_EPOCH": 10, "SHUFFLE": true, "N_TEST": 10000, "NUM_HIDDEN": 256, "RECURRENT": false, "TAU_SYN": 5.0, "TAU_MEM": 20.0, "V_THRESH": 1.0, "V_RESET": 0.0, "INPUT_HIDDEN_MEAN": 0.02, "INPUT_HIDDEN_STD": 0.01, "HIDDEN_OUTPUT_MEAN": 0.0, "HIDDEN_OUTPUT_STD": 0.3, "HIDDEN_HIDDEN_MEAN": 0.0, "HIDDEN_HIDDEN_STD": 0.02, "PDROP_INPUT": 0.1, "PDROP_HIDDEN": 0.0, "REG_TYPE": "simple", "LBD_UPPER": 0, "LBD_LOWER": 2e-08, "NU_UPPER": 15, "NU_LOWER": 5, "RHO_UPPER": 10000.0, "GLB_UPPER": 1e-08, "ETA": 0.002, "ADAM_BETA1": 0.9, "ADAM_BETA2": 0.999, "ADAM_EPS": 1e-08, "ETA_DECAY": 1.0, "ETA_FIDDELING": false, "ETA_REDUCE": 0.5, "ETA_REDUCE_PERIOD": 50, "W_OUTPUT_EPOCH_TRIAL": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [9, 6], [9, 7]], "SPK_REC_STEPS": 1400, "REC_SPIKES_EPOCH_TRIAL": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [9, 6], [9, 7]], "REC_SPIKES": ["input", "hidden"], "REC_NEURONS_EPOCH_TRIAL": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [9, 6], [9, 7]], "REC_NEURONS": [["output", "V"], ["output", "sum_V"], ["output", "lambda_V"], ["output", "lambda_I"], ["hidden", "lambda_V"]], "REC_SYNAPSES_EPOCH_TRIAL": [], "REC_SYNAPSES": [], "WRITE_TO_DISK": true, "LOAD_LAST": false, "LOSS_TYPE": "avg_xentropy", "EVALUATION": "speaker", "CUDA_VISIBLE_DEVICES": false, "AVG_SNSUM": true, "REDUCED_CLASSES": [0], "W_REPORT_INTERVAL": 11000, "REWIRE_SILENT": false, "AUGMENTATION": {}}
+  \end{lstlisting}    
+  
+  This runs the input 0 only and with the normal trial duration of 1400 ms. We observe that the network unlearns if anything unless strong enough regularisation from below is included, the number of spikes in the hidden layer goes to 0. If regularisation is included (as shown above, \verb+lambda_lower+ = 2e-08), we can prevent silencing of the middle layer, but the system still does not learn. We can see that high output weights onto the correct output neuron (neuron 0) seem to coincide with low spiking in the corresponding hidden neuron (see fig \ref{fig_axe1}).
+
+  \begin{figure}
+    \includegraphics[width=0.7\textwidth]{test_axe1_spikes_weights.png}
+    \caption{Illustration of the anti-correlation of spikes in hidden neurons and positive weights to the correct output neuron (neuron 0). Left, spike pattern of hidden neurons for one example input. Right, Weights of the hidden neurons onto the correct output neuron. It appears that hidden neurons that have strong positive weights onto the correct output neuron have little or no spikes. \label{fig_axe1}}
+  \end{figure}
+
+  \begin{figure}
+    \includegraphics[width=0.7\textwidth]{test_axe1_rates_weights.png}
+    \caption{Illustration of the anti-correlation of spikes in hidden neurons and positive weights to the correct output neuron (neuron 0) as in figure \ref{fig_axe1} but displaying the number of spikes of hidden neurons during the last mini-batch on the left. \label{fig_axe2}}
+  \end{figure}
+
+  \begin{figure}
+    \includegraphics[width=0.7\textwidth]{test_axe1_correlations.png}
+    \caption{Correlation matrix between the weight vectors of the $20$ output neurons and between each weight vector and the vector of number of spikes during the last mini-batch in the hidden neurons. Self-correlations are obviously (diagonal), correlations between weight vectors are low, and correlations between weight vectors and spike numbers are low amplitude except for the correct output neuron (corners) where there is a strong negative correlation of the weight vector with the spike number vector. This quantifies the effect illustrated for examples in the previous figures. \label{fig_axe3}}
+  \end{figure}
+      
+  If we, however, use the same set of parameters but
+    \begin{lstlisting}[language=json]
+      {"TRIAL_MS": 400}
+  \end{lstlisting}    
+    then the network learns the task perfectly, with rapidly decreasing loss. The number of spikes in the hidden layer is increasing if anything. This illustrates how (I think) the silent time at the end of the trial (which carries considerable loss as all output voltages are equal 0) is affecting the gradient in such a way that hidden neurons' spikes are moved to later times but then inadvertantly deleted and the hidden layer falls silent and eventually the network fails completely. Figures \ref{fig_axe4}-\ref{fig_axe6} show the outcome after 10 epochs analogously to figure \ref{fig_axe1}-\ref{fig_axe3}. Now the correlations between weights and hidden unit activity are positive which makes sense for this 1-class artificial problem.
+
+  \begin{figure}
+    \includegraphics[width=0.7\textwidth]{test_axe2_spikes_weights.png}
+    \caption{As figure \ref{fig_axe1} but for TRIAL\_MS =  400 ms. \label{fig_axe4}}
+  \end{figure}
+
+  \begin{figure}
+    \includegraphics[width=0.7\textwidth]{test_axe1_rates_weights.png}
+    \caption{As figure \ref{fig_axe2} but for TRIAL\_MS =  400 ms. \label{fig_axe5}}
+  \end{figure}
+
+  \begin{figure}
+    \includegraphics[width=0.7\textwidth]{test_axe1_correlations.png}
+    \caption{As figure \ref{fig_axe3} but for TRIAL\_MS =  400 ms. \label{fig_axe6}}
+  \end{figure}
+  
+     A detailed understanding of this effect in the context of the full system with 20 classes and batched training on many examples is difficult but the simplistic experiments described above suggest that the local exact gradient for the average cross-entropy loss inadvertently tends to switch off the hidden neurons best placed to provide information about a given class and so negates global optimisation (for the normal 1400 ms duration). It is worth noting in this context that (I believe) the local gradient ``cannot know'' about spike deletion once the input gets too weak. If moving a spike time to a later point in time is reducing the loss, following the local gradient will lead to reduced weights into the neuron in question (which will delay the spike but might also delete it!).
+
+     Running the network with a trial time of 400 ms (\verb+train_SHD_avg_xentropy.py+), 
+     \begin{lstlisting}[language=json]
+{"NAME": "test_axe3", "DATASET": "SHD", "DEBUG": false, "DEBUG_HIDDEN_N": true, "OUT_DIR": ".", "DT_MS": 1, "BUILD": true, "TIMING": true, "TRAIN_DATA_SEED": 372, "TEST_DATA_SEED": 814, "MODEL_SEED": 135, "TRIAL_MS": 400, "N_MAX_SPIKE": 1500, "N_BATCH": 32, "SUPER_BATCH": 1, "N_TRAIN": 7900, "N_VALIDATE": 512, "N_EPOCH": 2000, "SHUFFLE": true, "N_TEST": 10000, "NUM_HIDDEN": 256, "RECURRENT": false, "TAU_SYN": 5.0, "TAU_MEM": 20.0, "V_THRESH": 1.0, "V_RESET": 0.0, "INPUT_HIDDEN_MEAN": 0.02, "INPUT_HIDDEN_STD": 0.01, "HIDDEN_OUTPUT_MEAN": 0.0, "HIDDEN_OUTPUT_STD": 0.3, "HIDDEN_HIDDEN_MEAN": 0.0, "HIDDEN_HIDDEN_STD": 0.02, "PDROP_INPUT": 0.1, "PDROP_HIDDEN": 0.0, "REG_TYPE": "simple", "LBD_UPPER": 0, "LBD_LOWER": 2e-08, "NU_UPPER": 15, "NU_LOWER": 5, "RHO_UPPER": 10000.0, "GLB_UPPER": 1e-08, "ETA": 0.002, "ADAM_BETA1": 0.9, "ADAM_BETA2": 0.999, "ADAM_EPS": 1e-08, "ETA_DECAY": 1.0, "ETA_FIDDELING": false, "ETA_REDUCE": 0.5, "ETA_REDUCE_PERIOD": 50, "W_OUTPUT_EPOCH_TRIAL": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [9, 6], [9, 7]], "SPK_REC_STEPS": 400, "REC_SPIKES_EPOCH_TRIAL": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [9, 6], [9, 7]], "REC_SPIKES": ["input", "hidden"], "REC_NEURONS_EPOCH_TRIAL": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [9, 6], [9, 7]], "REC_NEURONS": [["output", "V"], ["output", "sum_V"], ["output", "lambda_V"], ["output", "lambda_I"], ["hidden", "lambda_V"]], "REC_SYNAPSES_EPOCH_TRIAL": [], "REC_SYNAPSES": [], "WRITE_TO_DISK": true, "LOAD_LAST": false, "LOSS_TYPE": "avg_xentropy", "EVALUATION": "speaker", "CUDA_VISIBLE_DEVICES": false, "AVG_SNSUM": true, "REDUCED_CLASSES": null, "W_REPORT_INTERVAL": 11000, "REWIRE_SILENT": false, "AUGMENTATION": {}}
+  \end{lstlisting}    
+     we observe some learning, but it is lack-luster ... around 40\% successful for training and 20\% for evaluation after very long training time. In the process of testing this we discovered that on occasion output voltages can drift to all being negative and to such an extent that the mechanism of subtracting the maximum voltage to keep exponentials within numerical range failed as it started with the assumption that the maximum would be larger than 0. We now start off the calculation with \verb+-FLT_MAX+ instead.
+     
+     \section{Some notes about the incorrect ``constant cross-entropy'' attempt}
+     I did notice previously that regularisation needed to be a lot weaker in the hidden layer with this model and eventprop as opposed to Jamie's e-prop network. Subsequently it became clear that due to the constant cross-entropy term that was driving $\lambda_V$ in the output neurons, the transmitted $\lambda_V-\lambda_I$ was extremely small (just stemming from $\lambda_I$ lagging in the exponential rise/fall to (driven) steady state from starting at $0$. Weight changes in the hidden layer were therefore most delicate and easily destroyed by too strong regularisation. This small dirve also explains the slow learning observed compared to e-prop, Jamie typically trains 50 epochs and has convergence easily while here, 200 or more were advised (and that already included fairly high global learning rate).
+
+     So, in summary, the incorrect constant cross-entropy approach was clearly not ideal and is not sensible for this reason alone. It also appears quite coarse as no temoral dynamics of the neurons is actually considered. A more fine-grained loss function should be more successful (though with the full toolbox of augmentation etc the performance was not horrible - but it took a long while to achieve it).
   
 \end{document}
