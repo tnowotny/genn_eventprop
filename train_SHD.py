@@ -1,4 +1,4 @@
-from simulator_MNIST import *
+from simulator_SHD import *
 import matplotlib.pyplot as plt
 import numpy as np
 import json
@@ -102,7 +102,7 @@ p["W_OUTPUT_EPOCH_TRIAL"]= [(0,0), (100,0), (799,0)]
 with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as file:
     json.dump(p, file)
     
-mn= mnist_model(p)
+mn= SHD_model(p)
 spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
 
 print("correct: {}".format(correct))
