@@ -231,7 +231,7 @@ EVP_neuron_reset_output_MNIST= genn_model.create_custom_custom_update_class(
     var_refs=[("max_V","scalar"),("new_max_V","scalar"),("max_t","scalar"),("new_max_t","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
     update_code= """
         scalar mexp= 0.0;
-        scalar m= 0.0;
+        scalar m= -1e37;
         if ($(id) < $(N_class)) m= $(new_max_V);
         m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
         m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
@@ -267,7 +267,7 @@ EVP_neuron_reset_output_SHD= genn_model.create_custom_custom_update_class(
     var_refs=[("max_V","scalar"),("new_max_V","scalar"),("max_t","scalar"),("new_max_t","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
     update_code= """
         scalar mexp= 0.0;
-        scalar m= 0.0;
+        scalar m= -1e37;
         if ($(id) < $(N_class)) m= $(new_max_V);
         m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
         m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
@@ -306,7 +306,7 @@ EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
     var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
     update_code= """
         scalar mexp= 0.0;
-        scalar m= 0.0;
+        scalar m= -1e37;
         if ($(id) < $(N_class)) m= $(new_sum_V);
         m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
         m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
@@ -833,7 +833,7 @@ EVP_LIF_output_avg_xentropy = genn_model.create_custom_neuron_class(
         $(rp_V)--;
         scalar mexp= 0.0;
         scalar expV= 0.0;
-        scalar m= 0.0;
+        scalar m= -1e37;
         if ($(id) < $(N_class)) m= $(Vbuf)[buf_idx+$(rp_V)];
         m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
         m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
@@ -852,6 +852,10 @@ EVP_LIF_output_avg_xentropy = genn_model.create_custom_neuron_class(
         mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
             $(lambda_V) += (1.0-expV/mexp)/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
+            scalar x= -log(expV/mexp)/$(N_batch)/$(trial_t)*DT;
+            if (x > 2) {
+                printf("%g, %g, %g,  %g \\n",x,m,expV,mexp);
+            }
             $(loss) -= log(expV/mexp)/$(N_batch)/$(trial_t)*DT; // calculate contribution to loss
         }
         else {

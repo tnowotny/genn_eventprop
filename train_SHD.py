@@ -19,7 +19,7 @@ p["ADAM_BETA2"]= 0.999
 p["DEBUG"]= False
 p["DEBUG_HIDDEN_N"]= True
 p["LOAD_LAST"]= False
-p["N_EPOCH"]= 200
+p["N_EPOCH"]= 10
 p["N_BATCH"]= 32
 p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
@@ -34,8 +34,8 @@ p["W_REPORT_INTERVAL"] = 11000  # this should be at the end of the epoch (at fir
 p["TAU_MEM"] = 20.0 #20
 p["TAU_SYN"] = 5.0 #5
 p["REG_TYPE"]= "simple"
-p["LBD_UPPER"]= 2e-8 # 2e-9 # 2e-8 # 2e-14 (since removal of N_Batch), 5e-12 keep in mind that the term is applied to all contributing spikes ...
-p["LBD_LOWER"]= 2e-7 #2e-8
+p["LBD_UPPER"]= 0 # 2e-9 # 2e-8 # 2e-14 (since removal of N_Batch), 5e-12 keep in mind that the term is applied to all contributing spikes ...
+p["LBD_LOWER"]= 2e-8 #2e-8
 p["NU_UPPER"]= 15 #*p["N_BATCH"]
 p["NU_LOWER"]= 5
 p["RHO_UPPER"]= 10000.0
@@ -69,20 +69,18 @@ p["AUGMENTATION"]= {
 
 p["REC_NEURONS"]= [("output","V"),("output","sum_V"),("output","lambda_V"),("output","lambda_I"),
                    ("hidden","lambda_V")]
-p["REC_NEURONS_EPOCH_TRIAL"]= [(0,0),(0,1),(0,2),(0,3),
-                               (9,0),(9,1),(9,2),(9,3),
-                               (59,0),(59,1),(59,2),(59,3),
-                               (599,0),(599,1),(599,2),(599,3),
-                               (999,0),(999,1),(999,2),(999,3)
+p["REC_NEURONS_EPOCH_TRIAL"]= [(0,25),(0,26),(0,27),(0,28),(0,29),(0,30),(0,31),
+                               (9,25),(9,26),(9,27),(9,28),(9,29),(9,30),(9,31),
 ]
 
-p["REC_SPIKES_EPOCH_TRIAL"]= [(0,0),(0,1),(0,2),(0,3),
-                               (9,0),(9,1),(9,2),(9,3),
-                               (59,0),(59,1),(59,2),(59,3),
-                               (599,0),(599,1),(599,2),(599,3),
-                               (999,0),(999,1),(999,2),(999,3)
+p["REC_SPIKES_EPOCH_TRIAL"]= [(0,25),(0,26),(0,27),(0,28),(0,29),(0,30),(0,31),
+                              (9,25),(9,26),(9,27),(9,28),(9,29),(9,30),(9,31),
 ]
 p["REC_SPIKES"]= ["input","hidden"]
+
+p["W_OUTPUT_EPOCH_TRIAL"]= [(0,25),(0,26),(0,27),(0,28),(0,29),(0,30),(0,31),
+                              (9,25),(9,26),(9,27),(9,28),(9,29),(9,30),(9,31),
+]
 
 if p["DEBUG"]:
     p["REC_SPIKES"]= ["input", "hidden"]

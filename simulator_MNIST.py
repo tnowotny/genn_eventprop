@@ -97,6 +97,7 @@ p["EVALUATION"]= "random"
 p["CUDA_VISIBLE_DEVICES"]= False
 p["AVG_SNSUM"]= False
 p["REDUCED_CLASSES"]= None
+p["AUGMENTATION"]= {}
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -825,7 +826,8 @@ class mnist_model:
             for var, val in self.hidden_init_vars.items():
                 self.hidden.vars[var].view[:]= val
             self.hidden.push_state_to_device()
-            self.hidden.extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
+            if p["DATASET"] == "SHD":
+                self.hidden.extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
@@ -833,8 +835,9 @@ class mnist_model:
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= []
                 all_sNSum= []
-            if p["REWIRE_SILENT"]:
-                rewire_sNSum= []
+            if p["DATASET"] == "SHD":
+                if p["REWIRE_SILENT"]:
+                    rewire_sNSum= []
             for trial in range(N_trial):
                 trial_end= (trial+1)*p["TRIAL_MS"]
                 # assign the input spike train and corresponding labels
@@ -843,7 +846,8 @@ class mnist_model:
                 else:
                     phase= "eval"
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
-                    self.hidden.extra_global_params["pDrop"].view[:]= 0.0
+                    if p["DATASET"] == "SHD":
+                        self.hidden.extra_global_params["pDrop"].view[:]= 0.0
                 self.input_set.extra_global_params["trial"].view[:]= trial
                 self.model.custom_update("inputUpdate")
                 self.input.extra_global_params["t_offset"].view[:]= self.model.t
@@ -930,9 +934,10 @@ class mnist_model:
                     if p["DEBUG_HIDDEN_N"]:
                         spike_N_hidden= self.hidden_reset.extra_global_params["sNSum_all"].view[:].copy()
                 # collect data for rewiring rule for silent neurons
-                if p["REWIRE_SILENT"]:
-                    self.hidden.pull_var_from_device("sNSum")
-                    rewire_sNSum.append(np.sum(self.hidden.vars["sNSum"].view.copy(),axis= 0))
+                if p["DATASET"] == "SHD":
+                    if p["REWIRE_SILENT"]:
+                        self.hidden.pull_var_from_device("sNSum")
+                        rewire_sNSum.append(np.sum(self.hidden.vars["sNSum"].view.copy(),axis= 0))
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
                 if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":
@@ -991,52 +996,57 @@ class mnist_model:
                 correct_eval= good["eval"]/(N_eval*p["N_BATCH"])
             else:
                 correct_eval= 0
-            if p["REWIRE_SILENT"]:
-                rewire_sNSum= np.sum(np.array(rewire_sNSum),axis= 0)
-                print(rewire_sNSum.shape)
-                silent= rewire_sNSum == 0
-                # rewire input to hidden
-                self.in_to_hid.pull_var_from_device("w")
-                ith_w= self.in_to_hid.vars["w"].view[:]
-                ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
-                n_silent= np.sum(silent)
-                n_new= self.num_input*n_silent
-                ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent))
-                ## rewire hidden to output
-                #self.hid_to_out.pull_var_from_device("w")
-                #hto_w= self.hid_to_out.vars["w"].view[:]
-                #hto_w.shape= (p["NUM_HIDDEN"],self.num_output)
-                #n_new= n_silent*self.num_output
-                #hto_w[silent,:]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_OUTPUT_STD"]+p["HIDDEN_OUTPUT_MEAN"], (n_silent,self.num_output))
-                ## rewire recurrent connections
-                #if p["RECURRENT"]:
-                #    self.hid_to_hid.pull_var_from_device("w")
-                #    hth_w= self.hid_to_hid.vars["w"].view[:]
-                #    hth_w.shape= (p["NUM_HIDDEN"],p["NUM_HIDDEN"])
-                #    n_new= n_silent*p["NUM_HIDDEN"]
-                #    hth_w[silent,:]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_HIDDEN_STD"]+p["HIDDEN_HIDDEN_MEAN"], (n_silent,p["NUM_HIDDEN"]))
-                #    hth_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_HIDDEN_STD"]+p["HIDDEN_HIDDEN_MEAN"], (p["NUM_HIDDEN"],n_silent))
-                #if (n_silent > 0 ):
-                #print(np.where(silent))
-                self.in_to_hid.push_var_to_device("w")
-                #self.hid_to_out.push_var_to_device("w")
-                #if p["RECURRENT"]:
-                #    self.hid_to_hid.push_var_to_device("w")
-            else:
-                n_silent= 0
+            if p["DATASET"] == "SHD":
+                if p["REWIRE_SILENT"]:
+                    rewire_sNSum= np.sum(np.array(rewire_sNSum),axis= 0)
+                    print(rewire_sNSum.shape)
+                    silent= rewire_sNSum == 0
+                    # rewire input to hidden
+                    self.in_to_hid.pull_var_from_device("w")
+                    ith_w= self.in_to_hid.vars["w"].view[:]
+                    ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
+                    n_silent= np.sum(silent)
+                    n_new= self.num_input*n_silent
+                    ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent))
+                    ## rewire hidden to output
+                    #self.hid_to_out.pull_var_from_device("w")
+                    #hto_w= self.hid_to_out.vars["w"].view[:]
+                    #hto_w.shape= (p["NUM_HIDDEN"],self.num_output)
+                    #n_new= n_silent*self.num_output
+                    #hto_w[silent,:]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_OUTPUT_STD"]+p["HIDDEN_OUTPUT_MEAN"], (n_silent,self.num_output))
+                    ## rewire recurrent connections
+                    #if p["RECURRENT"]:
+                    #    self.hid_to_hid.pull_var_from_device("w")
+                    #    hth_w= self.hid_to_hid.vars["w"].view[:]
+                    #    hth_w.shape= (p["NUM_HIDDEN"],p["NUM_HIDDEN"])
+                    #    n_new= n_silent*p["NUM_HIDDEN"]
+                    #    hth_w[silent,:]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_HIDDEN_STD"]+p["HIDDEN_HIDDEN_MEAN"], (n_silent,p["NUM_HIDDEN"]))
+                    #    hth_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_HIDDEN_STD"]+p["HIDDEN_HIDDEN_MEAN"], (p["NUM_HIDDEN"],n_silent))
+                    #if (n_silent > 0 ):
+                    #print(np.where(silent))
+                    self.in_to_hid.push_var_to_device("w")
+                    #self.hid_to_out.push_var_to_device("w")
+                    #if p["RECURRENT"]:
+                    #    self.hid_to_hid.push_var_to_device("w")
+                else:
+                    n_silent= 0
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= np.hstack(all_hidden_n)
                 all_sNSum= np.hstack(all_sNSum)
                 print("Hidden spikes in model per trial: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
                 print("Hidden spikes per trial per neuron across batches: {} +/- {}, min {}, max {}".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum)))
-            print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}, Rewired: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]),n_silent))
+            if p["DATASET"] == "SHD":
+                print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}, Rewired: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]),n_silent))
+            else:
+                print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
             if resfile is not None:
                 resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
                 if p["DEBUG_HIDDEN_N"]:
                     resfile.write(" {} {} {} {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
-                    resfile.write(" {} {} {} {} {}\n".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum),n_silent))
-                else:
-                    resfile.write("\n")
+                    resfile.write(" {} {} {} {}".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum)))
+                    if p["DATASET"] == "SHD":
+                        resfile.write(" {}".format(n_silent))
+                resfile.write("\n")
                 resfile.flush()
             predict[phase]= np.hstack(predict[phase])
             learning_rate *= p["ETA_DECAY"]
