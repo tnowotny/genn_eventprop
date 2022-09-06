@@ -788,6 +788,7 @@ EVP_LIF_output_MNIST_sum = genn_model.create_custom_neuron_class(
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
+    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
             $(lambda_V) += (1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
@@ -796,11 +797,10 @@ EVP_LIF_output_MNIST_sum = genn_model.create_custom_neuron_class(
             $(lambda_V) -= $(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
         }
     }
-    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
     // forward pass
-    // update the maximum voltage
-    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    // update the summed voltage
     $(new_sum_V)+= $(V)/$(trial_t)*DT; // simple Euler
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
     $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
     """,
     threshold_condition_code="",
