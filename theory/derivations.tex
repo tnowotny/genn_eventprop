@@ -1158,7 +1158,6 @@ As the forward equations are identical for $V$ (i.e. like the $\lambda_I$ equati
 
   TODO: Re-investigate different regularisations ...
 
-\section{GeNN Implementation Notes (OUTDATED)}
 \section{Derivation of exact solution for $\lambda_V$ and $\lambda_I$
   within a timestep}
 
@@ -1323,6 +1322,64 @@ which it is not. I am not sure this is mathematically correct ... though the MNI
   spike times, so the whole machinery used in the proof for
   contributions of $l_p(t_k)$ does not really apply.
 
+  \subsection{Correct justification and implementation for the ``sum'' cross-entropy loss}
+  The cross-entropy loss of the integral ove output voltages (\ref{sumloss}) has not one of the prescribed functional forms supported by eventprop. It is neither a function $l_p(t_k^{\text{post}})$ nor an integral over a function of $V$, i.e. $\int_0^T l_V(t) dt$. However, the following consideration allows to use the eventprop algorithm nontheless.
+  Let
+  \begin{align}
+    {\cal L} = F\left(\{\textstyle \int_0^T V_m^n(t) dt\}\right), \label{eqn:loss_gen}
+  \end{align}
+  where $m$ labels the neurons (here the dependence will typically be on the output neurons, $m= 1, \ldots, N_{\text{class}}$ and $n$ the trial within a mini-batch, $n= 1, \ldots, N_{\text{batch}}$. We can then calculate, using the chain rule,
+  \begin{align}
+    \frac{d{\cal L}}{d w_{ji}} = \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)} \frac{d}{d w_{ji}} \left(\textstyle\int V_m^n dt\right)
+  \end{align}
+  Now, $\int_0^T V_m^n(t) dt = \int_0^T l_V(t) dt$ with the definition $l_V(t)= V_m^n(t)$, which is of the form of an acceptible loss function for eventprop, so we can use the eventprop algorithm to calculate
+  \begin{align}
+    \frac{d}{d w_{ji}} (\int V_m^n dt) = -\tau_{\text{syn}} \sum_{\{t_{\text{spike}}(i)\}} \lambda_{I,j}^{m,n}(t_{\text{spike}})
+  \end{align}
+  where
+  \begin{align}
+    \tau_{\text{syn}} {\lambda_{I,j}^{m,n}}' = -\lambda_{I,j}^{m,n} + \lambda_{V,j}^{m,n} \\
+    \tau_{\text{mem}} {\lambda_{V,j}^{m,n}}' = -\lambda_{V,j}^{m,n} - \delta_{jm}
+  \end{align}
+  i.e. there is a contribution of $\frac{\partial l_V}{\partial V}$ of $1$ to the $\lambda_V$ dynamics if the neuron index $m$ of the voltage integral under consideration matches the index $j$ of the post-synaptic neuron of the synaptic weight under consideration.
+
+  With this in mind, we can then calculate the gradient of the loss function (\ref{eqn:loss_gen}):
+  \begin{align}
+    \frac{d {\cal L}}{d w_{ji}} &= -\tau_{\text{syn}} \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)} \sum_{\{t_{\text{spike}}(i)\}} \lambda_{I,j}^{m,n}(t_{\text{spike}}) \\
+      &= -\tau_{\text{syn}} \sum_{\{t_{\text{spike}}(i)\}} \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)}  \lambda_{I,j}^{m,n}(t_{\text{spike}}) \\
+        &= -\tau_{\text{syn}} \sum_{\{t_{\text{spike}}(i)\}} \tilde{\lambda}_{I,j} (t_{\text{spike}}) \label{eqn:deriv}
+  \end{align}
+  where we have defined
+  \begin{align}
+    \tilde{\lambda}_{I,i} (t_{\text{spike}}):= \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)}  \lambda_{I,i}^{m,n}(t_{\text{spike}})
+  \end{align}
+  Then we can derive dynamics for $\tilde{\lambda}_{I,j}$ by simply using this definiton and noting that $\frac{\partial F}{\partial (\int V_m^n dt)}$ does not depend on $t$,
+  \begin{align}
+    \tilde{\lambda}_{I,j}' &= \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)}  {\lambda_{I,j}^{m,n}}' \\
+    &= \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)} (-  \lambda_{I,j}^{m,n} +  \lambda_{V,j}^{m,n} \\
+    &= -\tilde{\lambda}_{I,j} + \tilde{\lambda}_{V,j}, \label{eqn:lambda_I_dyn}
+  \end{align}
+  where we defined
+  \begin{align}
+    \tilde{\lambda}_{V,i}:= \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)} \lambda_{V,i}^{m,n}.
+  \end{align}
+  That implies the dynamics
+  \begin{align}
+    \tilde{\lambda}_{V,j}' &=  \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)} {\lambda_{V,j}^{m,n}}' \\
+    &= - \tilde{\lambda}_{V,j} - \frac{\partial F}{\partial (\int V_m^n dt)} \delta_{jm}.\label{eqn:lambda_V_dyn}
+  \end{align}
+  In this fashoin we have recovered an eventprop-like algorithm to calculate the gradient of the loss function (\ref{eqn:loss_gen}) by using equations (\ref{eqn:deriv}),(\ref{eqn:lambda_I_dyn}), and (\ref{eqn:lambda_V_dyn}).
+
+  For the concrete example of the loss function (\ref{sumloss}) we get
+  \begin{align}
+    \frac{d{\cal L}}{d w_{ji}} &= -\tau_{\text{syn}} \sum_{\{t_{\text{spike}}(i)\}} \tilde{\lambda}_{I,j}(t_{\text{spike}}) \\
+    \tau_{\text{syn}} \tilde{\lambda}_{I,j}' &= -\tilde{\lambda}_{I,j} + \tilde{\lambda}_{V,j} \\
+    \tau_{\text{mem}} \tilde{\lambda}_{V,j}' &= - \tilde{\lambda}_{V,j} + \frac{1}{N_{\text{batch}}} \sum_n \left(\delta_{jl(n)} -\frac{\exp(\int V_j^n dt)}{\sum_{k=1}^{N_{\text{class}}} \exp(V_k^n dt)} \right) . \\
+  \end{align}
+  This uses that the partial derivative is $1-\frac{exp}{\sum \exp}$ for $j=l(n)$ and $-\frac{exp}{\sum \exp}$ otherwise.
+  
+  Alternatively, one can also not fold the mini-batch sum into the dynamics and then add individual gradients from each trial across the mini-batch later.
+  
   \subsection{Alternative average instantaneous cross-entropy loss}
   The cross-entropy loss functions based on maximal voltages (\ref{maxloss}) and
   average voltages (\ref{sumloss}) above do not really seem to work well in the
@@ -1416,5 +1473,7 @@ which it is not. I am not sure this is mathematically correct ... though the MNI
      I did notice previously that regularisation needed to be a lot weaker in the hidden layer with this model and eventprop as opposed to Jamie's e-prop network. Subsequently it became clear that due to the constant cross-entropy term that was driving $\lambda_V$ in the output neurons, the transmitted $\lambda_V-\lambda_I$ was extremely small (just stemming from $\lambda_I$ lagging in the exponential rise/fall to (driven) steady state from starting at $0$. Weight changes in the hidden layer were therefore most delicate and easily destroyed by too strong regularisation. This small dirve also explains the slow learning observed compared to e-prop, Jamie typically trains 50 epochs and has convergence easily while here, 200 or more were advised (and that already included fairly high global learning rate).
 
      So, in summary, the incorrect constant cross-entropy approach was clearly not ideal and is not sensible for this reason alone. It also appears quite coarse as no temoral dynamics of the neurons is actually considered. A more fine-grained loss function should be more successful (though with the full toolbox of augmentation etc the performance was not horrible - but it took a long while to achieve it).
-  
+
+
+     
 \end{document}

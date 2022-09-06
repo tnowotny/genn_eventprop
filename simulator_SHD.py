@@ -801,7 +801,7 @@ class SHD_model:
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
             self.model.custom_update("EVPReduce")  # this zeros dw (so as to ignore eval gradients from last epoch!
-            if p["DEBUG_HIDDEN_"]:
+            if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= []
                 all_sNSum= []
             if p["DATASET"] == "SHD":
