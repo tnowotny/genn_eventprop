@@ -351,19 +351,6 @@ EVP_neuron_reset_output_avg_xentropy= genn_model.create_custom_custom_update_cla
     """
 )
 
-# This version for "xentropy of integrals loss function"
-EVP_neuron_reset_output_xentropy_int= genn_model.create_custom_custom_update_class(
-    "EVP_neuron_reset_output_xentropy_int",
-    param_names=["V_reset","N_class","trial_steps"],
-    var_refs=[("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("trial","int"),("sum_V","scalar")],
-    update_code= """
-        $(lambda_V)= 0.0;
-        $(lambda_I)= 0.0;
-        $(V)= $(V_reset);
-        $(trial)++;
-        $(sum_V)= 0.0;
-    """
-)
 
 #----------------------------------------------------------------------------
 # Neuron models
@@ -884,39 +871,6 @@ EVP_LIF_output_avg_xentropy = genn_model.create_custom_neuron_class(
     reset_code="",
     is_auto_refractory_required=False
 )
-
-
-# LIF neuron model for output neurons in the SHD task - non-spiking;
-# use the cross-entropy loss of intgrals over V values (using tricks to make consistent
-# with eventprop
-EVP_LIF_output_xentropy_int = genn_model.create_custom_neuron_class(
-    "EVP_LIF_output_xentropy_int",
-    param_names=["tau_m","tau_syn","trial_t","N_class"],
-    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
-                    ("trial","int"),("sum_V","scalar")],
-    extra_global_params=[], 
-    sim_code="""
-    int j= ((int) $(batch))%((int) $(N_class)+1);
-    if (j == 20) {
-        // forward pass 
-        $(sum_V)+= $(V)/$(trial_t)*DT;
-        //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution 
-    else {
-        // backward pass for #j - if $(id) is not j, everything is constant 0
-        if ($(id) == j) {
-            $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
-            if ($(trial) > 0) {
-                $(lambda_V) += (1-lbdV)/$(tau_m)*DT;  // simple Euler
-            }
-        }
-    }
-    """,
-    threshold_condition_code="",
-    reset_code="",
-    is_auto_refractory_required=False
-)
-
 
 # synapses
 EVP_synapse= genn_model.create_custom_weight_update_class(

@@ -91,7 +91,7 @@ p["REC_SYNAPSES_EPOCH_TRIAL"] = []
 p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
-# possible loss types: "max", "sum", "avg_xentropy", "xentropy_int"
+# possible loss types: "max", "sum", "avg_xentropy"
 p["LOSS_TYPE"]= "max"
 p["EVALUATION"]= "random"
 p["CUDA_VISIBLE_DEVICES"]= False
@@ -146,7 +146,7 @@ class SHD_model:
             print(exp_V[np.where(exp_V_correct == 0),:])
             exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0
             
-        loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/self.N_batch
+        loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/p["N_BATCH"]
         return loss
 
     def loss_func_avg_xentropy(self, Y, p):
@@ -204,10 +204,7 @@ class SHD_model:
         cache_subdir="SHD"
         print("Using cache dir: %s"%cache_dir)
         self.num_input= 700
-        if p["LOSS_TYPE"] == "xentropy_int":
-            self.num_output= 20
-        else:
-            self.num_output= 32   # first power of two greater than class number
+        self.num_output= 32   # first power of two greater than class number
         self.data_full_length= 0
         if p["DOWNLOAD_SHD"]:
             # dowload the SHD data from the Zenke website
@@ -379,10 +376,6 @@ class SHD_model:
                 
     def define_model(self, p, shuffle):
         self.trial_steps= int(round(p["TRIAL_MS"]/p["DT_MS"]))
-        if p["LOSS_TYPE"] == "xentropy_int":
-            self.N_batch= p["N_BATCH"]*(self.N_class+1)
-        else:
-            self.N_batch= p["N_BATCH"]
         input_params= {"N_neurons": self.num_input,
                        "N_max_spike": p["N_MAX_SPIKE"] 
         }
@@ -416,17 +409,13 @@ class SHD_model:
                         "trial_t": p["TRIAL_MS"],
         }
 
-        if p["LOSS_TYPE"] != "xentropy_int":
-            output_params["N_batch"]= self.N_batch
+        output_params["N_batch"]= p["N_BATCH"]
 
         if p["LOSS_TYPE"] == "avg_xentropy":
             output_params["N_neurons"]= self.num_output
             output_params["trial_steps"]= self.trial_steps
             output_params["N_class"]= self.N_class
 
-        if p["LOSS_TYPE"] == "xentropy_int":
-            output_params["N_class"]= self.N_class
-            
         self.output_init_vars= {"V": p["V_RESET"],
                                 "lambda_V": 0.0,
                                 "lambda_I": 0.0,
@@ -469,7 +458,7 @@ class SHD_model:
         # ----------------------------------------------------------------------------
         # Optimiser initialisation
         # ----------------------------------------------------------------------------
-        adam_params = {"beta1": p["ADAM_BETA1"], "beta2": p["ADAM_BETA2"], "epsilon": p["ADAM_EPS"], "tau_syn": p["TAU_SYN"], "N_batch": self.N_batch}
+        adam_params = {"beta1": p["ADAM_BETA1"], "beta2": p["ADAM_BETA2"], "epsilon": p["ADAM_EPS"], "tau_syn": p["TAU_SYN"], "N_batch": p["N_BATCH"]}
         self.adam_init_vars = {"m": 0.0, "v": 0.0}
 
         # ----------------------------------------------------------------------------
@@ -483,18 +472,18 @@ class SHD_model:
         self.model = genn_model.GeNNModel("float", p["NAME"], generateLineInfo=True, time_precision="double", **kwargs)
         self.model.dT = p["DT_MS"]
         self.model.timing_enabled = p["TIMING"]
-        self.model.batch_size = self.N_batch
+        self.model.batch_size = p["N_BATCH"]
         if p["MODEL_SEED"] is not None:
             self.model._model.set_seed(p["MODEL_SEED"])
 
         # Add neuron populations
         self.input = self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, 
                                                       input_params, self.input_init_vars)
-        self.input.set_extra_global_param("t_k",-1e5*np.ones(self.N_batch*self.num_input*p["N_MAX_SPIKE"],dtype=np.float32))
+        self.input.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*self.num_input*p["N_MAX_SPIKE"],dtype=np.float32))
         self.input.set_extra_global_param("spikeTimes", np.zeros(200000000,dtype=np.float32)) # reserve enough space for any set of input spikes that is likely
 
         if p["REG_TYPE"] == "simple":
-            hidden_params["N_batch"]= self.N_batch
+            hidden_params["N_batch"]= p["N_BATCH"]
             hidden_params["lbd_upper"]= p["LBD_UPPER"]
             hidden_params["lbd_lower"]= p["LBD_LOWER"]
             hidden_params["nu_upper"]= p["NU_UPPER"]
@@ -502,23 +491,23 @@ class SHD_model:
             self.hidden_init_vars["new_sNSum"]= 0.0
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars) 
         if p["REG_TYPE"] == "Thomas1":
-            hidden_params["N_batch"]= self.N_batch
+            hidden_params["N_batch"]= p["N_BATCH"]
             hidden_params["lbd_lower"]= p["LBD_LOWER"]
             hidden_params["nu_lower"]= p["NU_LOWER"]
             hidden_params["lbd_upper"]= p["LBD_UPPER"]
             hidden_params["nu_upper"]= p["NU_UPPER"]
             hidden_params["rho_upper"]= p["RHO_UPPER"]
             hidden_params["glb_upper"]= p["GLB_UPPER"]
-            hidden_params["N_batch"]= self.N_batch
+            hidden_params["N_batch"]= p["N_BATCH"]
             self.hidden_init_vars["sNSum"]= 0.0
             self.hidden_init_vars["new_sNSum"]= 0.0
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg_Thomas1, hidden_params, self.hidden_init_vars) 
         if p["REG_TYPE"] == "none":
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars) 
-        self.hidden.set_extra_global_param("t_k",-1e5*np.ones(self.N_batch*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
-        self.hidden.set_extra_global_param("ImV",np.zeros(self.N_batch*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
+        self.hidden.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
+        self.hidden.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
         if p["REG_TYPE"] == "Thomas1":
-            self.hidden.set_extra_global_param("sNSum_all", np.zeros(self.N_batch))
+            self.hidden.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
 
         if p["LOSS_TYPE"] == "max":
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST, output_params, self.output_init_vars)
@@ -528,7 +517,7 @@ class SHD_model:
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_avg_xentropy, output_params, self.output_init_vars)
         self.output.set_extra_global_param("label", np.zeros(self.data_full_length,dtype=np.float32)) # reserve space for labels
         if p["LOSS_TYPE"] == "avg_xentropy":
-            self.output.set_extra_global_param("Vbuf", np.zeros(self.N_batch*self.num_output*self.trial_steps*2,dtype=np.float32)) # reserve space for voltage buffer
+            self.output.set_extra_global_param("Vbuf", np.zeros(p["N_BATCH"]*self.num_output*self.trial_steps*2,dtype=np.float32)) # reserve space for voltage buffer
         
         input_var_refs= {"rp_ImV": genn_model.create_var_ref(self.input, "rp_ImV"),
                          "wp_ImV": genn_model.create_var_ref(self.input, "wp_ImV"),
@@ -539,7 +528,7 @@ class SHD_model:
         }
         self.input_reset= self.model.add_custom_update("input_reset","neuronReset", EVP_input_reset_MNIST, {"N_max_spike": p["N_MAX_SPIKE"]}, {}, input_var_refs)
 
-        input_set_params= {"N_batch": self.N_batch,
+        input_set_params= {"N_batch": p["N_BATCH"],
                            "num_input": self.num_input
         }
         input_var_refs= {"startSpike": genn_model.create_var_ref(self.input, "startSpike"),
@@ -569,7 +558,7 @@ class SHD_model:
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"], "N_neurons": p["NUM_HIDDEN"]}, {}, hidden_var_refs)
         if p["REG_TYPE"] == "Thomas1":
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset_reg_global, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"], "N_neurons": p["NUM_HIDDEN"]}, {}, hidden_var_refs)
-            self.hidden_reset.set_extra_global_param("sNSum_all", np.zeros(self.N_batch))
+            self.hidden_reset.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
         if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
             var_refs= {"sNSum": genn_model.create_var_ref(self.hidden, "sNSum")}
             self.hidden_reg_reduce= self.model.add_custom_update("hidden_reg_reduce","sNSumReduce", EVP_reg_reduce, {}, {"reduced_sNSum": 0.0}, var_refs)
@@ -577,7 +566,7 @@ class SHD_model:
                 "reduced_sNSum": genn_model.create_var_ref(self.hidden_reg_reduce, "reduced_sNSum"),
                 "sNSum": genn_model.create_var_ref(self.hidden, "sNSum")
             }
-            self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply","sNSumApply", EVP_sNSum_apply, {"N_batch": self.N_batch}, {}, var_refs)
+            self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply","sNSumApply", EVP_sNSum_apply, {"N_batch": p["N_BATCH"]}, {}, var_refs)
         if p["REG_TYPE"] == "none":
             self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
 
@@ -612,8 +601,6 @@ class SHD_model:
             output_var_refs["rp_V"]= genn_model.create_var_ref(self.output, "rp_V")
             output_var_refs["wp_V"]= genn_model.create_var_ref(self.output, "wp_V")
             output_var_refs["loss"]= genn_model.create_var_ref(self.output, "loss")
-        if p["LOSS_TYPE"] == "xentropy_int":
-            output_var_refs["sum_V"]= genn_model.create_var_ref(self.output, "sum_V")
             
         if p["LOSS_TYPE"] == "max":
             self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD, output_reset_params, {}, output_var_refs)
@@ -621,8 +608,7 @@ class SHD_model:
             self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_SHD_sum, output_reset_params, {}, output_var_refs)
         if p["LOSS_TYPE"] == "avg_xentropy":
             self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_avg_xentropy, output_reset_params, {}, output_var_refs)
-        if p["LOSS_TYPE"] == "xentropy_int":
-            self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_xentropy_int, output_reset_params, {}, output_var_refs)
+
         # synapse populations
         self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
                                                           {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
@@ -695,13 +681,13 @@ class SHD_model:
         N_trial= 0
         if X_t_orig is not None:
             assert(labels is not None)
-            N_train= len(X_t_orig) // self.N_batch
+            N_train= len(X_t_orig) // p["N_BATCH"]
             N_trial+= N_train
         else:
             N_train= 0
         if X_t_eval is not None:
             assert(labels_eval is not None)
-            N_eval= len(X_t_eval) // self.N_batch
+            N_eval= len(X_t_eval) // p["N_BATCH"]
             N_trial+= N_eval
         else:
             N_eval= 0
@@ -824,7 +810,7 @@ class SHD_model:
                 int_t= 0
                 if p["DEBUG_HIDDEN_N"]:
                     if p["REG_TYPE"] != "Thomas1":
-                        spike_N_hidden= np.zeros(self.N_batch)
+                        spike_N_hidden= np.zeros(p["N_BATCH"])
                 while (self.model.t < trial_end-1e-1*p["DT_MS"]):
                     self.model.step_time()
                     int_t += 1
@@ -834,7 +820,7 @@ class SHD_model:
                             if p["REG_TYPE"] != "Thomas1":
                                 self.model.pull_recording_buffers_from_device()
                                 x= self.model.neuron_populations["hidden"].spike_recording_data
-                                for btch in range(self.N_batch):
+                                for btch in range(p["N_BATCH"]):
                                     spike_N_hidden[btch]+= len(x[btch][0])
                     if ((epoch,trial) in p["REC_SPIKES_EPOCH_TRIAL"]) and (len(p["REC_SPIKES"]) > 0):
                         if int_t%p["SPK_REC_STEPS"] == 0:
@@ -842,9 +828,9 @@ class SHD_model:
                             for pop in p["REC_SPIKES"]:
                                 the_pop= self.model.neuron_populations[pop]
                                 x= the_pop.spike_recording_data
-                                if self.N_batch > 1:
-                                    for i in range(self.N_batch):
-                                        spike_t[pop].append(x[i][0]+(epoch*N_trial*self.N_batch+trial*self.N_batch+i-trial)*p["TRIAL_MS"]) # subtracting trial to compensate the progression of model.t by p["TRIAL_MS"] each trial
+                                if p["N_BATCH"] > 1:
+                                    for i in range(p["N_BATCH"]):
+                                        spike_t[pop].append(x[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i-trial)*p["TRIAL_MS"]) # subtracting trial to compensate the progression of model.t by p["TRIAL_MS"] each trial
                                         spike_ID[pop].append(x[i][1])
                                 else:
                                     spike_t[pop].append(x[0]+epoch*N_trial*p["TRIAL_MS"])
@@ -886,7 +872,7 @@ class SHD_model:
                 self.hid_to_out.push_in_syn_to_device()
                 if p["REG_TYPE"] == "Thomas1":
                     # for hidden regularistation prepare "sNSum_all"
-                    self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(self.N_batch)
+                    self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
                 if p["LOSS_TYPE"] == "avg_xentropy": # need to copy sum_V and loss from device before neuronReset!
                     self.output.pull_var_from_device("sum_V")
@@ -915,7 +901,7 @@ class SHD_model:
                     pred= np.argmax(self.output.vars["exp_V"].view[:,:self.N_class], axis=-1)
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     pred= np.argmax(self.output.vars["sum_V"].view[:,:self.N_class], axis=-1)
-                lbl= Y[trial*self.N_batch:(trial+1)*self.N_batch]
+                lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
                 if ((epoch, trial) in p["REC_SPIKES_EPOCH_TRIAL"]):
                     rec_spk_lbl.append(lbl.copy())
                     rec_spk_pred.append(pred.copy())
@@ -958,11 +944,11 @@ class SHD_model:
                         np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_e{}_t{}.npy".format(epoch,trial)), self.hid_to_hid.vars["w"].view.copy())
                     
             if N_train > 0:
-                correct= good["train"]/(N_train*self.N_batch)
+                correct= good["train"]/(N_train*p["N_BATCH"])
             else:
                 correct= 0
             if N_eval > 0:
-                correct_eval= good["eval"]/(N_eval*self.N_batch)
+                correct_eval= good["eval"]/(N_eval*p["N_BATCH"])
             else:
                 correct_eval= 0
             n_silent= 0

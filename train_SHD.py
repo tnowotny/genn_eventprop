@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import json
 
-p["TRIAL_MS"]= 1400
+p["TRIAL_MS"]= 1000
 p["DATASET"]= "SHD"
 p["TRAIN_DATA_SEED"]= 372
 p["TEST_DATA_SEED"]= 814
@@ -20,7 +20,7 @@ p["DEBUG"]= False
 p["DEBUG_HIDDEN_N"]= True
 p["LOAD_LAST"]= False
 p["N_EPOCH"]= 200
-p["N_BATCH"]= 256
+p["N_BATCH"]= 32
 p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
 p["N_VALIDATE"]= 512 # 256 # p["N_BATCH"] 
@@ -36,7 +36,7 @@ p["TAU_SYN"] = 5.0 #5
 p["REG_TYPE"]= "simple"
 p["LBD_UPPER"]= 2e-14 # 2e-9 # 2e-8 # 2e-14 (since removal of N_Batch), 5e-12 keep in mind that the term is applied to all contributing spikes ...
 p["LBD_LOWER"]= 2e-14 #2e-8
-p["NU_UPPER"]= 15 #*p["N_BATCH"]
+p["NU_UPPER"]= 10
 p["NU_LOWER"]= 5
 p["RHO_UPPER"]= 10000.0
 p["GLB_UPPER"]= 1e-8

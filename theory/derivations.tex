@@ -1351,7 +1351,7 @@ which it is not. I am not sure this is mathematically correct ... though the MNI
   \end{align}
   where we have defined
   \begin{align}
-    \tilde{\lambda}_{I,i} (t_{\text{spike}}):= \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)}  \lambda_{I,i}^{m,n}(t_{\text{spike}})
+    \tilde{\lambda}_{I,j} (t_{\text{spike}}):= \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)}  \lambda_{I,j}^{m,n}(t_{\text{spike}})
   \end{align}
   Then we can derive dynamics for $\tilde{\lambda}_{I,j}$ by simply using this definiton and noting that $\frac{\partial F}{\partial (\int V_m^n dt)}$ does not depend on $t$,
   \begin{align}
@@ -1372,6 +1372,13 @@ which it is not. I am not sure this is mathematically correct ... though the MNI
 
   For the concrete example of the loss function (\ref{sumloss}) we get
   \begin{align}
+    \frac{\partial F}{\partial (\int V_m^n dt)} = \left\{ \begin{array}{ll}
+      1 -\frac{\exp(\int V_m^n dt)}{\sum_{k=1}^{N_{\text{class}}} \exp(V_k^n dt)} & \text{if } m=l(n) \\[0.1cm]
+      -\frac{\exp(\int V_m^n dt)}{\sum_{k=1}^{N_{\text{class}}} \exp(V_k^n dt)} & \text{o.w.}
+      \end{array}\right.
+  \end{align}
+  and therefore the eventprop scheme
+  \begin{align}
     \frac{d{\cal L}}{d w_{ji}} &= -\tau_{\text{syn}} \sum_{\{t_{\text{spike}}(i)\}} \tilde{\lambda}_{I,j}(t_{\text{spike}}) \\
     \tau_{\text{syn}} \tilde{\lambda}_{I,j}' &= -\tilde{\lambda}_{I,j} + \tilde{\lambda}_{V,j} \\
     \tau_{\text{mem}} \tilde{\lambda}_{V,j}' &= - \tilde{\lambda}_{V,j} + \frac{1}{N_{\text{batch}}} \sum_n \left(\delta_{jl(n)} -\frac{\exp(\int V_j^n dt)}{\sum_{k=1}^{N_{\text{class}}} \exp(V_k^n dt)} \right) . \\
@@ -1379,6 +1386,14 @@ which it is not. I am not sure this is mathematically correct ... though the MNI
   This uses that the partial derivative is $1-\frac{exp}{\sum \exp}$ for $j=l(n)$ and $-\frac{exp}{\sum \exp}$ otherwise.
   
   Alternatively, one can also not fold the mini-batch sum into the dynamics and then add individual gradients from each trial across the mini-batch later.
+
+  \subsection{Loss terms for regularisation}
+  One of the ingredients for successful learning is to control the firing rates of neurons to a sensible regime. It is particularly important for eventprop to avoid neurons becoming premanently silent because they will not recover from this, due to learning being contingent on pre-synaptic spikes. Regularisation of learning rates is often realised through additional loss terms
+
+  A simple loss function for spike rate regularisation is
+  \begin{align}
+    
+  \end{align}
   
   \subsection{Alternative average instantaneous cross-entropy loss}
   The cross-entropy loss functions based on maximal voltages (\ref{maxloss}) and
