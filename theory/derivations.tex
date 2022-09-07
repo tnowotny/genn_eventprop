@@ -1387,13 +1387,27 @@ which it is not. I am not sure this is mathematically correct ... though the MNI
   
   Alternatively, one can also not fold the mini-batch sum into the dynamics and then add individual gradients from each trial across the mini-batch later.
 
+  \subsection{A note on the intuition behind the updates in the ``sum'' loss function}
+  As derived, the ``sum'' loss function leads to $\lambda_V$ dynamics where $\lambda_V$ exponentially approaches a constant value during the integration backwards in time. As dictated by its own dynamics equation, $\lambda_I$ follows according to the synaptic timescale. This leads to a functional form of the $\lambda_I-\lambda_V$ that looks like an EPSP (see \verb+single)neuron_analysis.ipynb+ bottom half). This means that when a spike occurs in a hidden neuron, the transported error is proportional to this EPSP shape sampled at the time when the spike occurred. At first sight this appears odd as it would appear that early spikes, i.e. spikes late in the backwards pass get much less blame for their contribution to $V_{\text{out}}$ than later spikes. However, the intuition is the following: If a spike occurs late, part of its PSP is cut off by the end of the trial. This means moving the spike earlier (assume positive weights for this argument) can increase the summed output voltage considerably, so there is a strong component to the gradient to move the spike to earlier (later) by increasing (decreasing) incoming weights (to earlier or later according to whether high or low voltage in the output neuron in question is desired). The size of the possible gain is determined by how much of the PSP is cut off. For sake of simplicity let's assume the spike should move to an earlier time. The same step $\Delta t$ to the left increases the summed voltage a little bit if the spike had occurred right at the end, a bit more when it's somewhat earlier, then less again (when the max of the PSP has entered the trial window) if even earlier. The possible gain is exactly determined by the shape of the PSP. Accordingly, for spikes that happen very early in the trial, almost nothing is gained by moving them even earlier.
+
+  The lesson of this reflection is fundamental: It is essential to always remember that ``eventprop does not know about spike creation or deletion''. The optimisation of the activity of the hidden layer in the example of the ``sum'' loss function is fairly subtle and consists of moving spikes to early in the trial in order to capture their entire PSP if a high voltage is required and moving to later in the trial to chip away some of their PSP if a low voltage is required. Incidentally, moving neurons to earlier potentially creates spikes as it would typically involve stronger excitation and moving spikes to later deletes spikes. That way eventprop inadvertently may reshape the hidden layer responses more fundamentally (and accidentally in the right direction) than the local gradient would normally do. In the context of generating or deleting spikes, the emphasis on creating spikes in neurons that have late spikes makes of course no obvious sense. This strange behaviour with regards to the activity and learning in the hidden layer could be one of the reasons why eventprop isn't quite learning as well as e-prop or other methods.
+
+A fundamental upshot of this is that eventprop should be much stronger for tasks where exact timing is required, e.g. producing a desired output waveform and such. Classification might not be a particular strength ... mind Friedemann's comment: ``Eventprop cannot create spikes'' - might be true on several levels not solely that silent neurons can't be revived but also no consideration of additional spikes in active neurons ...
+  
   \subsection{Loss terms for regularisation}
   One of the ingredients for successful learning is to control the firing rates of neurons to a sensible regime. It is particularly important for eventprop to avoid neurons becoming premanently silent because they will not recover from this, due to learning being contingent on pre-synaptic spikes. Regularisation of learning rates is often realised through additional loss terms
 
   A simple loss function for spike rate regularisation is
   \begin{align}
-    
+    {\cal L}_{\text{reg}} = c_{\text{reg}}\left(N_{\text{spike}}^{\text{hidden}} - \nu\right)^2
   \end{align}
+  i.e. the mean squared difference between the observed number of spikes in a trial and a target number $\nu$. Here, $c_{\text{reg}}$ is scaling the regularisation loss relative to the other loss terms.
+
+  Alternatively, one can also do this across trials in a mini-batch,
+  \begin{align}
+    {\cal L}^b_{\text{reg}} = c_{\text{reg}} \left(\frac{1}{N}_{\text{batch}} \sum_{i=1}^{N_{\text{batch}}} N_{\text{spike}, i}^{\text{hidden}} - \nu\right)^2
+  \end{align}
+  MORE HERE
   
   \subsection{Alternative average instantaneous cross-entropy loss}
   The cross-entropy loss functions based on maximal voltages (\ref{maxloss}) and
