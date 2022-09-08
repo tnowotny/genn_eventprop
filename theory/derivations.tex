@@ -1393,7 +1393,22 @@ which it is not. I am not sure this is mathematically correct ... though the MNI
   The lesson of this reflection is fundamental: It is essential to always remember that ``eventprop does not know about spike creation or deletion''. The optimisation of the activity of the hidden layer in the example of the ``sum'' loss function is fairly subtle and consists of moving spikes to early in the trial in order to capture their entire PSP if a high voltage is required and moving to later in the trial to chip away some of their PSP if a low voltage is required. Incidentally, moving neurons to earlier potentially creates spikes as it would typically involve stronger excitation and moving spikes to later deletes spikes. That way eventprop inadvertently may reshape the hidden layer responses more fundamentally (and accidentally in the right direction) than the local gradient would normally do. In the context of generating or deleting spikes, the emphasis on creating spikes in neurons that have late spikes makes of course no obvious sense. This strange behaviour with regards to the activity and learning in the hidden layer could be one of the reasons why eventprop isn't quite learning as well as e-prop or other methods.
 
 A fundamental upshot of this is that eventprop should be much stronger for tasks where exact timing is required, e.g. producing a desired output waveform and such. Classification might not be a particular strength ... mind Friedemann's comment: ``Eventprop cannot create spikes'' - might be true on several levels not solely that silent neurons can't be revived but also no consideration of additional spikes in active neurons ...
-  
+
+\subsection{A note on the accidental deletion of spikes}
+Whenever the loss improves through the movement of a hidden neuron's
+spike to a later time, doing gradient descent on teh loss will lead to weight
+changes that will move the spike to later. These are weight changes
+that reduce positive incoming weights and increase negative incoming
+weights. That can eventually lead to the ``deletion'' of the spike
+when the neuron's total input becomes to small to reach
+threshold. Such a deletion may well lead to a larger loss but this is
+not reflected in teh local gradient: ``eventprop cannot see the
+imminent deletion of a spike''. Furthermore, the size of the move to a later time
+per unit change of total incoming synaptic weight increases close to
+when the deletion occurs, creating a steeper gradient towards reducing
+weights and deleting the spike close to this ``deletion point''. This
+makes it even more likely that the updates will lead to deletion.
+
   \subsection{Loss terms for regularisation}
   One of the ingredients for successful learning is to control the firing rates of neurons to a sensible regime. It is particularly important for eventprop to avoid neurons becoming premanently silent because they will not recover from this, due to learning being contingent on pre-synaptic spikes. Regularisation of learning rates is often realised through additional loss terms
 
@@ -1407,12 +1422,69 @@ A fundamental upshot of this is that eventprop should be much stronger for tasks
   \begin{align}
     {\cal L}^b_{\text{reg}} = c_{\text{reg}} \left(\frac{1}{N}_{\text{batch}} \sum_{i=1}^{N_{\text{batch}}} N_{\text{spike}, i}^{\text{hidden}} - \nu\right)^2
   \end{align}
-  MORE HERE
+  We can then use the following identity
+  \begin{align}
+    N_{\text{spike}} = \int_0^T \sum_k \delta(t-t_{k})
+    \frac{V}{\vartheta} dt
+  \end{align}
+  where $\delta$ is the Dirac delta distribution, $t_k$ the time of
+  the $k^{\text{th}}$ spike in the neuron underconsideration and $\vartheta$ the
+  spiking threshold. As the voltage $V= \vartheta$ at the spike times,
+  the additional term $\frac{V}{\vartheta}$ is always equal to one at
+  those times.
+  
+  Then, formally, we can interpret
+  \begin{align}
+    l_V= \sum_k \delta(t-t_{k})
+    \frac{V}{\vartheta} \\
+    \Rightarrow \ \frac{\partial l_V}{\partial V} = \frac{\sum_k \delta(t-t_{k})}{\vartheta}
+  \end{align}
+  and by applying the usual eventprop method we get
+  \begin{align}
+    \lambda_V' = -\lambda_V - \frac{\sum_k \delta(t-t_{k})}{\vartheta}
+  \end{align}
+  i.e. we need to apply jumps of $\frac{1}{\vartheta}$ at all spike
+  times of the neuron and we get
+  \begin{align}
+    \frac{d N_{\text{spike}}}{d w_{ji}} = -\tau_{\text{syn}}
+    \sum_{\text{spikes in } i} \lambda_{I,j}.
+  \end{align}
+  With the same approach as above, we can then deduce the gradient of
+  the loss as
+  \begin{align}
+    \frac{d {\cal L}_{\text{reg}}}{d w_{ji}} &= \frac{\partial {\cal
+        L}_{\text{reg}}}{\partial N_{\text{spike}}}\frac{d N_{\text{spike}}}{d w_{ji}} \\
+    &= 2 c_{\text{reg}} \left(N_{\text{spike}}^{\text{hidden}} -
+    \nu\right) (-\tau_{\text{syn}}
+    \sum_{\text{spikes in } i} \lambda_{I,j}) \\
+    &= -\tau_{\text{syn}}
+    \sum_{\text{spikes in } i} 2 c_{\text{reg}} \left(N_{\text{spike}}^{\text{hidden}} -
+    \nu\right) \lambda_{I,j}
+  \end{align}
+  and with
+  \begin{align}
+    \tilde{\lambda}_{I,j} &= 2 c_{\text{reg}} \left(N_{\text{spike}}^{\text{hidden}} -
+    \nu\right) \lambda_{I,j} \ \text{and} \\
+    \tilde{\lambda}_{V,j} &= 2 c_{\text{reg}} \left(N_{\text{spike}}^{\text{hidden}} -
+    \nu\right) \lambda_{V,j} 
+  \end{align}
+  we get the usual eventprop algorithm with jumps in
+  $\tilde{\lambda}_{V,j}$ by
+  \begin{align}
+    \frac{2 c_{\text{reg}}}{\vartheta} \left(N_{\text{spike},j}^{\text{hidden}} -
+    \nu\right)
+  \end{align}
+  Note: currently the code does not have the $\frac{2}{\vartheta}$
+  term but this only means a rescaling of $c_{\text{reg}}$. I have
+  also separated it into two parameters called \verb+lambda_upper+ and
+  \verb+lambda_lower+ that represent $c_{\text{reg}}$ for
+  $N_{\text{spike}}^{\text{hidden}} > \nu$ and $N_{\text{spike}}^{\text{hidden}} < \nu$ separately.
   
   \subsection{Alternative average instantaneous cross-entropy loss}
   The cross-entropy loss functions based on maximal voltages (\ref{maxloss}) and
   average voltages (\ref{sumloss}) above do not really seem to work well in the
   eventprop formalism. An alternative could be the average
+  
   cross-entropy loss,
   \begin{align}
     {\mathcal L} = \int_0^T - \frac{1}{N_{\text{batch}}}
