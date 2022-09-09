@@ -1409,6 +1409,23 @@ when the deletion occurs, creating a steeper gradient towards reducing
 weights and deleting the spike close to this ``deletion point''. This
 makes it even more likely that the updates will lead to deletion.
 
+\subsection{Ideas for improved loss functions}
+Based on th insight that eventprop for teh ``sum'' method only works
+accidentally (in the sense that only because eventprop is trying to
+push hidden neurons' late spikes to earlier if they contribute
+positively to a desired high $V$ (and the equivalent situations for
+combinations of positive/negative weight and positive/negative desired
+output voltage) we do get potentiation (or depression as appropriate)
+onto relevant hidden neurons and accidentally spike creation
+(deletion)) it seems sensible to find loss functions where this
+accidental optimisation of hidden layer representations is more
+efficient and ultimately more successful. In teh normal ``sum'' method
+the hidden neurons with late spikes are emphasized. We could
+counter-act with unequal weighting of voltage across the trial, e.g.
+\begin{align}
+\end{align}
+
+
   \subsection{Loss terms for regularisation}
   One of the ingredients for successful learning is to control the firing rates of neurons to a sensible regime. It is particularly important for eventprop to avoid neurons becoming premanently silent because they will not recover from this, due to learning being contingent on pre-synaptic spikes. Regularisation of learning rates is often realised through additional loss terms
 
