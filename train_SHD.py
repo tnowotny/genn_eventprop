@@ -24,7 +24,11 @@ p["N_BATCH"]= 256
 p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
 p["N_VALIDATE"]= 512 # 256 # p["N_BATCH"] 
+<<<<<<< Updated upstream
 p["ETA"]= 5e-3 #1e-4 # 5e-3
+=======
+p["ETA"]= 1e-3 #1e-4 # 5e-3
+>>>>>>> Stashed changes
 p["SHUFFLE"]= True
 p["INPUT_HIDDEN_MEAN"]= 0.02 # 0.02
 p["INPUT_HIDDEN_STD"]= 0.01 # 0.01
@@ -61,7 +65,7 @@ p["AVG_SNSUM"]= True
 p["AUGMENTATION"]= {
     "random_shift": 20.0,
     "random_dilate": (0.9, 1.1),
-    "ID_jitter": 5.0
+    "ID_jitter": 10.0
 }
 
 #p["REDUCED_CLASSES"]= [0]
