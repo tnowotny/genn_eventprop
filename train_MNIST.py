@@ -20,15 +20,27 @@ p["ETA"]= 1e-2 #5e-3
 p["SHUFFLE"]= True
 p["W_REPORT_INTERVAL"] = 11000  # this should be at the end of the epoch (at first trial of evaluation)
 
+# "first_spike" loss function variables
+p["TAU_0"]= 0.5
+p["TAU_1"]= 6.4
+p["ALPHA"]= 3e-3
+
+#p["LOSS_TYPE"]= "first_spike"
+#p["LOSS_TYPE"]= "max"
+p["LOSS_TYPE"]= "sum"
+#p["LOSS_TYPE"]= "avg_xentropy"
+
 if p["DEBUG"]:
     p["REC_SPIKES"]= ["input", "hidden"]
     p["REC_NEURONS"]= [("output", "V"), ("output", "lambda_V"), ("output", "lambda_I")]
     p["REC_SYNAPSES"]= [("hid_to_out", "w")]
+
 mn= mnist_model(p)
 spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
 
 print("correct: {}".format(correct))
 print("correct_eval: {}".format(correct_eval))
+
 if p["DEBUG"]:
     plt.figure()
     plt.scatter(spike_t["input"],spike_ID["input"],s=0.5)

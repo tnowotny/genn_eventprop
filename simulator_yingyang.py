@@ -29,6 +29,7 @@ p["N_TEST"]= p["N_BATCH"]*25
 N_CLASS= 3
 p["W_REPORT_INTERVAL"] = 100
 p["W_EPOCH_INTERVAL"] = 10
+
 # Network structure
 NUM_INPUT = 5
 NUM_OUTPUT = N_CLASS
@@ -49,11 +50,11 @@ p["HIDDEN_OUTPUT_STD"]= 0.1
 
 # Learning parameters
 p["ETA"]= 5e-3
-p["ADAM_BETA1"]= 0.9      
-p["ADAM_BETA2"]= 0.999    
-p["ADAM_EPS"]= 1e-8       
+p["ADAM_BETA1"]= 0.9
+p["ADAM_BETA2"]= 0.999
+p["ADAM_EPS"]= 1e-8
 # applied every epoch
-p["ETA_DECAY"]= 0.95      
+p["ETA_DECAY"]= 0.95
 
 # spike recording
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
@@ -85,8 +86,7 @@ def get_input_start(input_end):
 def update_adam(learning_rate, adam_step, optimiser_custom_updates):
     first_moment_scale = 1.0 / (1.0 - (p["ADAM_BETA1"] ** adam_step))
     second_moment_scale = 1.0 / (1.0 - (p["ADAM_BETA2"] ** adam_step))
-    #print(first_moment_scale)
-    #print(second_moment_scale)
+
     # Loop through optimisers and set
     for o in optimiser_custom_updates:
         o.extra_global_params["alpha"].view[:] = learning_rate
@@ -109,6 +109,7 @@ def loss_func(nfst, Y, trial):
     return loss
 
 class yingyang:
+
     def __init__(self, p):
         self.generate_training_data(p)
         self.generate_testing_data(p)
@@ -193,6 +194,7 @@ class yingyang:
                            "expsum": 1.0,
                            "trial": 0,
         }
+
         # ----------------------------------------------------------------------------
         # Synapse initialisation
         # ----------------------------------------------------------------------------
@@ -215,19 +217,19 @@ class yingyang:
         self.model.dT = p["DT_MS"]
         self.model.timing_enabled = p["TIMING"]
         self.model.batch_size = p["N_BATCH"]
-        #model._model.set_seed(p["DATA_SEED"])
+        #self.model._model.set_seed(p["DATA_SEED"])
 
         # Add neuron populations
         self.input = self.model.add_neuron_population("input", NUM_INPUT, EVP_SSA, 
                                             {}, self.input_init_vars)
         
         self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars) 
-        self.hidden.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
-        self.hidden.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"],dtype=np.float32))
+        self.hidden.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
+        self.hidden.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
         
-        self.output= self.model.add_neuron_population("output", NUM_OUTPUT, EVP_LIF_output, output_params, self.output_init_vars)
-        self.output.set_extra_global_param("t_k",-1e5*np.ones(p["N_BATCH"]*NUM_OUTPUT*p["N_MAX_SPIKE"],dtype=np.float32))
-        self.output.set_extra_global_param("ImV",np.zeros(p["N_BATCH"]*NUM_OUTPUT*p["N_MAX_SPIKE"],dtype=np.float32))
+        self.output= self.model.add_neuron_population("output", NUM_OUTPUT, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
+        self.output.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*NUM_OUTPUT*p["N_MAX_SPIKE"], dtype=np.float32))
+        self.output.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*NUM_OUTPUT*p["N_MAX_SPIKE"], dtype=np.float32))
 
         self.input.set_extra_global_param("spikeTimes", input_spike_times)
         self.output.set_extra_global_param("label", output_labels)
@@ -255,6 +257,7 @@ class yingyang:
         self.hidden_reset= self.model.add_custom_update("hidden_reset","neuronReset", EVP_neuron_reset, {"V_reset": p["V_RESET"], "N_max_spike": p["N_MAX_SPIKE"]}, {}, hidden_var_refs)
 
         output_reset_params= {"V_reset": p["V_RESET"],
+                              "N_class": N_CLASS,
                               "N_max_spike": p["N_MAX_SPIKE"],
                               "tau0": p["TAU_0"],
                               "tau1": p["TAU_1"]
@@ -271,7 +274,7 @@ class yingyang:
                           "expsum": genn_model.create_var_ref(self.output, "expsum"),
                           "trial": genn_model.create_var_ref(self.output, "trial")                      
         }
-        self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output, output_reset_params, {}, output_var_refs)
+        self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_yingyang_first_spike, output_reset_params, {}, output_var_refs)
 
         # synapse populations
         self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
@@ -307,31 +310,38 @@ class yingyang:
     def run_model(self, number_epochs, learning, labels, X_t_orig, N_trial, p):
         if p["LOAD_LAST"]:
             self.in_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], "w_input_hidden_last.npy"))
-            self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], "w_hidden_output_last.npy"))
             self.in_to_hid.push_var_to_device("w")
+            self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], "w_hidden_output_last.npy"))
             self.hid_to_out.push_var_to_device("w")
+
         nfst= self.output.vars["new_first_spike_t"].view
+        all_nfst= []
+
         adam_step= 1
         learning_rate= p["ETA"]
+
+        # set up recording if required
         spike_t= {}
         spike_ID= {}
         for pop in p["REC_SPIKES"]:
             spike_t[pop]= []
             spike_ID[pop]= []
-
         rec_vars_n= {}
         for pop, var in p["REC_NEURONS"]:
             rec_vars_n[var+pop]= []
         rec_vars_s= {}
         for pop, var in p["REC_SYNAPSES"]:
             rec_vars_s[var+pop]= []
-        all_nfst= []
+
         for epoch in range(number_epochs):
+
             if learning:
                 learning_rate *= p["ETA_DECAY"]
+
             predict= []
             the_loss= []
             good= 0.0    
+
             self.model.t= 0.0
             self.model.timestep= 0
             for var, val in self.input_init_vars.items():
@@ -343,12 +353,15 @@ class yingyang:
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
+
             for trial in range(N_trial):
                 trial_end= (trial+1)*p["TRIAL_MS"]
+
                 int_t= 0
                 while (self.model.t < trial_end-1e-3*p["DT_MS"]):
                     self.model.step_time()
                     int_t += 1
+
                     if len(p["REC_SPIKES"]) > 0:
                         if int_t%p["SPK_REC_STEPS"] == 0:
                             self.model.pull_recording_buffers_from_device()
@@ -374,21 +387,24 @@ class yingyang:
                         else:
                             the_pop.pull_var_from_device(var)
                             rec_vars_s[var+pop].append(the_pop.vars[var].view.copy())
+
                     # clamp in_syn to 0 one timestep before trial end to avoid bleeding spikes into the next trial
                     if np.abs(self.model.t + p["DT_MS"] - trial_end) < 1e-1*p["DT_MS"]:
                         self.in_to_hid.in_syn[:]= 0.0
                         self.in_to_hid.push_in_syn_to_device()
                         self.hid_to_out.in_syn[:]= 0.0
                         self.hid_to_out.push_in_syn_to_device()
+
                 self.output.pull_var_from_device("new_first_spike_t");
                 all_nfst.append(nfst.copy())
                 st= nfst.copy()
-                valid= np.max(st, axis= -1) >= 0.0
+                valid= np.max(st, axis=-1) >= 0.0
                 st[nfst < 0.0]= self.model.t+p["TRIAL_MS"]  # neurons that did not spike set to spike time in the future
-                pred= np.argmin(st,axis=-1)
-                good += np.sum(pred[valid] == labels[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]][valid])
+                pred= np.argmin(st, axis=-1)
                 predict.append(pred)
-                the_loss.append(loss_func(nfst,labels[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]],trial))
+                the_loss.append(loss_func(nfst, labels[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]], trial))
+                good += np.sum(pred[valid] == labels[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]][valid])
+
                 if learning:
                     # record training loss and error
                     update_adam(learning_rate, adam_step, self.optimisers)
@@ -401,6 +417,7 @@ class yingyang:
                 self.in_to_hid.push_in_syn_to_device()
                 self.hid_to_out.in_syn[:]= 0.0
                 self.hid_to_out.push_in_syn_to_device()
+
                 self.model.custom_update("neuronReset")
 
                 if (epoch % p["W_EPOCH_INTERVAL"] == 0) and (trial % p["W_REPORT_INTERVAL"] == 0):
@@ -429,6 +446,7 @@ class yingyang:
                     plt.colorbar()
                     plt.clim(0, 180)
                 plt.show()
+
         for pop in p["REC_SPIKES"]:
             spike_t[pop]= np.hstack(spike_t[pop])
             spike_ID[pop]= np.hstack(spike_ID[pop])
@@ -438,8 +456,9 @@ class yingyang:
         
         for pop, var in p["REC_SYNAPSES"]:
             rec_vars_s[var+pop]= np.vstack(rec_vars_s[var+pop])
-        
-        if p["WRITE_TO_DISK"]:            # Saving results
+
+        # Saving results
+        if p["WRITE_TO_DISK"]:
             for pop in p["REC_SPIKES"]:
                 np.save(p["OUT_DIR"]+"/"+pop+"_spike_t", spike_t[pop])
                 np.save(p["OUT_DIR"]+"/"+pop+"_spike_ID", spike_ID[pop])
