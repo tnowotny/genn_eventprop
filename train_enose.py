@@ -1,4 +1,4 @@
-from simulator_MNIST import *
+from simulator_enose import *
 import matplotlib.pyplot as plt
 import numpy as np
 import json

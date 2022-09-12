@@ -1,4 +1,4 @@
-from simulator import *
+from simulator_yingyang import *
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import minimize
