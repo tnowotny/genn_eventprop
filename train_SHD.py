@@ -25,7 +25,11 @@ p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
 p["N_VALIDATE"]= 512 # 256 # p["N_BATCH"] 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 p["ETA"]= 5e-3 #1e-4 # 5e-3
+=======
+p["ETA"]= 1e-3 #1e-4 # 5e-3
+>>>>>>> Stashed changes
 =======
 p["ETA"]= 1e-3 #1e-4 # 5e-3
 >>>>>>> Stashed changes
