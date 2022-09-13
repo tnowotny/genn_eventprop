@@ -101,6 +101,12 @@ p["AVG_SNSUM"]= False
 p["REDUCED_CLASSES"]= None
 p["AUGMENTATION"]= {}
 p["DOWNLOAD_SHD"]= False
+p["COLLECT_CONFUSION"]= False
+
+# "first_spike" loss function variables
+p["TAU_0"]= 0.5
+p["TAU_1"]= 6.4
+p["ALPHA"]= 3e-3
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -138,6 +144,26 @@ class SHD_model:
             self.X_train_orig, self.Y_train_orig, self.Z_train_orig= self.reduce_classes(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["REDUCED_CLASSES"])
             self.X_test_orig, self.Y_test_orig, self.Z_test_orig= self.reduce_classes(self.X_test_orig, self.Y_test_orig, self.Z_test_orig, p["REDUCED_CLASSES"])
 
+
+    def plot_examples(self,spkrs,digit,nsample,phase):
+        if phase == "train":
+            X= self.X_train_orig
+            Y= self.Y_train_orig
+            Z= self.Z_train_orig
+        else:
+            X= self.X_test_orig
+            Y= self.Y_test_orig
+            Z= self.Z_test_orig
+
+        ydim= len(spkrs)
+        xdim= nsample
+        fig, ax= plt.subplots(ydim,xdim,sharex= True, sharey= True)
+        for y in range(ydim):
+            td= X[np.logical_and(Z == spkrs[y], Y == digit)][:nsample]
+            for x in range(len(td)):
+                ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
+        plt.show()
+        
     def loss_func_first_spike(self, nfst, Y, trial):
         #print("new first spikes: {}".format(nfst))
         t= nfst-trial*p["TRIAL_MS"]
@@ -255,8 +281,8 @@ class SHD_model:
         fileh= tables.open_file(hdf5_file_path, mode='r')
         units= fileh.root.spikes.units
         times= fileh.root.spikes.times
-        self.Y_train_orig= fileh.root.labels
-        self.Z_train_orig= fileh.root.extra.speaker
+        self.Y_train_orig= np.array(fileh.root.labels)
+        self.Z_train_orig= np.array(fileh.root.extra.speaker)
         self.data_full_length= max(self.data_full_length, len(units))
         self.N_class= len(set(self.Y_train_orig))
         self.X_train_orig= []
@@ -972,6 +998,11 @@ class SHD_model:
         self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
         self.input_set.push_extra_global_param_to_device("allInputID")
 
+        if p["COLLECT_CONFUSION"]:
+            confusion= {
+                "train": [],
+                "eval": []
+            }
         for epoch in range(number_epochs):
 
             # if we are doing augmentation, the entire spike time array needs to be set up anew.
@@ -1038,6 +1069,11 @@ class SHD_model:
                 if p["REWIRE_SILENT"]:
                     rewire_sNSum= []
 
+            if p["COLLECT_CONFUSION"]:
+                conf= {
+                    "train": np.zeros((self.N_class,self.N_class)),
+                    "eval": np.zeros((self.N_class,self.N_class))
+                }
             for trial in range(N_trial):
                 trial_end= (trial+1)*p["TRIAL_MS"]
 
@@ -1182,6 +1218,10 @@ class SHD_model:
                     rec_s_lbl.append(lbl.copy())
                     rec_s_pred.append(pred.copy())
 
+                if p["COLLECT_CONFUSION"]:
+                    for pr, lb in zip(pred,lbl):
+                        conf[phase][pr,lb]+= 1
+                        
                 if p["DEBUG"]:
                     print(pred)
                     print(lbl)
@@ -1284,6 +1324,10 @@ class SHD_model:
                     learning_rate *= p["ETA_REDUCE"]
                     adam_step= 1
 
+            if p["COLLECT_CONFUSION"]:
+                for ph in ["train","eval"]:
+                    confusion[ph].append(conf[ph])
+
         for pop in p["REC_SPIKES"]:
             spike_t[pop]= np.hstack(spike_t[pop])
             spike_ID[pop]= np.hstack(spike_ID[pop])
@@ -1303,6 +1347,10 @@ class SHD_model:
         rec_s_lbl= np.array(rec_s_lbl)
         rec_s_pred= np.array(rec_s_pred)
 
+        if p["COLLECT_CONFUSION"]:
+            for ph in ["train","eval"]:
+                confusion[ph]= np.array(confusion[ph])
+        
         # Saving results
         if p["WRITE_TO_DISK"]:
             if len(p["REC_SPIKES"]) > 0:
@@ -1328,6 +1376,10 @@ class SHD_model:
                 for pop, var in p["REC_SYNAPSES"]:
                     np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+var+pop), rec_vars_s[var+pop])
 
+            if p["COLLECT_CONFUSION"]:
+                for ph in ["train","eval"]:
+                    np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_confusion"+ph), confusion[ph])
+                
         # Saving results
         if p["WRITE_TO_DISK"]:
             self.in_to_hid.pull_var_from_device("w")
