@@ -20,7 +20,7 @@ p["DEBUG"]= False
 p["DEBUG_HIDDEN_N"]= True
 p["LOAD_LAST"]= False
 p["N_EPOCH"]= 200
-p["N_BATCH"]= 256
+p["N_BATCH"]= 32
 p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
 p["N_VALIDATE"]= 512 # 256 # p["N_BATCH"] 
@@ -34,8 +34,8 @@ p["W_REPORT_INTERVAL"] = 11000  # this should be at the end of the epoch (at fir
 p["TAU_MEM"] = 20.0 #20
 p["TAU_SYN"] = 5.0 #5
 p["REG_TYPE"]= "simple"
-p["LBD_UPPER"]= 2e-14 # 2e-9 # 2e-8 # 2e-14 (since removal of N_Batch), 5e-12 keep in mind that the term is applied to all contributing spikes ...
-p["LBD_LOWER"]= 2e-14 #2e-8
+p["LBD_UPPER"]= 2e-9 # 2e-9 # 2e-8 # 2e-14 (since removal of N_Batch), 5e-12 keep in mind that the term is applied to all contributing spikes ...
+p["LBD_LOWER"]= 2e-9 #2e-8
 p["NU_UPPER"]= 14
 p["NU_LOWER"]= 5
 p["RHO_UPPER"]= 10000.0
@@ -69,11 +69,13 @@ p["LOSS_TYPE"]= "sum"
 
 p["AUGMENTATION"]= {
     "random_shift": 20.0,
-    "random_dilate": (0.9, 1.1),
-    "ID_jitter": 10.0
+    "random_dilate": (1.0, 1.0),
+    "ID_jitter": 0.0
 }
 
 #p["REDUCED_CLASSES"]= [0]
+
+p["SPEAKER_LEFT"]= 11
 
 """
 p["REC_NEURONS"]= [("output","V"),("output","sum_V"),("output","lambda_V"),("output","lambda_I"),
@@ -114,6 +116,7 @@ with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as file:
     
 mn= SHD_model(p)
 spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
+#spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.cross_validate_SHD(p)
 
 print("correct: {}".format(correct))
 print("correct_eval: {}".format(correct_eval))
