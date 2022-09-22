@@ -93,8 +93,9 @@ p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
 
-# possible loss types: "first_spike", "max", "sum", "avg_xentropy"
+# possible loss types: "first_spike", "max", "sum", "sum_weigh_linear", "sum_weigh_exp", "avg_xentropy"
 p["LOSS_TYPE"]= "max"
+# possible evaluation types: "random", "speaker"
 p["EVALUATION"]= "random"
 p["CUDA_VISIBLE_DEVICES"]= False
 p["AVG_SNSUM"]= False
@@ -748,7 +749,14 @@ class SHD_model:
             self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_SHD_max, output_reset_params, {}, output_var_refs)
 
 
-        if p["LOSS_TYPE"] == "sum":
+        if p["LOSS_TYPE"][:3] == "sum":
+            if p["LOSS_TYPE"] == "sum":
+                the_output_neuron_type= EVP_LIF_output_sum
+            if p["LOSS_TYPE"] == "sum_weigh_linear":
+                the_output_neuron_type= EVP_LIF_output_sum_weigh_linear
+            if p["LOSS_TYPE"] == "sum_weigh_exp":
+                the_output_neuron_type= EVP_LIF_output_sum_weigh_exp
+                
             output_params= {
                 "tau_m": p["TAU_MEM"],
                 "tau_syn": p["TAU_SYN"],
@@ -766,7 +774,7 @@ class SHD_model:
                 "expsum": 1.0,
                 "exp_V": 1.0,
             }
-            self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_sum, output_params, self.output_init_vars)
+            self.output= self.model.add_neuron_population("output", self.num_output, the_output_neuron_type, output_params, self.output_init_vars)
             self.output.set_extra_global_param("label", np.zeros(self.data_full_length, dtype=np.float32)) # reserve space for labels
 
             output_reset_params= {
@@ -1199,7 +1207,7 @@ class SHD_model:
 
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
-                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":
+                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
                     self.output.pull_var_from_device("exp_V")
                     pred= np.argmax(self.output.vars["exp_V"].view[:,:self.N_class], axis=-1)
 
@@ -1230,7 +1238,7 @@ class SHD_model:
                 if p["LOSS_TYPE"] == "first_spike":
                     losses= self.loss_func_first_spike(nfst, lbl, trial)
 
-                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":
+                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
                     self.output.pull_var_from_device("expsum")
                     losses= self.loss_func_max_sum(lbl, p)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
 

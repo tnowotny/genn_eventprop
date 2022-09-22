@@ -918,17 +918,86 @@ EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
     $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            //$(lambda_V) += (($(t)-$(rev_t))/$(trial_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            $(lambda_V) += (1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+        }
+        else {
+            $(lambda_V) -= $(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+        }
+    }
+    // forward pass
+    // update the summed voltage
+    $(new_sum_V)+= $(V)/$(trial_t)*DT; // simple Euler
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    """,
+    threshold_condition_code="",
+    reset_code="",
+    is_auto_refractory_required=False
+)
+
+# LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
+# by dlV/dV (this is for a "sum-based loss function)"
+# NOTE TO SELF: why 1/trial_t on the lambda_V equation?
+# NOTE: this is not correct/ strange loss function (if it can even be mapped to one)
+EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
+    "EVP_LIF_output_sum_weigh_linear",
+    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("sum_V","scalar"),("new_sum_V","scalar"),
+                    ("expsum","scalar"),("exp_V","scalar"),
+                    ("trial","int")],
+    extra_global_params=[("label","int*")], 
+    sim_code="""
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
+    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
+    if ($(trial) > 0) {
+        if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
+            $(lambda_V) += (($(t)-$(rev_t))/$(trial_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+        }
+        else {
+            $(lambda_V) -= (($(t)-$(rev_t))/$(trial_t))*$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+        }
+    }
+    // forward pass
+    // update the summed voltage
+    $(new_sum_V)+= (1-($(t)-$(rev_t))/$(trial_t))*$(V)/$(trial_t)*DT; // simple Euler
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    """,
+    threshold_condition_code="",
+    reset_code="",
+    is_auto_refractory_required=False
+)
+
+# LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
+# by dlV/dV (this is for a "sum-based loss function)"
+# NOTE TO SELF: why 1/trial_t on the lambda_V equation?
+# NOTE: this is not correct/ strange loss function (if it can even be mapped to one)
+EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
+    "EVP_LIF_output_sum_weigh_exp",
+    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("sum_V","scalar"),("new_sum_V","scalar"),
+                    ("expsum","scalar"),("exp_V","scalar"),
+                    ("trial","int")],
+    extra_global_params=[("label","int*")], 
+    sim_code="""
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
+    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
+    if ($(trial) > 0) {
+        if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
             $(lambda_V) += exp(-($(trial_t)-$(t)+$(rev_t))/$(trial_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
         }
         else {
-            //$(lambda_V) -= (($(t)-$(rev_t))/$(trial_t))*$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
             $(lambda_V) -= exp(-($(trial_t)-$(t)+$(rev_t))/$(trial_t))*$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
         }
     }
     // forward pass
     // update the summed voltage
-    //$(new_sum_V)+= (1-($(t)-$(rev_t))/$(trial_t))*$(V)/$(trial_t)*DT; // simple Euler
     $(new_sum_V)+= exp(-($(t)-$(rev_t))/$(trial_t))*$(V)/$(trial_t)*DT; // simple Euler
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
     $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
