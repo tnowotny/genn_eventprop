@@ -460,6 +460,45 @@ EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
     """
 )
 
+# custom update class for resetting output neurons at trial end for SHD
+# almost like MNIST but annoyingly more classes/ output neurons
+# This version for "sum" loss function"
+EVP_neuron_reset_output_SHD_sum_weigh_input= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_output_SHD_sum_weigh_input",
+    param_names=["V_reset","N_class","trial_steps"],
+    var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int"),("rp_V","int"),("wp_V","int")],
+    update_code= """
+        scalar mexp= 0.0;
+        scalar m= -1e37;
+        if ($(id) < $(N_class)) m= $(new_sum_V);
+        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
+        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
+        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
+        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
+        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x10));
+        if ($(id) < $(N_class)) {
+             mexp= exp($(new_sum_V) - m);
+             $(exp_V)= mexp;
+        } else $(exp_V)= 0.0;
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
+        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
+        $(expsum)= mexp;
+        //printf(\"%g\\n\",$(expsum));
+        $(rev_t)= $(t);
+        $(lambda_V)= 0.0;
+        $(lambda_I)= 0.0;
+        $(V)= $(V_reset);
+        $(sum_V)= $(new_sum_V);
+        $(new_sum_V)= 0.0;
+        $(trial)++;
+        $(rp_V)= $(wp_V);
+        $(wp_V)= $(wp_V)%(2* (int) $(trial_steps));
+    """
+)
+
 # This version for "average xentropy loss function"
 EVP_neuron_reset_output_avg_xentropy= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_avg_xentropy",
@@ -477,6 +516,15 @@ EVP_neuron_reset_output_avg_xentropy= genn_model.create_custom_custom_update_cla
     """
 )
 
+
+# reset function for the giant input accumulator neuron
+EVP_neuron_reset_input_accumulator= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_input_accumulator",
+    var_refs=[("V","scalar")],
+    update_code= """
+        $(V)= 0.0;
+    """
+)
 
 #----------------------------------------------------------------------------
 # Neuron models
@@ -1007,6 +1055,49 @@ EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+# LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
+# by dlV/dV (this is for a "sum-based loss function)"
+# NOTE TO SELF: why 1/trial_t on the lambda_V equation?
+# NOTE: this is not correct/ strange loss function (if it can even be mapped to one)
+EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
+    "EVP_LIF_output_sum_weigh_input",
+    param_names=["tau_m","tau_syn","N_neurons","trial_t","N_batch","trial_steps"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("sum_V","scalar"),("new_sum_V","scalar"),
+                    ("expsum","scalar"),("exp_V","scalar"),
+                    ("trial","int"),("rp_V","int"),("wp_V","int"),("avgInback","scalar")],
+    extra_global_params=[("label","int*"),("aIbuf","scalar*")], 
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
+    $(rp_V)--;
+    $(avgInback)= $(aIbuf)[buf_idx+$(rp_V)];
+    $(aIbuf)[buf_idx+$(wp_V)]= $(avgIn);
+    //printf("%e\\n",$(avgIn));
+    $(wp_V)++;
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
+    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
+    if ($(trial) > 0) {
+        if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
+            $(lambda_V) += $(avgInback)*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+        }
+        else {
+            $(lambda_V) -= $(avgInback)*$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+        }
+    }
+    // forward pass
+    // update the summed voltage
+    $(new_sum_V)+= $(avgIn)*$(V)/$(trial_t)*DT; // simple Euler
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    """,
+    threshold_condition_code="",
+    reset_code="",
+    additional_input_vars=[("avgIn", "scalar", 0.0)],
+    is_auto_refractory_required=False
+)
+
 # LIF neuron model for output neurons in the MNIST task - non-spiking;
 # use the average cross-entropy loss of instantaneous V values instead of cross-entropy
 # of average Vs
@@ -1129,6 +1220,20 @@ EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+# "giant" LIF to communicate average input activity
+EVP_LIF_input_accumulator = genn_model.create_custom_neuron_class(
+    "EVP_LIF_input_accumulator",
+    param_names=["tau_m"],
+    var_name_types=[("V", "scalar")],
+    sim_code="""
+    // update the voltages
+    $(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    """,
+    threshold_condition_code="1",
+    reset_code="",
+    is_auto_refractory_required=False
+)
+
 # synapses
 EVP_synapse= genn_model.create_custom_weight_update_class(
     "EVP_synapse",
@@ -1167,3 +1272,23 @@ my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
     apply_input_code="$(Isyn) += $(inSyn);",
     derived_params=[("expDecay", genn_model.create_dpf_class(lambda pars, dt: np.exp(-dt / pars[0]))())]
 )
+
+# synapses for giant input accumulator
+
+EVP_accumulator_output_synapse= genn_model.create_custom_weight_update_class(
+    "EVP_accumulator_output_synapse",
+    sim_code="""
+        $(addToInSyn, $(V_pre));
+    printf("%e \\n",$(V_pre));
+    """,
+)
+
+"""
+# this is probably exactly DeltaCurr
+EVP_null_post= genn_model.create_custom_postsynaptic_class(
+    "EVP_null_post",
+    param_names=[],
+    decay_code="",
+    apply_input_code="$(Isyn) += $(inSyn); $(inSyn)= 0.0",
+)
+"""

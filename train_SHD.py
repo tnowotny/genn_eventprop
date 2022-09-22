@@ -19,7 +19,7 @@ p["ADAM_BETA2"]= 0.999
 p["DEBUG"]= False
 p["DEBUG_HIDDEN_N"]= True
 p["LOAD_LAST"]= False
-p["N_EPOCH"]= 100
+p["N_EPOCH"]= 3
 p["N_BATCH"]= 32
 p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 7900 #20*p["N_BATCH"] #7756 
@@ -62,7 +62,7 @@ p["ALPHA"]= 3e-3
 
 #p["LOSS_TYPE"]= "first_spike"
 #p["LOSS_TYPE"]= "max"
-p["LOSS_TYPE"]= "sum"
+p["LOSS_TYPE"]= "sum_weigh_input"
 #p["LOSS_TYPE"]= "avg_xentropy"
 
 #p["AUGMENTATION"]= {}
@@ -79,9 +79,7 @@ p["SPEAKER_LEFT"]= 11
 p["COLLECT_CONFUSION"]= True
 
 
-"""
-p["REC_NEURONS"]= [("output","V"),("output","sum_V"),("output","lambda_V"),("output","lambda_I"),
-                   ("hidden","lambda_V")]
+p["REC_NEURONS"]= [("output","avgInback"),("accumulator","V")]
 p["REC_NEURONS_EPOCH_TRIAL"]= [(0,25),(0,26),(0,27),(0,28),(0,29),(0,30),(0,31),
                                (9,25),(9,26),(9,27),(9,28),(9,29),(9,30),(9,31),
 ]
@@ -94,7 +92,6 @@ p["REC_SPIKES"]= ["input","hidden"]
 p["W_OUTPUT_EPOCH_TRIAL"]= [(0,25),(0,26),(0,27),(0,28),(0,29),(0,30),(0,31),
                               (9,25),(9,26),(9,27),(9,28),(9,29),(9,30),(9,31),
 ]
-"""
 
 if p["DEBUG"]:
     p["REC_SPIKES"]= ["input", "hidden"]

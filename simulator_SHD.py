@@ -93,7 +93,7 @@ p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
 
-# possible loss types: "first_spike", "max", "sum", "sum_weigh_linear", "sum_weigh_exp", "avg_xentropy"
+# possible loss types: "first_spike", "max", "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_input", "avg_xentropy"
 p["LOSS_TYPE"]= "max"
 # possible evaluation types: "random", "speaker"
 p["EVALUATION"]= "random"
@@ -108,6 +108,7 @@ p["COLLECT_CONFUSION"]= False
 p["TAU_0"]= 0.5
 p["TAU_1"]= 6.4
 p["ALPHA"]= 3e-3
+p["TAU_ACCUMULATOR"]= 20.0
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -695,7 +696,7 @@ class SHD_model:
                 "lambda_V": genn_model.create_var_ref(self.output, "lambda_V"),
                 "lambda_I": genn_model.create_var_ref(self.output, "lambda_I"),
                 "trial": genn_model.create_var_ref(self.output, "trial"),
-	        "rp_ImV": genn_model.create_var_ref(self.output, "rp_ImV"),
+	            "rp_ImV": genn_model.create_var_ref(self.output, "rp_ImV"),
                 "wp_ImV": genn_model.create_var_ref(self.output, "wp_ImV"),
                 "rev_t": genn_model.create_var_ref(self.output, "rev_t"),
                 "back_spike": genn_model.create_var_ref(self.output, "back_spike"),
@@ -750,19 +751,14 @@ class SHD_model:
 
 
         if p["LOSS_TYPE"][:3] == "sum":
-            if p["LOSS_TYPE"] == "sum":
-                the_output_neuron_type= EVP_LIF_output_sum
-            if p["LOSS_TYPE"] == "sum_weigh_linear":
-                the_output_neuron_type= EVP_LIF_output_sum_weigh_linear
-            if p["LOSS_TYPE"] == "sum_weigh_exp":
-                the_output_neuron_type= EVP_LIF_output_sum_weigh_exp
-                
+               
             output_params= {
                 "tau_m": p["TAU_MEM"],
                 "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
             }
+
             self.output_init_vars= {
                 "V": p["V_RESET"],
                 "lambda_V": 0.0,
@@ -774,9 +770,23 @@ class SHD_model:
                 "expsum": 1.0,
                 "exp_V": 1.0,
             }
+            if p["LOSS_TYPE"] == "sum":
+                the_output_neuron_type= EVP_LIF_output_sum
+            if p["LOSS_TYPE"] == "sum_weigh_linear":
+                the_output_neuron_type= EVP_LIF_output_sum_weigh_linear
+            if p["LOSS_TYPE"] == "sum_weigh_exp":
+                the_output_neuron_type= EVP_LIF_output_sum_weigh_exp
+            if p["LOSS_TYPE"] == "sum_weigh_input":
+                the_output_neuron_type= EVP_LIF_output_sum_weigh_input
+                output_params["N_neurons"]= self.num_output
+                output_params["trial_steps"]= self.trial_steps
+                self.output_init_vars["rp_V"]= self.trial_steps;
+                self.output_init_vars["wp_V"]= 0;
+                self.output_init_vars["avgInback"]= 0.0;
             self.output= self.model.add_neuron_population("output", self.num_output, the_output_neuron_type, output_params, self.output_init_vars)
             self.output.set_extra_global_param("label", np.zeros(self.data_full_length, dtype=np.float32)) # reserve space for labels
-
+            if p["LOSS_TYPE"] == "sum_weigh_input":
+                self.output.set_extra_global_param("aIbuf", np.zeros(p["N_BATCH"]*self.num_output*self.trial_steps*2, dtype=np.float32)) # reserve space for avgInput
             output_reset_params= {
                 "V_reset": p["V_RESET"],
                 "N_class": self.N_class,
@@ -792,7 +802,13 @@ class SHD_model:
                 "expsum": genn_model.create_var_ref(self.output, "expsum"),
                 "exp_V": genn_model.create_var_ref(self.output, "exp_V"),
             }
-            self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_SHD_sum, output_reset_params, {}, output_var_refs)
+            if p["LOSS_TYPE"] == "sum_weigh_input":
+                output_reset_params["trial_steps"]= self.trial_steps
+                output_var_refs["rp_V"]= genn_model.create_var_ref(self.output, "rp_V")
+                output_var_refs["wp_V"]= genn_model.create_var_ref(self.output, "wp_V")
+                self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_SHD_sum_weigh_input, output_reset_params, {}, output_var_refs)
+            else:
+                self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_SHD_sum, output_reset_params, {}, output_var_refs)
 
 
         if p["LOSS_TYPE"] == "avg_xentropy":
@@ -923,6 +939,25 @@ class SHD_model:
         # enable buffered spike recording where desired
         for pop in p["REC_SPIKES"]:
             self.model.neuron_populations[pop].spike_recording_enabled= True
+
+        # add an input accumulator neuron and wire it up
+        if p["LOSS_TYPE"] == "sum_weigh_input":
+            accumulator_params= {
+                "tau_m": p["TAU_ACCUMULATOR"],
+            }
+            accumulator_init_vars= {
+                "V": 0.0,
+            }
+            self.accumulator= self.model.add_neuron_population("accumulator", 1, EVP_LIF_input_accumulator, accumulator_params, accumulator_init_vars)
+            self.in_to_acc= self.model.add_synapse_population("in_to_acc", "DENSE_GLOBALG", NO_DELAY, self.input, self.accumulator, "StaticPulse",
+                {}, {"g": 0.01}, {}, {}, "DeltaCurr", {}, {})
+            self.acc_to_out= self.model.add_synapse_population("acc_to_out", "DENSE_GLOBALG", NO_DELAY, self.accumulator, self.output, EVP_accumulator_output_synapse,
+                {}, {}, {}, {}, "DeltaCurr", {}, {})
+            self.acc_to_out.post_target_var="avgIn"
+            accumulator_reset_var_refs= {
+                "V": genn_model.create_var_ref(self.accumulator, "V"),
+            } 
+            self.accumulator_reset= self.model.add_custom_update("accumulator_reset", "neuronReset", EVP_neuron_reset_input_accumulator, {}, {}, accumulator_reset_var_refs)
 
     """
     ----------------------------------------------------------------------------
