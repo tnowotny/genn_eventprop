@@ -953,7 +953,7 @@ class SHD_model:
                 {}, {"g": 0.01}, {}, {}, "DeltaCurr", {}, {})
             self.acc_to_out= self.model.add_synapse_population("acc_to_out", "DENSE_GLOBALG", NO_DELAY, self.accumulator, self.output, EVP_accumulator_output_synapse,
                 {}, {}, {}, {}, "DeltaCurr", {}, {})
-            self.acc_to_out.post_target_var="avgIn"
+            self.acc_to_out.ps_target_var="avgIn"
             accumulator_reset_var_refs= {
                 "V": genn_model.create_var_ref(self.accumulator, "V"),
             } 

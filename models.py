@@ -1072,7 +1072,6 @@ EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
     $(rp_V)--;
     $(avgInback)= $(aIbuf)[buf_idx+$(rp_V)];
     $(aIbuf)[buf_idx+$(wp_V)]= $(avgIn);
-    //printf("%e\\n",$(avgIn));
     $(wp_V)++;
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
@@ -1279,7 +1278,6 @@ EVP_accumulator_output_synapse= genn_model.create_custom_weight_update_class(
     "EVP_accumulator_output_synapse",
     sim_code="""
         $(addToInSyn, $(V_pre));
-    printf("%e \\n",$(V_pre));
     """,
 )
 
