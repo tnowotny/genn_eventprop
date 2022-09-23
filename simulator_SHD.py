@@ -110,6 +110,10 @@ p["TAU_1"]= 6.4
 p["ALPHA"]= 3e-3
 p["TAU_ACCUMULATOR"]= 20.0
 
+# Gaussian noise on hidden neurons' membrane potential
+p["HIDDEN_NOISE"]= 0.0
+
+
 # ----------------------------------------------------------------------------
 # Helper functions
 # ----------------------------------------------------------------------------
@@ -542,7 +546,11 @@ class SHD_model:
                 "sNSum": 0.0,
                 "new_sNSum": 0.0,
             }
-            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars)
+            if p["HIDDEN_NOISE"] > 0.0:
+                self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg_noise, hidden_params, self.hidden_init_vars)
+                self.hidden.set_extra_global_param("A_noise", p["HIDDEN_NOISE"])
+            else:
+                self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars)
             self.hidden.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
             self.hidden.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
 
@@ -1099,6 +1107,8 @@ class SHD_model:
             self.hidden.push_state_to_device()
             if p["DATASET"] == "SHD":
                 self.hidden.extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
+            if p["HIDDEN_NOISE"] > 0.0:
+                self.hidden.extra_global_params["A_noise"].view[:]= p["HIDDEN_NOISE"]
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
@@ -1128,6 +1138,8 @@ class SHD_model:
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
                     if p["DATASET"] == "SHD":
                         self.hidden.extra_global_params["pDrop"].view[:]= 0.0
+                    if p["HIDDEN_NOISE"] > 0.0:
+                        self.hidden.extra_global_params["A_noise"].view[:]= 0.0
                 self.input_set.extra_global_params["trial"].view[:]= trial
                 self.model.custom_update("inputUpdate")
                 self.input.extra_global_params["t_offset"].view[:]= self.model.t

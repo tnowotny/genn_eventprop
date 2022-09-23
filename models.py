@@ -769,6 +769,80 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
 )
 
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
+# Regularisation: each neuron towards a desired spike number; parameters lbd_upper, lbd_lower/ nu_upper; uses sNSum
+# additionally has Gaussian noise on membrane potential
+EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
+    "EVP_LIF_reg_noise",
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+    # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar"),("A_noise","scalar")],
+    additional_input_vars=[("revIsyn", "scalar", 0.0)],
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
+    if ($(back_spike)) {
+//        if ($(batch) == 0) {
+//    printf("revIsyn %g, ImV %g, lambda_V %g += %g \\n", $(revIsyn), $(ImV)[buf_idx+$(rp_ImV)], $(lambda_V), 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)));
+    //}
+        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+        // decrease read pointer (on ring buffer)
+        $(rp_ImV)--;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        // contributions from regularisation
+        // printf("%f\\n",$(lbd_upper)*($(sNSum) - $(nu_upper)));
+    /*if ($(id) == 0 && $(batch) == 0) {
+        printf("sNSum: %e, nu_upper: %e, lbd_upper: %e\\n", $(sNSum), $(nu_upper), $(lbd_upper));
+    printf("%e \\n", -$(lbd_upper)*($(sNSum) - $(nu_upper));
+}*/
+        //$(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
+         
+        if ($(sNSum) > $(nu_upper)) {
+            $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper));
+        }
+        else {
+            $(lambda_V) -= $(lbd_lower)*($(sNSum) - $(nu_upper));
+        }
+        
+        $(back_spike)= 0;
+    }   
+    // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+        $(back_spike)= 1;
+    }
+    // forward pass
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    $(V)+= $(A_noise)*$(gennrand_normal)*sqrt(DT); // add some Gaussian noise
+    """,
+    threshold_condition_code="""
+    ($(V) >= $(V_thresh)) && ($(gennrand_uniform) > $(pDrop))
+    """,
+    reset_code="""
+    // this is after a forward spike
+    if ($(wp_ImV) != $(fwd_start)) {
+        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+        $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+        $(wp_ImV)++;
+        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    } 
+    else {
+        //printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        // assert(0);
+    }
+    $(V)= $(V_reset);
+    $(new_sNSum)+= 1.0;
+    """,
+    is_auto_refractory_required=False
+)
+
+# LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
 # Regularisation almost a la Zenke with exponent L=1 (but individual neuron activity averaged over batch before comparing to lower threshold); parameters rho_upper/ glb_upper, nu_lower/lbd_lower; uses sNSum and sNSum_all
 EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_Thomas1",

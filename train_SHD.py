@@ -75,9 +75,11 @@ p["AUGMENTATION"]= {
 
 #p["REDUCED_CLASSES"]= [0]
 
-p["SPEAKER_LEFT"]= 11
+p["SPEAKER_LEFT"]= 0
 p["COLLECT_CONFUSION"]= True
 p["TAU_ACCUMULATOR"]= 5.0
+
+p["HIDDEN_NOISE"]= 0.002
 
 """
 p["REC_NEURONS"]= [("output","avgInback"),("accumulator","V")]
