@@ -34,8 +34,8 @@ p["W_REPORT_INTERVAL"] = 11000  # this should be at the end of the epoch (at fir
 p["TAU_MEM"] = 20.0 #20
 p["TAU_SYN"] = 5.0 #5
 p["REG_TYPE"]= "simple"
-p["LBD_UPPER"]= 1e-9 # 2e-9 # 2e-8 # 2e-14 (since removal of N_Batch), 5e-12 keep in mind that the term is applied to all contributing spikes ...
-p["LBD_LOWER"]= 1e-9 #2e-8
+p["LBD_UPPER"]= 5e-10 # 2e-9 # 2e-8 # 2e-14 (since removal of N_Batch), 5e-12 keep in mind that the term is applied to all contributing spikes ...
+p["LBD_LOWER"]= 5e-10 #2e-8
 p["NU_UPPER"]= 14
 p["NU_LOWER"]= 5
 p["RHO_UPPER"]= 10000.0
@@ -62,15 +62,13 @@ p["ALPHA"]= 3e-3
 
 #p["LOSS_TYPE"]= "first_spike"
 #p["LOSS_TYPE"]= "max"
-p["LOSS_TYPE"]= "sum_weigh_linear"
+p["LOSS_TYPE"]= "sum_weigh_sigmoid"
 #p["LOSS_TYPE"]= "avg_xentropy"
 
 #p["AUGMENTATION"]= {}
 
 p["AUGMENTATION"]= {
-    "random_shift": 35.0,
-    "random_dilate": (0.8,1.2),
-    "ID_jitter": 5.0
+    "random_shift": 20.0,
 }
 
 #p["REDUCED_CLASSES"]= [0]
@@ -79,7 +77,7 @@ p["SPEAKER_LEFT"]= 0
 p["COLLECT_CONFUSION"]= True
 p["TAU_ACCUMULATOR"]= 5.0
 
-p["HIDDEN_NOISE"]= 0.002
+p["HIDDEN_NOISE"]= 0.001
 
 """
 p["REC_NEURONS"]= [("output","avgInback"),("accumulator","V")]

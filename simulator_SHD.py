@@ -93,7 +93,7 @@ p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
 
-# possible loss types: "first_spike", "max", "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_input", "avg_xentropy"
+# possible loss types: "first_spike", "max", "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_sigmoid", "sum_weigh_input", "avg_xentropy"
 p["LOSS_TYPE"]= "max"
 # possible evaluation types: "random", "speaker"
 p["EVALUATION"]= "random"
@@ -784,6 +784,8 @@ class SHD_model:
                 the_output_neuron_type= EVP_LIF_output_sum_weigh_linear
             if p["LOSS_TYPE"] == "sum_weigh_exp":
                 the_output_neuron_type= EVP_LIF_output_sum_weigh_exp
+            if p["LOSS_TYPE"] == "sum_weigh_sigmoid":
+                the_output_neuron_type= EVP_LIF_output_sum_weigh_sigmoid
             if p["LOSS_TYPE"] == "sum_weigh_input":
                 the_output_neuron_type= EVP_LIF_output_sum_weigh_input
                 output_params["N_neurons"]= self.num_output
