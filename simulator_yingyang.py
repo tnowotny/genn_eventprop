@@ -183,16 +183,17 @@ class yingyang:
                         "N_batch": p["N_BATCH"],
         }
         self.output_init_vars= {"V": p["V_RESET"],
-                           "lambda_V": 0.0,
-                           "lambda_I": 0.0,
-                           "rev_t": 0.0,
-                           "rp_ImV": 0,
-                           "wp_ImV": 0,
-                           "back_spike": 0,
-                           "first_spike_t": -1e5, 
-                           "new_first_spike_t": -1e5,
-                           "expsum": 1.0,
-                           "trial": 0,
+                                "lambda_V": 0.0,
+                                "lambda_I": 0.0,
+                                "rev_t": 0.0,
+                                "rp_ImV": 0,
+                                "wp_ImV": 0,
+                                "back_spike": 0,
+                                "first_spike_t": -1e5, 
+                                "new_first_spike_t": -1e5,
+                                "exp_st": 0.0,
+                                "expsum": 1.0,
+                                "trial": 0,
         }
 
         # ----------------------------------------------------------------------------
@@ -271,6 +272,7 @@ class yingyang:
                           "back_spike": genn_model.create_var_ref(self.output, "back_spike"),
                           "first_spike_t": genn_model.create_var_ref(self.output, "first_spike_t"),
                           "new_first_spike_t": genn_model.create_var_ref(self.output, "new_first_spike_t"),
+                          "exp_st": genn_model.create_var_ref(self.output, "exp_st"),
                           "expsum": genn_model.create_var_ref(self.output, "expsum"),
                           "trial": genn_model.create_var_ref(self.output, "trial")                      
         }

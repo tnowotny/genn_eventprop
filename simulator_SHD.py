@@ -108,6 +108,8 @@ p["COLLECT_CONFUSION"]= False
 p["TAU_0"]= 0.5
 p["TAU_1"]= 6.4
 p["ALPHA"]= 3e-3
+
+# fir input- weighted sum losses
 p["TAU_ACCUMULATOR"]= 20.0
 
 # Gaussian noise on hidden neurons' membrane potential
@@ -171,9 +173,10 @@ class SHD_model:
         plt.show()
         
     def loss_func_first_spike(self, nfst, Y, trial):
-        #print("new first spikes: {}".format(nfst))
+        print("new first spikes: {}".format(nfst))
         t= nfst-trial*p["TRIAL_MS"]
-        t[t < 0.0]= p["TRIAL_MS"]
+        #t[t < 0.0]= p["TRIAL_MS"]
+        print("t_output: {}".format(t))
         expsum= np.sum(np.exp(-t/p["TAU_0"]),axis=-1)
         pred= np.argmin(t,axis=-1)
         selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
@@ -253,7 +256,7 @@ class SHD_model:
         cache_subdir="SHD"
         print("Using cache dir: %s"%cache_dir)
         self.num_input= 700
-        self.num_output= 32   # first power of two greater than class number
+        self.num_output= 20
         self.data_full_length= 0
         if p["DOWNLOAD_SHD"]:
             # dowload the SHD data from the Zenke website
@@ -326,14 +329,14 @@ class SHD_model:
         idx= np.arange(len(X),dtype= int)
         if (shuffle):
             self.datarng.shuffle(idx)
-        train_idx= idx[np.arange(p["N_TRAIN"])]
-        eval_idx= idx[np.arange(p["N_VALIDATE"])+(self.data_full_length-p["N_VALIDATE"])]
-        print(train_idx)
+        train_idx= idx[:p["N_TRAIN"]]
+        eval_idx= idx[p["N_TRAIN"]:p["N_TRAIN"]+p["N_VALIDATE"]]
         newX_t= X[train_idx]
         newX_e= X[eval_idx]
         newY_t= Y[train_idx]
         newY_e= Y[eval_idx]
-        print(newX_t[0])
+        print(len(newX_t))
+        print(len(newX_e))
         return (newX_t, newY_t, newX_e, newY_e)
 
     # split off one speaker to form evaluation set
@@ -685,6 +688,7 @@ class SHD_model:
                 "back_spike": 0,
                 "first_spike_t": -1e5,
                 "new_first_spike_t": -1e5,
+                "exp_st": 0.0,
                 "expsum": 1.0,
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
@@ -710,6 +714,7 @@ class SHD_model:
                 "back_spike": genn_model.create_var_ref(self.output, "back_spike"),
                 "first_spike_t": genn_model.create_var_ref(self.output, "first_spike_t"),
                 "new_first_spike_t": genn_model.create_var_ref(self.output, "new_first_spike_t"),
+                "exp_st": genn_model.create_var_ref(self.output, "exp_st"),
                 "expsum": genn_model.create_var_ref(self.output, "expsum"),
             }
             self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_SHD_first_spike, output_reset_params, {}, output_reset_var_refs)

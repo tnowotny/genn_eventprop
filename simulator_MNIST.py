@@ -534,6 +534,7 @@ class mnist_model:
                 "back_spike": 0,
                 "first_spike_t": -1e5,
                 "new_first_spike_t": -1e5,
+                "exp_st": 0.0,
                 "expsum": 1.0,
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
@@ -553,12 +554,13 @@ class mnist_model:
                 "lambda_V": genn_model.create_var_ref(self.output, "lambda_V"),
                 "lambda_I": genn_model.create_var_ref(self.output, "lambda_I"),
                 "trial": genn_model.create_var_ref(self.output, "trial"),
-	        "rp_ImV": genn_model.create_var_ref(self.output, "rp_ImV"),
+	            "rp_ImV": genn_model.create_var_ref(self.output, "rp_ImV"),
                 "wp_ImV": genn_model.create_var_ref(self.output, "wp_ImV"),
                 "rev_t": genn_model.create_var_ref(self.output, "rev_t"),
                 "back_spike": genn_model.create_var_ref(self.output, "back_spike"),
                 "first_spike_t": genn_model.create_var_ref(self.output, "first_spike_t"),
                 "new_first_spike_t": genn_model.create_var_ref(self.output, "new_first_spike_t"),
+                "exp_st": genn_model.create_var_ref(self.output, "exp_st"),
                 "expsum": genn_model.create_var_ref(self.output, "expsum"),
             }
             self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_MNIST_first_spike, output_reset_params, {}, output_reset_var_refs)

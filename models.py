@@ -197,18 +197,23 @@ EVP_sNSum_apply= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output_yingyang_first_spike= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_yingyang_first_spike",
     param_names=["V_reset","N_class","N_max_spike","tau0","tau1"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),("trial","int")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),("trial","int")],
     update_code= """
     if ($(id) < $(N_class)) {
-        scalar mexp;
-        if ($(new_first_spike_t) > 0.0) {
-            mexp= exp(-($(new_first_spike_t)-$(rev_t))/$(tau0));}
-        else
-            mexp= 0.0;
+        if ($(new_first_spike_t) < 0.0) {
+            $(new_first_spike_t) = $(t)+1.0;
+        }
+        scalar m= $(new_first_spike_t);
+        for (int i= 0; i < $(N_class); i++) {
+            m= fmin(m, __shfl_sync(0x7, m, i));
+        }
+        m= exp(-($(new_first_spike_t)-m)/$(tau0));
+        $(exp_st)= m;
         //printf(\"%g, %d, %g, %g\\n\",$(t),$(id),$(new_first_spike_t),$(rev_t));
-        scalar sum= __shfl_sync(0x7, mexp, 0);
-        sum+= __shfl_sync(0x7, mexp, 1);
-        sum+= __shfl_sync(0x7, mexp, 2);
+        scalar sum= 0.0;
+        for (int i= 0; i < $(N_class); i++) {
+            sum+= __shfl_sync(0xFFFFF, m, i);
+        }
         $(expsum)= sum;
         //printf(\"%g\\n\",$(expsum));
         //printf(\"ID: %d, rp: %d, wp: %d\\n\",$(id),$(rp_ImV),$(wp_ImV)); 
@@ -230,25 +235,23 @@ EVP_neuron_reset_output_yingyang_first_spike= genn_model.create_custom_custom_up
 EVP_neuron_reset_output_MNIST_first_spike= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_MNIST_first_spike",
     param_names=["V_reset","N_class","N_max_spike","tau0","tau1"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),("trial","int")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),("trial","int")],
     update_code= """
     if ($(id) < $(N_class)) {
-        scalar mexp;
-        if ($(new_first_spike_t) > 0.0) {
-            mexp= exp(-($(new_first_spike_t)-$(rev_t))/$(tau0));}
-        else
-            mexp= 0.0;
+        if ($(new_first_spike_t) < 0.0) {
+            $(new_first_spike_t) = $(t)+1.0;
+        }
+        scalar m= $(new_first_spike_t);
+        for (int i= 0; i < $(N_class); i++) {
+            m= fmin(m, __shfl_sync(0x2FF, m, i));
+        }
+        m= exp(-($(new_first_spike_t)-m)/$(tau0));
+        $(exp_st)= m;
         //printf(\"%g, %d, %g, %g\\n\",$(t),$(id),$(new_first_spike_t),$(rev_t));
-        scalar sum= __shfl_sync(0x3FF, mexp, 0);
-        sum+= __shfl_sync(0x3FF, mexp, 1);
-        sum+= __shfl_sync(0x3FF, mexp, 2);
-        sum+= __shfl_sync(0x3FF, mexp, 3);
-        sum+= __shfl_sync(0x3FF, mexp, 4);
-        sum+= __shfl_sync(0x3FF, mexp, 5);
-        sum+= __shfl_sync(0x3FF, mexp, 6);
-        sum+= __shfl_sync(0x3FF, mexp, 7);
-        sum+= __shfl_sync(0x3FF, mexp, 8);
-        sum+= __shfl_sync(0x3FF, mexp, 9);
+        scalar sum= 0.0;
+        for (int i= 0; i < $(N_class); i++) {
+            sum+= __shfl_sync(0x2FF, m, i);
+        }
         $(expsum)= sum;
         //printf(\"%g\\n\",$(expsum));
         //printf(\"ID: %d, rp: %d, wp: %d\\n\",$(id),$(rp_ImV),$(wp_ImV)); 
@@ -270,23 +273,18 @@ EVP_neuron_reset_output_MNIST_first_spike= genn_model.create_custom_custom_updat
 EVP_neuron_reset_output_MNIST_max= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_MNIST_max",
     param_names=["V_reset","N_class"],
-    var_refs=[("max_V","scalar"),("new_max_V","scalar"),("max_t","scalar"),("new_max_t","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
+    var_refs=[("max_V","scalar"),("new_max_V","scalar"),("max_t","scalar"),("new_max_t","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("exp_V","scalar"),("expsum","scalar"),("trial","int")],
     update_code= """
+        scalar m= $(new_max_V);
+        for (int i= 0; i < $(N_class); i++) {
+            m = fmax(m, __shfl_sync(0x3FF, m, i));
+        }
+        m= exp($(new_max_V) - m);
+        $(exp_V)= m;
         scalar mexp= 0.0;
-        scalar m= -1e37;
-        if ($(id) < $(N_class)) m= $(new_max_V);
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
-        if ($(id) < $(N_class)) {
-             mexp= exp($(new_max_V) - m);
-             $(exp_V)= mexp;
-        } else $(exp_V)= 0.0;
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
+        for (int i= 0; i < $(N_class); i++) {
+            mexp += __shfl_sync(0x3FF, m, i);
+        }
         $(expsum)= mexp;
         //printf(\"%g\\n\",$(expsum));
         $(rev_t)= $(t);
@@ -305,23 +303,18 @@ EVP_neuron_reset_output_MNIST_max= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output_MNIST_sum= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_MNIST_sum",
     param_names=["V_reset","N_class"],
-    var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
+    var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("exp_V","scalar"),("expsum","scalar"),("trial","int")],
     update_code= """
-        scalar mexp= 0.0;
-        scalar m= -1e37;
-        if ($(id) < $(N_class)) m= $(new_sum_V);
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
-        if ($(id) < $(N_class)) {
-             mexp= exp($(new_sum_V) - m);
-             $(exp_V)= mexp;
-        } else $(exp_V)= 0.0;
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
+        scalar m= $(new_sum_V);
+        for (int i= 0; i < $(N_class); i++) {
+            m = fmax(m, __shfl_sync(0x3FF, m, i));
+        }
+        m= exp($(new_sum_V) - m);
+        $(exp_V)= m;
+        scalar mexp= 0.0; 
+        for (int i= 0; i < $(N_class); i++) {
+            mexp += __shfl_sync(0x3FF, m, i);
+        }
         $(expsum)= mexp;
         //printf(\"%g\\n\",$(expsum));
         $(rev_t)= $(t);
@@ -338,49 +331,35 @@ EVP_neuron_reset_output_MNIST_sum= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output_SHD_first_spike= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_SHD_first_spike",
     param_names=["V_reset","N_class","N_max_spike","tau0","tau1"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),("trial","int")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),("trial","int")],
     update_code= """
-    if ($(id) < $(N_class)) {
-        scalar mexp;
-        if ($(new_first_spike_t) > 0.0) {
-            mexp= exp(-($(new_first_spike_t)-$(rev_t))/$(tau0));}
-        else
-            mexp= 0.0;
-        //printf(\"%g, %d, %g, %g\\n\",$(t),$(id),$(new_first_spike_t),$(rev_t));
-        scalar sum= __shfl_sync(0xFFFFF, mexp, 0);
-        sum+= __shfl_sync(0xFFFFF, mexp, 1);
-        sum+= __shfl_sync(0xFFFFF, mexp, 2);
-        sum+= __shfl_sync(0xFFFFF, mexp, 3);
-        sum+= __shfl_sync(0xFFFFF, mexp, 4);
-        sum+= __shfl_sync(0xFFFFF, mexp, 5);
-        sum+= __shfl_sync(0xFFFFF, mexp, 6);
-        sum+= __shfl_sync(0xFFFFF, mexp, 7);
-        sum+= __shfl_sync(0xFFFFF, mexp, 8);
-        sum+= __shfl_sync(0xFFFFF, mexp, 9);
-        sum+= __shfl_sync(0xFFFFF, mexp, 10);
-        sum+= __shfl_sync(0xFFFFF, mexp, 11);
-        sum+= __shfl_sync(0xFFFFF, mexp, 12);
-        sum+= __shfl_sync(0xFFFFF, mexp, 13);
-        sum+= __shfl_sync(0xFFFFF, mexp, 14);
-        sum+= __shfl_sync(0xFFFFF, mexp, 15);
-        sum+= __shfl_sync(0xFFFFF, mexp, 16);
-        sum+= __shfl_sync(0xFFFFF, mexp, 17);
-        sum+= __shfl_sync(0xFFFFF, mexp, 18);
-        sum+= __shfl_sync(0xFFFFF, mexp, 19);
-        $(expsum)= sum;
-        //printf(\"%g\\n\",$(expsum));
-        //printf(\"ID: %d, rp: %d, wp: %d\\n\",$(id),$(rp_ImV),$(wp_ImV));
-        $(rp_ImV)= $(wp_ImV)-1;
-        if ($(rp_ImV) < 0) $(rp_ImV)= ((int) $(N_max_spike))-1;
-        $(rev_t)= $(t);
-        $(lambda_V)= 0.0;
-        $(lambda_I)= 0.0;
-        $(V)= $(V_reset);
-        $(back_spike)= 0;
-        $(first_spike_t)= $(new_first_spike_t);
-        $(new_first_spike_t)= -1e5;
-        $(trial)++;
+    if ($(new_first_spike_t) < 0.0) {
+        $(new_first_spike_t) = $(t)+1.0;
     }
+    scalar m= $(new_first_spike_t);
+    for (int i= 0; i < $(N_class); i++) {
+        m= fmin(m, __shfl_sync(0xFFFFF, m, i));
+    }
+    m= exp(-($(new_first_spike_t)-m)/$(tau0));
+    $(exp_st)= m;
+    //printf(\"%g, %d, %g, %g\\n\",$(t),$(id),$(new_first_spike_t),$(rev_t));
+    scalar sum= 0.0;
+    for (int i= 0; i < $(N_class); i++) {
+        sum+= __shfl_sync(0xFFFFF, m, i);
+    }
+    $(expsum)= sum;
+    //printf(\"%g\\n\",$(expsum));
+    //printf(\"ID: %d, rp: %d, wp: %d\\n\",$(id),$(rp_ImV),$(wp_ImV));
+    $(rp_ImV)= $(wp_ImV)-1;
+    if ($(rp_ImV) < 0) $(rp_ImV)= ((int) $(N_max_spike))-1;
+    $(rev_t)= $(t);
+    $(lambda_V)= 0.0;
+    $(lambda_I)= 0.0;
+    $(V)= $(V_reset);
+    $(back_spike)= 0;
+    $(first_spike_t)= $(new_first_spike_t);
+    $(new_first_spike_t)= -1e5;
+    $(trial)++;
     """
 )
 
@@ -392,34 +371,27 @@ EVP_neuron_reset_output_SHD_max= genn_model.create_custom_custom_update_class(
     param_names=["V_reset","N_class"],
     var_refs=[("max_V","scalar"),("new_max_V","scalar"),("max_t","scalar"),("new_max_t","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
     update_code= """
-        scalar mexp= 0.0;
-        scalar m= -1e37;
-        if ($(id) < $(N_class)) m= $(new_max_V);
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x10));
-        if ($(id) < $(N_class)) {
-             mexp= exp($(new_max_V) - m);
-             $(exp_V)= mexp;
-        } else $(exp_V)= 0.0;
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
-        $(expsum)= mexp;
-        //printf(\"%g\\n\",$(expsum));
-        $(rev_t)= $(t);
-        $(lambda_V)= 0.0;
-        $(lambda_I)= 0.0;
-        $(V)= $(V_reset);
-        $(max_V)= $(new_max_V);
-        $(max_t)= $(new_max_t);
-        $(new_max_V)= $(V_reset);
-        $(new_max_t)= $(t);
-        $(trial)++;
+    scalar m= $(new_max_V);
+    for (int i= 0; i < $(N_class); i++) {
+        m = fmax(m, __shfl_sync(0xFFFFF, m, i));
+    }
+    m= exp($(new_max_V) - m);
+    $(exp_V)= m;
+    scalar mexp= 0.0;
+    for (int i= 0; i < $(N_class); i++) {
+        mexp += __shfl_sync(0xFFFFF, m, i);
+    }
+    $(expsum)= mexp;
+    //printf(\"%g\\n\",$(expsum));
+    $(rev_t)= $(t);
+    $(lambda_V)= 0.0;
+    $(lambda_I)= 0.0;
+    $(V)= $(V_reset);
+    $(max_V)= $(new_max_V);
+    $(max_t)= $(new_max_t);
+    $(new_max_V)= $(V_reset);
+    $(new_max_t)= $(t);
+    $(trial)++;
     """
 )
 
@@ -431,32 +403,25 @@ EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
     param_names=["V_reset","N_class"],
     var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
     update_code= """
-        scalar mexp= 0.0;
-        scalar m= -1e37;
-        if ($(id) < $(N_class)) m= $(new_sum_V);
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x10));
-        if ($(id) < $(N_class)) {
-             mexp= exp($(new_sum_V) - m);
-             $(exp_V)= mexp;
-        } else $(exp_V)= 0.0;
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
-        $(expsum)= mexp;
-        //printf(\"%g\\n\",$(expsum));
-        $(rev_t)= $(t);
-        $(lambda_V)= 0.0;
-        $(lambda_I)= 0.0;
-        $(V)= $(V_reset);
-        $(sum_V)= $(new_sum_V);
-        $(new_sum_V)= 0.0;
-        $(trial)++;
+    scalar m= $(new_sum_V);
+    for (int i= 0; i < $(N_class); i++) {
+        m = fmax(m, __shfl_sync(0xFFFFF, m, i));
+    }
+    m= exp($(new_sum_V) - m);
+    $(exp_V)= m;
+    scalar mexp= 0.0; 
+    for (int i= 0; i < $(N_class); i++) {
+        mexp += __shfl_sync(0xFFFFF, m, i);
+    }
+    $(expsum)= mexp;
+    //printf(\"%g, %g\\n\",$(exp_V),$(expsum));
+    $(rev_t)= $(t);
+    $(lambda_V)= 0.0;
+    $(lambda_I)= 0.0;
+    $(V)= $(V_reset);
+    $(sum_V)= $(new_sum_V);
+    $(new_sum_V)= 0.0;
+    $(trial)++;
     """
 )
 
@@ -468,34 +433,27 @@ EVP_neuron_reset_output_SHD_sum_weigh_input= genn_model.create_custom_custom_upd
     param_names=["V_reset","N_class","trial_steps"],
     var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int"),("rp_V","int"),("wp_V","int")],
     update_code= """
-        scalar mexp= 0.0;
-        scalar m= -1e37;
-        if ($(id) < $(N_class)) m= $(new_sum_V);
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x10));
-        if ($(id) < $(N_class)) {
-             mexp= exp($(new_sum_V) - m);
-             $(exp_V)= mexp;
-        } else $(exp_V)= 0.0;
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
-        $(expsum)= mexp;
-        //printf(\"%g\\n\",$(expsum));
-        $(rev_t)= $(t);
-        $(lambda_V)= 0.0;
-        $(lambda_I)= 0.0;
-        $(V)= $(V_reset);
-        $(sum_V)= $(new_sum_V);
-        $(new_sum_V)= 0.0;
-        $(trial)++;
-        $(rp_V)= $(wp_V);
-        $(wp_V)= $(wp_V)%(2* (int) $(trial_steps));
+    scalar m= $(new_sum_V);
+    for (int i= 0; i < $(N_class); i++) {
+        m = fmax(m, __shfl_sync(0xFFFFF, m, i));
+    }
+    m= exp($(new_sum_V) - m);
+    $(exp_V)= m;
+    scalar mexp= 0.0;
+    for (int i= 0; i < $(N_class); i++) {
+        mexp += __shfl_sync(0xFFFFF, m, i);
+    }
+    $(expsum)= mexp;
+    //printf(\"%g\\n\",$(expsum));
+    $(rev_t)= $(t);
+    $(lambda_V)= 0.0;
+    $(lambda_I)= 0.0;
+    $(V)= $(V_reset);
+    $(sum_V)= $(new_sum_V);
+    $(new_sum_V)= 0.0;
+    $(trial)++;
+    $(rp_V)= $(wp_V);
+    $(wp_V)= $(wp_V)%(2* (int) $(trial_steps));
     """
 )
 
@@ -505,14 +463,14 @@ EVP_neuron_reset_output_avg_xentropy= genn_model.create_custom_custom_update_cla
     param_names=["V_reset","N_class","trial_steps"],
     var_refs=[("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
     update_code= """
-        $(lambda_V)= 0.0;
-        $(lambda_I)= 0.0;
-        $(V)= $(V_reset);
-        $(trial)++;
-        $(rp_V)= $(wp_V);
-        $(wp_V)= $(wp_V)%(2* (int) $(trial_steps));
-        $(loss)= 0.0;
-        $(sum_V)= 0.0;
+    $(lambda_V)= 0.0;
+    $(lambda_I)= 0.0;
+    $(V)= $(V_reset);
+    $(trial)++;
+    $(rp_V)= $(wp_V);
+    $(wp_V)= $(wp_V)%(2* (int) $(trial_steps));
+    $(loss)= 0.0;
+    $(sum_V)= 0.0;
     """
 )
 
@@ -522,7 +480,7 @@ EVP_neuron_reset_input_accumulator= genn_model.create_custom_custom_update_class
     "EVP_neuron_reset_input_accumulator",
     var_refs=[("V","scalar")],
     update_code= """
-        $(V)= 0.0;
+    $(V)= 0.0;
     """
 )
 
@@ -912,7 +870,7 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
-                    ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("expsum","scalar"),
+                    ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),
                     ("trial","int")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -926,7 +884,7 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     //if ($(id) == 0) printf(\"%f:%f,%f,%f\\n\",$(t),$(first_spike_t),$(t_k)[buf_idx+$(rp_ImV)],back_t);
     if ($(back_spike)) {
-        if ($(first_spike_t) < 0.0) {// we are dealing with a "phantom spike" introduced because the correct neuron did not spike
+        if ($(first_spike_t) > $(rev_t)) {// we are dealing with a "phantom spike" introduced because the correct neuron did not spike
             scalar fst= $(trial_t);
             //printf(\"adding %f\\n\",$(alpha)/((1.05*$(trial_t)-fst)*(1.05*$(trial_t)-fst))/$(N_batch));
             //$(lambda_V) += $(alpha)/$(tau1)*exp(fst/$(tau1))/$(N_batch);
@@ -939,12 +897,12 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
             if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
                 scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
                 if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-                    //$(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
-                    $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0)+$(alpha)/((1.01*$(trial_t)-fst)*(1.01*$(trial_t)-fst)))/$(N_batch);
-                    //$(lambda_V) += ((1.0-exp(-fst/$(tau0))/$(expsum))/$(tau0))/$(N_batch);
+                    //$(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
+                    $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0)+$(alpha)/((1.01*$(trial_t)-fst)*(1.01*$(trial_t)-fst)))/$(N_batch);
+                    //$(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0))/$(N_batch);
                 }
                 else {
-                    $(lambda_V) -= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*(exp(-fst/$(tau0))/$(expsum)/$(tau0))/$(N_batch);
+                    $(lambda_V) -= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*$(exp_st)/$(expsum)/$(tau0)/$(N_batch);
                 }
             }
             // decrease read pointer (on ring buffer)
@@ -956,7 +914,7 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     // do this only from trial 1 onwards (i.e. do not try to do backward pass in trial 0)
     // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
     // YUCKYUCK - need to trigger a pretend back_spike if no spike occurred to keep in operating regime
-    if (($(trial) > 0) && ((abs(back_t - $(t_k)[buf_idx+$(rp_ImV)]-DT) < 1e-3*DT) || (($(t) == $(rev_t)) && ($(first_spike_t) < 0.0) && $(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]))) {
+    if (($(trial) > 0) && ((abs(back_t - $(t_k)[buf_idx+$(rp_ImV)]-DT) < 1e-3*DT) || (($(t) == $(rev_t)) && ($(first_spike_t) > $(rev_t)) && $(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]))) {
         $(back_spike)= 1;
     }
     // forward pass
@@ -1292,37 +1250,26 @@ EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
     scalar lbdV= $(lambda_V);
     if ($(trial) > 0) {
         $(rp_V)--;
-        scalar mexp= 0.0;
-        scalar expV= 0.0;
-        scalar m= -1e37;
-        if ($(id) < $(N_class)) m= $(Vbuf)[buf_idx+$(rp_V)];
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x10));
-        //printf("%d \\n",buf_idx+$(rp_V));
-        if ($(id) < $(N_class)) {
-            mexp= exp($(Vbuf)[buf_idx+$(rp_V)] - m);
-            expV= mexp;
+        scalar m= $(Vbuf)[buf_idx+$(rp_V)];
+        for (int i= 0; i < $(N_class); i++) {
+            m = fmax(m, __shfl_sync(0xFFFFF, m, i));
         }
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x10);
+        m= exp($(Vbuf)[buf_idx+$(rp_V)] - m);
+        scalar expV= m;
+        scalar mexp= 0.0;
+        for (int i= 0; i < $(N_class); i++) {
+            mexp += __shfl_sync(0xFFFFF, m, i);
+        }
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
             $(lambda_V) += (1.0-expV/mexp)/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
             scalar x= -log(expV/mexp)/$(N_batch)/$(trial_t)*DT;
             if (x > 2) {
-                printf("%g, %g, %g,  %g \\n",x,m,expV,mexp);
+                printf("%g, %g, %g, %g \\n",x,m,expV,mexp);
             }
-            $(loss) -= log(expV/mexp)/$(N_batch)/$(trial_t)*DT; // calculate contribution to loss
+            $(loss) += x; // calculate contribution to loss
         }
         else {
-            if ($(id) < $(N_class)) {
-                $(lambda_V) -= expV/mexp/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
-            }
+            $(lambda_V) -= expV/mexp/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
         }
     }
     $(lambda_V) -= lbdV/$(tau_m)*DT;  // simple Euler

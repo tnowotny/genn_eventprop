@@ -27,8 +27,8 @@ p["ALPHA"]= 3e-3
 
 #p["LOSS_TYPE"]= "first_spike"
 #p["LOSS_TYPE"]= "max"
-p["LOSS_TYPE"]= "sum"
-#p["LOSS_TYPE"]= "avg_xentropy"
+#p["LOSS_TYPE"]= "sum"
+p["LOSS_TYPE"]= "avg_xentropy"
 
 if p["DEBUG"]:
     p["REC_SPIKES"]= ["input", "hidden"]
