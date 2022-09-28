@@ -51,7 +51,7 @@ This custom update class is for doing the switchover from one input to the next 
 the input spike sources.
 """
     
-# custom update class for resetting input neurons at trial end YingYang
+# custom update class for resetting input neurons at trial end YinYang
 EVP_input_reset= genn_model.create_custom_custom_update_class(
     "EVP_input_reset",
     param_names=[],
@@ -193,9 +193,9 @@ EVP_sNSum_apply= genn_model.create_custom_custom_update_class(
     """
 )
 
-# custom update class for resetting output neurons at trial end for YingYang (first_spike loss)
-EVP_neuron_reset_output_yingyang_first_spike= genn_model.create_custom_custom_update_class(
-    "EVP_neuron_reset_output_yingyang_first_spike",
+# custom update class for resetting output neurons at trial end for YinYang (first_spike loss)
+EVP_neuron_reset_output_yinyang_first_spike= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_output_yinyang_first_spike",
     param_names=["V_reset","N_class","N_max_spike","tau0","tau1"],
     var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("back_spike","uint8_t"),("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),("trial","int")],
     update_code= """
@@ -603,7 +603,7 @@ Extra input variables:
 revIsyn - gets the reverse input from postsynaptic neurons
 """
 
-# LIF neuron model for internal neurons for both YingYang and MNIST tasks (no dl_p/dt_k cost function term or jumps on max voltage)
+# LIF neuron model for internal neurons for both YinYang and MNIST tasks (no dl_p/dt_k cost function term or jumps on max voltage)
 EVP_LIF = genn_model.create_custom_neuron_class(
     "EVP_LIF",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn"],
@@ -864,7 +864,7 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
-# LIF neuron model for output neurons of YingYang task (includes contribution from dl_p/dt_k loss function term at jumps)
+# LIF neuron model for output neurons of YinYang task (includes contribution from dl_p/dt_k loss function term at jumps)
 EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_first_spike",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
