@@ -28,8 +28,8 @@ p["ETA"]= 1e-3 #1e-3 1e-4 # 5e-3
 p["SHUFFLE"]= True
 p["INPUT_HIDDEN_MEAN"]= 0.02 # 0.02
 p["INPUT_HIDDEN_STD"]= 0.01 # 0.01
-p["HIDDEN_OUTPUT_MEAN"]= 0.0 # 0.0
-p["HIDDEN_OUTPUT_STD"]= 0.3 #0.3
+p["HIDDEN_OUTPUT_MEAN"]= 0.06 # 0.0
+p["HIDDEN_OUTPUT_STD"]= 0.03 #0.3
 p["W_REPORT_INTERVAL"] = 11000  # this should be at the end of the epoch (at first trial of evaluation)
 p["TAU_MEM"] = 20.0 #20
 p["TAU_SYN"] = 5.0 #5
@@ -56,9 +56,9 @@ p["REWIRE_SILENT"]= True
 p["AVG_SNSUM"]= True
 
 # "first_spike" loss function variables
-p["TAU_0"]= 0.5
-p["TAU_1"]= 6.4
-p["ALPHA"]= 3e-3
+p["TAU_0"]= 2
+p["TAU_1"]= 50.0 #6.4
+p["ALPHA"]= 1e-1 #3e-3
 
 p["LOSS_TYPE"]= "first_spike"
 #p["LOSS_TYPE"]= "max"
