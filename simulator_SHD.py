@@ -109,11 +109,14 @@ p["TAU_0"]= 0.5
 p["TAU_1"]= 6.4
 p["ALPHA"]= 3e-3
 
-# fir input- weighted sum losses
+# for input- weighted sum losses
 p["TAU_ACCUMULATOR"]= 20.0
 
 # Gaussian noise on hidden neurons' membrane potential
 p["HIDDEN_NOISE"]= 0.0
+
+p["SPEAKER_LEFT"]= 0
+
 
 
 # ----------------------------------------------------------------------------
