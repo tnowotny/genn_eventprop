@@ -243,14 +243,14 @@ EVP_neuron_reset_output_MNIST_first_spike= genn_model.create_custom_custom_updat
         }
         scalar m= $(new_first_spike_t);
         for (int i= 0; i < $(N_class); i++) {
-            m= fmin(m, __shfl_sync(0x2FF, m, i));
+            m= fmin(m, __shfl_sync(0x3FF, m, i));
         }
         m= exp(-($(new_first_spike_t)-m)/$(tau0));
         $(exp_st)= m;
         //printf(\"%g, %d, %g, %g\\n\",$(t),$(id),$(new_first_spike_t),$(rev_t));
         scalar sum= 0.0;
         for (int i= 0; i < $(N_class); i++) {
-            sum+= __shfl_sync(0x2FF, m, i);
+            sum+= __shfl_sync(0x3FF, m, i);
         }
         $(expsum)= sum;
         //printf(\"%g\\n\",$(expsum));
