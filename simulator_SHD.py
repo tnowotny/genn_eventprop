@@ -51,6 +51,7 @@ p["RECURRENT"] = False
 # Model parameters
 p["TAU_SYN"] = 5.0
 p["TAU_MEM"] = 20.0
+p["TAU_MEM_OUTPUT"] = 20.0
 p["V_THRESH"] = 1.0
 p["V_RESET"] = 0.0
 p["INPUT_HIDDEN_MEAN"]= 0.078
@@ -93,7 +94,7 @@ p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
 
-# possible loss types: "first_spike", "max", "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_sigmoid", "sum_weigh_input", "avg_xentropy"
+# possible loss types: "first_spike", "first_spike_exp", "max", "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_sigmoid", "sum_weigh_input", "avg_xentropy"
 p["LOSS_TYPE"]= "max"
 # possible evaluation types: "random", "speaker"
 p["EVALUATION"]= "random"
@@ -186,6 +187,8 @@ class SHD_model:
         pred= np.argmin(t,axis=-1)
         exp_st= np.array([ exp_st[i,pred[i]] for i in range(pred.shape[0])])
         selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
+        print(selected)
+        print('---------------------------------------------')
         #print("expsum: {}, pred: {}, selected: {}".format(expsum,pred,selected))
         #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
         loss= -np.sum(np.log(exp_st/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
@@ -670,9 +673,9 @@ class SHD_model:
         # output neuron initialisation
         # ----------------------------------------------------------------------------
 
-        if p["LOSS_TYPE"] == "first_spike":
+        if p["LOSS_TYPE"][:-4] == "first_spike":
             output_params= {
-                "tau_m": p["TAU_MEM"],
+                "tau_m": p["TAU_MEM_OUTPUT"],
                 "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
@@ -698,7 +701,11 @@ class SHD_model:
                 "exp_st": 0.0,
                 "expsum": 1.0,
             }
-            self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
+            if p["LOSS_TYPE"] == "first_spike":
+                self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
+            if p["LOSS_TYPE"] == "first_spike_exp":
+                self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike_exp, output_params, self.output_init_vars)
+                    
             self.output.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"], dtype=np.float32))
             self.output.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"], dtype=np.float32))
             self.output.set_extra_global_param("label", np.zeros(self.data_full_length, dtype=np.float32)) # reserve space for labels
@@ -729,7 +736,7 @@ class SHD_model:
 
         if p["LOSS_TYPE"] == "max":
             output_params= {
-                "tau_m": p["TAU_MEM"],
+                "tau_m": p["TAU_MEM_OUTPUT"],
                 "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
@@ -773,7 +780,7 @@ class SHD_model:
         if p["LOSS_TYPE"][:3] == "sum":
                
             output_params= {
-                "tau_m": p["TAU_MEM"],
+                "tau_m": p["TAU_MEM_OUTPUT"],
                 "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
@@ -835,7 +842,7 @@ class SHD_model:
 
         if p["LOSS_TYPE"] == "avg_xentropy":
             output_params= {
-                "tau_m": p["TAU_MEM"],
+                "tau_m": p["TAU_MEM_OUTPUT"],
                 "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
@@ -1233,12 +1240,12 @@ class SHD_model:
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
 
-                if p["LOSS_TYPE"] == "first_spike":
+                if p["LOSS_TYPE"][:-4] == "first_spike":
                     # need to copy new_first_spike_t from device before neuronReset!
                     self.output.pull_var_from_device("new_first_spike_t")
                     nfst= self.output.vars["new_first_spike_t"].view.copy()
                     # neurons that did not spike set to spike time in the future
-                    nfst[self.output.vars["new_first_spike_t"].view < 0.0]= self.model.t + p["TRIAL_MS"]
+                    nfst[self.output.vars["new_first_spike_t"].view < 0.0]= self.model.t + 1.0
                     pred= np.argmin(nfst, axis=-1)
 
                 if p["LOSS_TYPE"] == "avg_xentropy":
@@ -1296,7 +1303,7 @@ class SHD_model:
                     print(lbl)
                     print("---------------------------------------")
 
-                if p["LOSS_TYPE"] == "first_spike":
+                if p["LOSS_TYPE"][:-4] == "first_spike":
                     self.output.pull_var_from_device("expsum")
                     self.output.pull_var_from_device("exp_st")
                     losses= self.loss_func_first_spike(nfst, lbl, trial)

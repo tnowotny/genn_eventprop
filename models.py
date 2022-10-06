@@ -689,10 +689,10 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
         //$(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
          
         if ($(sNSum) > $(nu_upper)) {
-            $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper));
+            $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
         }
         else {
-            $(lambda_V) -= $(lbd_lower)*($(sNSum) - $(nu_upper));
+            $(lambda_V) -= $(lbd_lower)*($(sNSum) - $(nu_upper))/$(N_batch);
         }
         
         $(back_spike)= 0;
@@ -762,10 +762,10 @@ EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
         //$(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
          
         if ($(sNSum) > $(nu_upper)) {
-            $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper));
+            $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
         }
         else {
-            $(lambda_V) -= $(lbd_lower)*($(sNSum) - $(nu_upper));
+            $(lambda_V) -= $(lbd_lower)*($(sNSum) - $(nu_upper))/$(N_batch);
         }
         
         $(back_spike)= 0;
@@ -864,7 +864,7 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
-# LIF neuron model for output neurons of YinYang task (includes contribution from dl_p/dt_k loss function term at jumps)
+# LIF neuron model for output neurons (includes contribution from dl_p/dt_k loss function term at jumps and a 1/x loss for late or missing spikes (through phantom spikes))
 EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_first_spike",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
@@ -878,29 +878,22 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));    
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
-    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
     $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
-    //if ($(id) == 0) printf(\"%f:%f,%f,%f\\n\",$(t),$(first_spike_t),$(t_k)[buf_idx+$(rp_ImV)],back_t);
     if ($(back_spike)) {
         if ($(first_spike_t) > $(rev_t)) {// we are dealing with a "phantom spike" introduced because the correct neuron did not spike
             scalar fst= $(trial_t);
-            //printf(\"adding %f\\n\",$(alpha)/((1.05*$(trial_t)-fst)*(1.05*$(trial_t)-fst))/$(N_batch));
-            //$(lambda_V) += $(alpha)/$(tau1)*exp(fst/$(tau1))/$(N_batch);
             $(lambda_V) += $(alpha)/((1.01*$(trial_t)-fst)*(1.01*$(trial_t)-fst))/$(N_batch);
-    printf("phantom spike neuron %d\\n",$(id));
+            printf("phantom spike neuron %d\\n",$(id));
         }
         else {
             $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
-            //if (back_t - $(first_spike_t) <= -1e-2*DT) printf("back_t: %e, fst: %e",back_t,$(first_spike_t)); 
-            // assert(back_t - $(first_spike_t) > -1e-2*DT);
             if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
                 scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
                 if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-                    //$(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
                     $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0)+$(alpha)/((1.01*$(trial_t)-fst)*(1.01*$(trial_t)-fst)))/$(N_batch);
-                    //$(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0))/$(N_batch);
                 }
                 else {
                     $(lambda_V) -= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*$(exp_st)/$(expsum)/$(tau0)/$(N_batch);
@@ -936,6 +929,73 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     """,
     is_auto_refractory_required=False
 )
+
+# LIF neuron model for output neurons (includes contribution from dl_p/dt_k loss function term at jumps and a exp loss for late or missing spikes (through phantom spikes))
+EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
+    "EVP_LIF_output_first_spike_exp",
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
+                    ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),
+                    ("trial","int")],
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
+    additional_input_vars=[("revIsyn", "scalar", 0.0)],
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));    
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
+    if ($(back_spike)) {
+        if ($(first_spike_t) > $(rev_t)) {// we are dealing with a "phantom spike" introduced because the correct neuron did not spike
+            scalar fst= $(trial_t);
+            $(lambda_V) += $(alpha)/$(tau1)*exp(fst/$(tau1))/$(N_batch);
+            printf("phantom spike neuron %d\\n",$(id));
+        }
+        else {
+            $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+            if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
+                scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
+                if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
+                    $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
+                }
+                else {
+                    $(lambda_V) -= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*$(exp_st)/$(expsum)/$(tau0)/$(N_batch);
+                }
+            }
+            // decrease read pointer (on ring buffer)
+            $(rp_ImV)--;
+            if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        }
+        $(back_spike)= 0;
+    }    
+    // do this only from trial 1 onwards (i.e. do not try to do backward pass in trial 0)
+    // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
+    // YUCKYUCK - need to trigger a pretend back_spike if no spike occurred to keep in operating regime
+    if (($(trial) > 0) && ((abs(back_t - $(t_k)[buf_idx+$(rp_ImV)]-DT) < 1e-3*DT) || (($(t) == $(rev_t)) && ($(first_spike_t) > $(rev_t)) && $(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]))) {
+        $(back_spike)= 1;
+    }
+    // forward pass
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    """,
+    threshold_condition_code="""
+    ($(V) >= $(V_thresh))
+    """,
+    reset_code="""
+    // this is after a forward spike
+    $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+    $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+    $(wp_ImV)++;
+    if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    if ($(new_first_spike_t) < 0.0) $(new_first_spike_t)= $(t);
+    $(V)= $(V_reset);
+    """,
+    is_auto_refractory_required=False
+)
+
 
 # LIF neuron model for output neurons in the MNIST task - non-spiking and jumps in backward
 # pass at times where the voltage reaches its maximum
