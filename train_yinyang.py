@@ -1,4 +1,4 @@
-from simulator_yingyang import *
+from simulator_yinyang import *
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import minimize
@@ -33,7 +33,7 @@ p["ADAM_BETA1"]= 1-np.exp(x[2]*log10)
 p["ADAM_BETA2"]= 1-np.exp(x[3]*log10)
 p["ALPHA"]= np.exp(x[4]*log10)
 
-yy= yingyang(p)
+yy= yinyang(p)
 yy.train(p)
 
 p["LOAD_LAST"]= True

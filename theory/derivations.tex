@@ -1323,7 +1323,7 @@ which it is not. I am not sure this is mathematically correct ... though the MNI
   contributions of $l_p(t_k)$ does not really apply.
 
   \subsection{Correct justification and implementation for the ``sum'' cross-entropy loss}
-  The cross-entropy loss of the integral ove output voltages (\ref{sumloss}) has not one of the prescribed functional forms supported by eventprop. It is neither a function $l_p(t_k^{\text{post}})$ nor an integral over a function of $V$, i.e. $\int_0^T l_V(t) dt$. However, the following consideration allows to use the eventprop algorithm nontheless.
+  The cross-entropy loss of the integral over output voltages (\ref{sumloss}) has not one of the prescribed functional forms supported by eventprop. It is neither a function $l_p(t_k^{\text{post}})$ nor an integral over a function of $V$, i.e. $\int_0^T l_V(t) dt$. However, the following consideration allows to use the eventprop algorithm nontheless.
   Let
   \begin{align}
     {\cal L} = F\left(\{\textstyle \int_0^T V_m^n(t) dt\}\right), \label{eqn:loss_gen}
@@ -1410,7 +1410,7 @@ weights and deleting the spike close to this ``deletion point''. This
 makes it even more likely that the updates will lead to deletion.
 
 \subsection{Ideas for improved loss functions}
-Based on th insight that eventprop for teh ``sum'' method only works
+Based on th insight that eventprop for the ``sum'' method only works
 accidentally (in the sense that only because eventprop is trying to
 push hidden neurons' late spikes to earlier if they contribute
 positively to a desired high $V$ (and the equivalent situations for

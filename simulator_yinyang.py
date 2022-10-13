@@ -108,7 +108,7 @@ def loss_func(nfst, Y, trial):
     loss/= p["N_BATCH"]
     return loss
 
-class yingyang:
+class yinyang:
 
     def __init__(self, p):
         self.generate_training_data(p)
@@ -183,16 +183,17 @@ class yingyang:
                         "N_batch": p["N_BATCH"],
         }
         self.output_init_vars= {"V": p["V_RESET"],
-                           "lambda_V": 0.0,
-                           "lambda_I": 0.0,
-                           "rev_t": 0.0,
-                           "rp_ImV": 0,
-                           "wp_ImV": 0,
-                           "back_spike": 0,
-                           "first_spike_t": -1e5, 
-                           "new_first_spike_t": -1e5,
-                           "expsum": 1.0,
-                           "trial": 0,
+                                "lambda_V": 0.0,
+                                "lambda_I": 0.0,
+                                "rev_t": 0.0,
+                                "rp_ImV": 0,
+                                "wp_ImV": 0,
+                                "back_spike": 0,
+                                "first_spike_t": -1e5, 
+                                "new_first_spike_t": -1e5,
+                                "exp_st": 0.0,
+                                "expsum": 1.0,
+                                "trial": 0,
         }
 
         # ----------------------------------------------------------------------------
@@ -213,7 +214,7 @@ class yingyang:
         # ----------------------------------------------------------------------------
         # Model description
         # ----------------------------------------------------------------------------
-        self.model = genn_model.GeNNModel("float", "eventprop_yingyang", generateLineInfo=True, time_precision="double")
+        self.model = genn_model.GeNNModel("float", "eventprop_yinyang", generateLineInfo=True, time_precision="double")
         self.model.dT = p["DT_MS"]
         self.model.timing_enabled = p["TIMING"]
         self.model.batch_size = p["N_BATCH"]
@@ -271,10 +272,11 @@ class yingyang:
                           "back_spike": genn_model.create_var_ref(self.output, "back_spike"),
                           "first_spike_t": genn_model.create_var_ref(self.output, "first_spike_t"),
                           "new_first_spike_t": genn_model.create_var_ref(self.output, "new_first_spike_t"),
+                          "exp_st": genn_model.create_var_ref(self.output, "exp_st"),
                           "expsum": genn_model.create_var_ref(self.output, "expsum"),
                           "trial": genn_model.create_var_ref(self.output, "trial")                      
         }
-        self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_yingyang_first_spike, output_reset_params, {}, output_var_refs)
+        self.output_reset= self.model.add_custom_update("output_reset","neuronReset", EVP_neuron_reset_output_yinyang_first_spike, output_reset_params, {}, output_var_refs)
 
         # synapse populations
         self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,

@@ -51,6 +51,7 @@ p["RECURRENT"] = False
 # Model parameters
 p["TAU_SYN"] = 5.0
 p["TAU_MEM"] = 20.0
+p["TAU_MEM_OUTPUT"] = 20.0
 p["V_THRESH"] = 1.0
 p["V_RESET"] = 0.0
 p["INPUT_HIDDEN_MEAN"]= 0.078
@@ -93,14 +94,31 @@ p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
 
-# possible loss types: "first_spike", "max", "sum", "avg_xentropy"
+# possible loss types: "first_spike", "first_spike_exp", "max", "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_sigmoid", "sum_weigh_input", "avg_xentropy"
 p["LOSS_TYPE"]= "max"
+# possible evaluation types: "random", "speaker"
 p["EVALUATION"]= "random"
 p["CUDA_VISIBLE_DEVICES"]= False
 p["AVG_SNSUM"]= False
 p["REDUCED_CLASSES"]= None
 p["AUGMENTATION"]= {}
 p["DOWNLOAD_SHD"]= False
+p["COLLECT_CONFUSION"]= False
+
+# "first_spike" loss function variables
+p["TAU_0"]= 0.5
+p["TAU_1"]= 6.4
+p["ALPHA"]= 3e-3
+
+# for input- weighted sum losses
+p["TAU_ACCUMULATOR"]= 20.0
+
+# Gaussian noise on hidden neurons' membrane potential
+p["HIDDEN_NOISE"]= 0.0
+
+p["SPEAKER_LEFT"]= 0
+
+
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -138,16 +156,43 @@ class SHD_model:
             self.X_train_orig, self.Y_train_orig, self.Z_train_orig= self.reduce_classes(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["REDUCED_CLASSES"])
             self.X_test_orig, self.Y_test_orig, self.Z_test_orig= self.reduce_classes(self.X_test_orig, self.Y_test_orig, self.Z_test_orig, p["REDUCED_CLASSES"])
 
+
+    def plot_examples(self,spkrs,digit,nsample,phase):
+        if phase == "train":
+            X= self.X_train_orig
+            Y= self.Y_train_orig
+            Z= self.Z_train_orig
+        else:
+            X= self.X_test_orig
+            Y= self.Y_test_orig
+            Z= self.Z_test_orig
+
+        ydim= len(spkrs)
+        xdim= nsample
+        fig, ax= plt.subplots(ydim,xdim,sharex= True, sharey= True)
+        for y in range(ydim):
+            td= X[np.logical_and(Z == spkrs[y], Y == digit)][:nsample]
+            for x in range(len(td)):
+                ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
+        plt.show()
+        
     def loss_func_first_spike(self, nfst, Y, trial):
         #print("new first spikes: {}".format(nfst))
         t= nfst-trial*p["TRIAL_MS"]
-        t[t < 0.0]= p["TRIAL_MS"]
-        expsum= np.sum(np.exp(-t/p["TAU_0"]),axis=-1)
+        #t[t < 0.0]= p["TRIAL_MS"]
+        #print("t_output: {}".format(t))
+        #expsum= np.sum(np.exp(-t/p["TAU_0"]),axis=-1)
+        expsum= self.output.vars["expsum"].view[:,0]
+        exp_st= self.output.vars["exp_st"].view
         pred= np.argmin(t,axis=-1)
+        exp_st= np.array([ exp_st[i,pred[i]] for i in range(pred.shape[0])])
         selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
+        print(selected)
+        print('---------------------------------------------')
         #print("expsum: {}, pred: {}, selected: {}".format(expsum,pred,selected))
         #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
-        loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]/(1.01*p["TRIAL_MS"]-selected))
+        loss= -np.sum(np.log(exp_st/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
+        #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]/(1.01*p["TRIAL_MS"]-selected))
         #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum))
         #print(np.sum(p["ALPHA"]/(1.05*p["TRIAL_MS"]-selected)))
         loss/= p["N_BATCH"]
@@ -221,7 +266,7 @@ class SHD_model:
         cache_subdir="SHD"
         print("Using cache dir: %s"%cache_dir)
         self.num_input= 700
-        self.num_output= 32   # first power of two greater than class number
+        self.num_output= 20
         self.data_full_length= 0
         if p["DOWNLOAD_SHD"]:
             # dowload the SHD data from the Zenke website
@@ -255,8 +300,8 @@ class SHD_model:
         fileh= tables.open_file(hdf5_file_path, mode='r')
         units= fileh.root.spikes.units
         times= fileh.root.spikes.times
-        self.Y_train_orig= fileh.root.labels
-        self.Z_train_orig= fileh.root.extra.speaker
+        self.Y_train_orig= np.array(fileh.root.labels)
+        self.Z_train_orig= np.array(fileh.root.extra.speaker)
         self.data_full_length= max(self.data_full_length, len(units))
         self.N_class= len(set(self.Y_train_orig))
         self.X_train_orig= []
@@ -294,14 +339,14 @@ class SHD_model:
         idx= np.arange(len(X),dtype= int)
         if (shuffle):
             self.datarng.shuffle(idx)
-        train_idx= idx[np.arange(p["N_TRAIN"])]
-        eval_idx= idx[np.arange(p["N_VALIDATE"])+(self.data_full_length-p["N_VALIDATE"])]
-        print(train_idx)
+        train_idx= idx[:p["N_TRAIN"]]
+        eval_idx= idx[p["N_TRAIN"]:p["N_TRAIN"]+p["N_VALIDATE"]]
         newX_t= X[train_idx]
         newX_e= X[eval_idx]
         newY_t= Y[train_idx]
         newY_e= Y[eval_idx]
-        print(newX_t[0])
+        print(len(newX_t))
+        print(len(newX_e))
         return (newX_t, newY_t, newX_e, newY_e)
 
     # split off one speaker to form evaluation set
@@ -514,7 +559,11 @@ class SHD_model:
                 "sNSum": 0.0,
                 "new_sNSum": 0.0,
             }
-            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars)
+            if p["HIDDEN_NOISE"] > 0.0:
+                self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg_noise, hidden_params, self.hidden_init_vars)
+                self.hidden.set_extra_global_param("A_noise", p["HIDDEN_NOISE"])
+            else:
+                self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars)
             self.hidden.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
             self.hidden.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
 
@@ -624,9 +673,9 @@ class SHD_model:
         # output neuron initialisation
         # ----------------------------------------------------------------------------
 
-        if p["LOSS_TYPE"] == "first_spike":
+        if p["LOSS_TYPE"][:-4] == "first_spike":
             output_params= {
-                "tau_m": p["TAU_MEM"],
+                "tau_m": p["TAU_MEM_OUTPUT"],
                 "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
@@ -649,9 +698,14 @@ class SHD_model:
                 "back_spike": 0,
                 "first_spike_t": -1e5,
                 "new_first_spike_t": -1e5,
+                "exp_st": 0.0,
                 "expsum": 1.0,
             }
-            self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
+            if p["LOSS_TYPE"] == "first_spike":
+                self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
+            if p["LOSS_TYPE"] == "first_spike_exp":
+                self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike_exp, output_params, self.output_init_vars)
+                    
             self.output.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"], dtype=np.float32))
             self.output.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"], dtype=np.float32))
             self.output.set_extra_global_param("label", np.zeros(self.data_full_length, dtype=np.float32)) # reserve space for labels
@@ -668,12 +722,13 @@ class SHD_model:
                 "lambda_V": genn_model.create_var_ref(self.output, "lambda_V"),
                 "lambda_I": genn_model.create_var_ref(self.output, "lambda_I"),
                 "trial": genn_model.create_var_ref(self.output, "trial"),
-	        "rp_ImV": genn_model.create_var_ref(self.output, "rp_ImV"),
+	            "rp_ImV": genn_model.create_var_ref(self.output, "rp_ImV"),
                 "wp_ImV": genn_model.create_var_ref(self.output, "wp_ImV"),
                 "rev_t": genn_model.create_var_ref(self.output, "rev_t"),
                 "back_spike": genn_model.create_var_ref(self.output, "back_spike"),
                 "first_spike_t": genn_model.create_var_ref(self.output, "first_spike_t"),
                 "new_first_spike_t": genn_model.create_var_ref(self.output, "new_first_spike_t"),
+                "exp_st": genn_model.create_var_ref(self.output, "exp_st"),
                 "expsum": genn_model.create_var_ref(self.output, "expsum"),
             }
             self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_SHD_first_spike, output_reset_params, {}, output_reset_var_refs)
@@ -681,7 +736,7 @@ class SHD_model:
 
         if p["LOSS_TYPE"] == "max":
             output_params= {
-                "tau_m": p["TAU_MEM"],
+                "tau_m": p["TAU_MEM_OUTPUT"],
                 "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
@@ -722,13 +777,15 @@ class SHD_model:
             self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_SHD_max, output_reset_params, {}, output_var_refs)
 
 
-        if p["LOSS_TYPE"] == "sum":
+        if p["LOSS_TYPE"][:3] == "sum":
+               
             output_params= {
-                "tau_m": p["TAU_MEM"],
+                "tau_m": p["TAU_MEM_OUTPUT"],
                 "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
             }
+
             self.output_init_vars= {
                 "V": p["V_RESET"],
                 "lambda_V": 0.0,
@@ -740,9 +797,25 @@ class SHD_model:
                 "expsum": 1.0,
                 "exp_V": 1.0,
             }
-            self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_sum, output_params, self.output_init_vars)
+            if p["LOSS_TYPE"] == "sum":
+                the_output_neuron_type= EVP_LIF_output_sum
+            if p["LOSS_TYPE"] == "sum_weigh_linear":
+                the_output_neuron_type= EVP_LIF_output_sum_weigh_linear
+            if p["LOSS_TYPE"] == "sum_weigh_exp":
+                the_output_neuron_type= EVP_LIF_output_sum_weigh_exp
+            if p["LOSS_TYPE"] == "sum_weigh_sigmoid":
+                the_output_neuron_type= EVP_LIF_output_sum_weigh_sigmoid
+            if p["LOSS_TYPE"] == "sum_weigh_input":
+                the_output_neuron_type= EVP_LIF_output_sum_weigh_input
+                output_params["N_neurons"]= self.num_output
+                output_params["trial_steps"]= self.trial_steps
+                self.output_init_vars["rp_V"]= self.trial_steps;
+                self.output_init_vars["wp_V"]= 0;
+                self.output_init_vars["avgInback"]= 0.0;
+            self.output= self.model.add_neuron_population("output", self.num_output, the_output_neuron_type, output_params, self.output_init_vars)
             self.output.set_extra_global_param("label", np.zeros(self.data_full_length, dtype=np.float32)) # reserve space for labels
-
+            if p["LOSS_TYPE"] == "sum_weigh_input":
+                self.output.set_extra_global_param("aIbuf", np.zeros(p["N_BATCH"]*self.num_output*self.trial_steps*2, dtype=np.float32)) # reserve space for avgInput
             output_reset_params= {
                 "V_reset": p["V_RESET"],
                 "N_class": self.N_class,
@@ -758,12 +831,18 @@ class SHD_model:
                 "expsum": genn_model.create_var_ref(self.output, "expsum"),
                 "exp_V": genn_model.create_var_ref(self.output, "exp_V"),
             }
-            self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_SHD_sum, output_reset_params, {}, output_var_refs)
+            if p["LOSS_TYPE"] == "sum_weigh_input":
+                output_reset_params["trial_steps"]= self.trial_steps
+                output_var_refs["rp_V"]= genn_model.create_var_ref(self.output, "rp_V")
+                output_var_refs["wp_V"]= genn_model.create_var_ref(self.output, "wp_V")
+                self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_SHD_sum_weigh_input, output_reset_params, {}, output_var_refs)
+            else:
+                self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_SHD_sum, output_reset_params, {}, output_var_refs)
 
 
         if p["LOSS_TYPE"] == "avg_xentropy":
             output_params= {
-                "tau_m": p["TAU_MEM"],
+                "tau_m": p["TAU_MEM_OUTPUT"],
                 "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
@@ -890,6 +969,25 @@ class SHD_model:
         for pop in p["REC_SPIKES"]:
             self.model.neuron_populations[pop].spike_recording_enabled= True
 
+        # add an input accumulator neuron and wire it up
+        if p["LOSS_TYPE"] == "sum_weigh_input":
+            accumulator_params= {
+                "tau_m": p["TAU_ACCUMULATOR"],
+            }
+            accumulator_init_vars= {
+                "V": 0.0,
+            }
+            self.accumulator= self.model.add_neuron_population("accumulator", 1, EVP_LIF_input_accumulator, accumulator_params, accumulator_init_vars)
+            self.in_to_acc= self.model.add_synapse_population("in_to_acc", "DENSE_GLOBALG", NO_DELAY, self.input, self.accumulator, "StaticPulse",
+                {}, {"g": 0.01}, {}, {}, "DeltaCurr", {}, {})
+            self.acc_to_out= self.model.add_synapse_population("acc_to_out", "DENSE_GLOBALG", NO_DELAY, self.accumulator, self.output, EVP_accumulator_output_synapse,
+                {}, {}, {}, {}, "DeltaCurr", {}, {})
+            self.acc_to_out.ps_target_var="avgIn"
+            accumulator_reset_var_refs= {
+                "V": genn_model.create_var_ref(self.accumulator, "V"),
+            } 
+            self.accumulator_reset= self.model.add_custom_update("accumulator_reset", "neuronReset", EVP_neuron_reset_input_accumulator, {}, {}, accumulator_reset_var_refs)
+
     """
     ----------------------------------------------------------------------------
     Run the model
@@ -972,6 +1070,11 @@ class SHD_model:
         self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
         self.input_set.push_extra_global_param_to_device("allInputID")
 
+        if p["COLLECT_CONFUSION"]:
+            confusion= {
+                "train": [],
+                "eval": []
+            }
         for epoch in range(number_epochs):
 
             # if we are doing augmentation, the entire spike time array needs to be set up anew.
@@ -1025,6 +1128,8 @@ class SHD_model:
             self.hidden.push_state_to_device()
             if p["DATASET"] == "SHD":
                 self.hidden.extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
+            if p["HIDDEN_NOISE"] > 0.0:
+                self.hidden.extra_global_params["A_noise"].view[:]= p["HIDDEN_NOISE"]
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
@@ -1038,6 +1143,11 @@ class SHD_model:
                 if p["REWIRE_SILENT"]:
                     rewire_sNSum= []
 
+            if p["COLLECT_CONFUSION"]:
+                conf= {
+                    "train": np.zeros((self.N_class,self.N_class)),
+                    "eval": np.zeros((self.N_class,self.N_class))
+                }
             for trial in range(N_trial):
                 trial_end= (trial+1)*p["TRIAL_MS"]
 
@@ -1049,6 +1159,8 @@ class SHD_model:
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
                     if p["DATASET"] == "SHD":
                         self.hidden.extra_global_params["pDrop"].view[:]= 0.0
+                    if p["HIDDEN_NOISE"] > 0.0:
+                        self.hidden.extra_global_params["A_noise"].view[:]= 0.0
                 self.input_set.extra_global_params["trial"].view[:]= trial
                 self.model.custom_update("inputUpdate")
                 self.input.extra_global_params["t_offset"].view[:]= self.model.t
@@ -1128,12 +1240,12 @@ class SHD_model:
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
 
-                if p["LOSS_TYPE"] == "first_spike":
+                if p["LOSS_TYPE"][:-4] == "first_spike":
                     # need to copy new_first_spike_t from device before neuronReset!
                     self.output.pull_var_from_device("new_first_spike_t")
                     nfst= self.output.vars["new_first_spike_t"].view.copy()
                     # neurons that did not spike set to spike time in the future
-                    nfst[self.output.vars["new_first_spike_t"].view < 0.0]= self.model.t + p["TRIAL_MS"]
+                    nfst[self.output.vars["new_first_spike_t"].view < 0.0]= self.model.t + 1.0
                     pred= np.argmin(nfst, axis=-1)
 
                 if p["LOSS_TYPE"] == "avg_xentropy":
@@ -1163,7 +1275,7 @@ class SHD_model:
 
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
-                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":
+                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
                     self.output.pull_var_from_device("exp_V")
                     pred= np.argmax(self.output.vars["exp_V"].view[:,:self.N_class], axis=-1)
 
@@ -1182,15 +1294,21 @@ class SHD_model:
                     rec_s_lbl.append(lbl.copy())
                     rec_s_pred.append(pred.copy())
 
+                if p["COLLECT_CONFUSION"]:
+                    for pr, lb in zip(pred,lbl):
+                        conf[phase][pr,lb]+= 1
+                        
                 if p["DEBUG"]:
                     print(pred)
                     print(lbl)
                     print("---------------------------------------")
 
-                if p["LOSS_TYPE"] == "first_spike":
+                if p["LOSS_TYPE"][:-4] == "first_spike":
+                    self.output.pull_var_from_device("expsum")
+                    self.output.pull_var_from_device("exp_st")
                     losses= self.loss_func_first_spike(nfst, lbl, trial)
 
-                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":
+                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
                     self.output.pull_var_from_device("expsum")
                     losses= self.loss_func_max_sum(lbl, p)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
 
@@ -1284,6 +1402,10 @@ class SHD_model:
                     learning_rate *= p["ETA_REDUCE"]
                     adam_step= 1
 
+            if p["COLLECT_CONFUSION"]:
+                for ph in ["train","eval"]:
+                    confusion[ph].append(conf[ph])
+
         for pop in p["REC_SPIKES"]:
             spike_t[pop]= np.hstack(spike_t[pop])
             spike_ID[pop]= np.hstack(spike_ID[pop])
@@ -1303,6 +1425,10 @@ class SHD_model:
         rec_s_lbl= np.array(rec_s_lbl)
         rec_s_pred= np.array(rec_s_pred)
 
+        if p["COLLECT_CONFUSION"]:
+            for ph in ["train","eval"]:
+                confusion[ph]= np.array(confusion[ph])
+        
         # Saving results
         if p["WRITE_TO_DISK"]:
             if len(p["REC_SPIKES"]) > 0:
@@ -1328,6 +1454,10 @@ class SHD_model:
                 for pop, var in p["REC_SYNAPSES"]:
                     np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+var+pop), rec_vars_s[var+pop])
 
+            if p["COLLECT_CONFUSION"]:
+                for ph in ["train","eval"]:
+                    np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_confusion"+ph), confusion[ph])
+                
         # Saving results
         if p["WRITE_TO_DISK"]:
             self.in_to_hid.pull_var_from_device("w")

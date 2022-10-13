@@ -137,13 +137,18 @@ class mnist_model:
     def loss_func_first_spike(self, nfst, Y, trial):
         #print("new first spikes: {}".format(nfst))
         t= nfst-trial*p["TRIAL_MS"]
-        t[t < 0.0]= p["TRIAL_MS"]
-        expsum= np.sum(np.exp(-t/p["TAU_0"]),axis=-1)
+        #t[t < 0.0]= p["TRIAL_MS"]
+        #print("t_output: {}".format(t))
+        #expsum= np.sum(np.exp(-t/p["TAU_0"]),axis=-1)
+        expsum= self.output.vars["expsum"].view[:,0]
+        exp_st= self.output.vars["exp_st"].view
         pred= np.argmin(t,axis=-1)
+        exp_st= np.array([ exp_st[i,pred[i]] for i in range(pred.shape[0])])
         selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
         #print("expsum: {}, pred: {}, selected: {}".format(expsum,pred,selected))
         #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
-        loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]/(1.01*p["TRIAL_MS"]-selected))
+        loss= -np.sum(np.log(exp_st/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
+        #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]/(1.01*p["TRIAL_MS"]-selected))
         #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum))
         #print(np.sum(p["ALPHA"]/(1.05*p["TRIAL_MS"]-selected)))
         loss/= p["N_BATCH"]
@@ -534,6 +539,7 @@ class mnist_model:
                 "back_spike": 0,
                 "first_spike_t": -1e5,
                 "new_first_spike_t": -1e5,
+                "exp_st": 0.0,
                 "expsum": 1.0,
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
@@ -553,12 +559,13 @@ class mnist_model:
                 "lambda_V": genn_model.create_var_ref(self.output, "lambda_V"),
                 "lambda_I": genn_model.create_var_ref(self.output, "lambda_I"),
                 "trial": genn_model.create_var_ref(self.output, "trial"),
-	        "rp_ImV": genn_model.create_var_ref(self.output, "rp_ImV"),
+	            "rp_ImV": genn_model.create_var_ref(self.output, "rp_ImV"),
                 "wp_ImV": genn_model.create_var_ref(self.output, "wp_ImV"),
                 "rev_t": genn_model.create_var_ref(self.output, "rev_t"),
                 "back_spike": genn_model.create_var_ref(self.output, "back_spike"),
                 "first_spike_t": genn_model.create_var_ref(self.output, "first_spike_t"),
                 "new_first_spike_t": genn_model.create_var_ref(self.output, "new_first_spike_t"),
+                "exp_st": genn_model.create_var_ref(self.output, "exp_st"),
                 "expsum": genn_model.create_var_ref(self.output, "expsum"),
             }
             self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_MNIST_first_spike, output_reset_params, {}, output_reset_var_refs)
@@ -1059,6 +1066,8 @@ class mnist_model:
                     print("---------------------------------------")
 
                 if p["LOSS_TYPE"] == "first_spike":
+                    self.output.pull_var_from_device("expsum")
+                    self.output.pull_var_from_device("exp_st")
                     losses= self.loss_func_first_spike(nfst, lbl, trial)
 
                 if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":

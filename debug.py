@@ -20,7 +20,7 @@ p["REC_SYNAPSES"]= [("in_to_hid", "w"),
                     ("hid_to_out", "dw")
                     ]
                     
-spike_t, spike_ID, rec_vars_n, rec_vars_s= run_yingyang(p)
+spike_t, spike_ID, rec_vars_n, rec_vars_s= run_yinyang(p)
 
 plt.figure()
 plt.scatter(spike_t["input"], spike_ID["input"],s=0.5)

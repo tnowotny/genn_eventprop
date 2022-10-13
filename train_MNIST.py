@@ -22,12 +22,12 @@ p["W_REPORT_INTERVAL"] = 11000  # this should be at the end of the epoch (at fir
 
 # "first_spike" loss function variables
 p["TAU_0"]= 0.5
-p["TAU_1"]= 6.4
-p["ALPHA"]= 3e-3
+p["TAU_1"]= 12 #6.4
+p["ALPHA"]= 3e-3 #5.63e-2 #3e-3
 
-#p["LOSS_TYPE"]= "first_spike"
+p["LOSS_TYPE"]= "first_spike"
 #p["LOSS_TYPE"]= "max"
-p["LOSS_TYPE"]= "sum"
+#p["LOSS_TYPE"]= "sum"
 #p["LOSS_TYPE"]= "avg_xentropy"
 
 if p["DEBUG"]:
