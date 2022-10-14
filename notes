@@ -8,9 +8,9 @@ older (random) notes:
 Progress notes
 ---
 
-scan_JUWELS_7 was run with exponential weighting of voltages in the loss function when the choice was not yet exlicit
+scan_JUWELS_7 was run with exponential weighting of voltages in the loss function when the choice was not yet explicit
 
-Scan_JUWELS_8 to 10 were run with the stnadard x-entropy of integral loss function in an (unsuccessful) attempt of reproducing CNS poster results. It is unclear which detail is missing, maybe the batch size?
+Scan_JUWELS_8 to 10 were run with the standard x-entropy of integral loss function in an (unsuccessful) attempt of reproducing CNS poster results. It is unclear which detail is missing, maybe the batch size?
 
 Scan_JUWELS_11 is run with linear weighting in the V intgrals ... now an explicit choice
 
@@ -30,6 +30,9 @@ which translates to 1e-12 if dividing by N_batch. Comparing output neuron Lambda
 
 *** lbd_upper/lbd_lower values of other runs may have to be multiplied by N_BATCH (YUCK!) - especially scan_juwels_7 (or earlier?) - scan_juwels_15.
 
+
+2022-10-14:
+will rescale the regularisation by 1/N_batch. This will need rescaling of LBD_UPPER, LBD_LOWER by N_batch compared to previous runs.
 
 
 
