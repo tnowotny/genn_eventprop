@@ -22,8 +22,6 @@ from time import perf_counter
 
 p= {}
 p["NAME"]= "test"
-p["DATASET"] = None
-p["DEBUG"]= False
 p["DEBUG_HIDDEN_N"]= False
 p["OUT_DIR"]= "."
 p["DT_MS"] = 0.1
@@ -34,18 +32,19 @@ p["TEST_DATA_SEED"]= 456
 p["MODEL_SEED"]= None
 
 # Experiment parameters
-p["TRIAL_MS"]= 20.0
-p["N_MAX_SPIKE"]= 400    # make buffers for maximally 400 spikes (200 in a 30 ms trial) - should be safe
+p["TRIAL_MS"]= 1400.0
+# make buffers for maximally 400 spikes (200 in a 30 ms trial) - should be safe
+p["N_MAX_SPIKE"]= 400    
 p["N_BATCH"]= 32
 p["SUPER_BATCH"]= 1
-p["N_TRAIN"]= 55000
-p["N_VALIDATE"]= 5000
-p["N_EPOCH"]= 10
+p["N_TRAIN"]= 7644
+p["N_VALIDATE"]= 512
+p["N_EPOCH"]= 100
 p["SHUFFLE"]= True
-p["N_TEST"]= 10000
+p["N_TEST"]= 2264
 
 # Network structure
-p["NUM_HIDDEN"] = 350
+p["NUM_HIDDEN"] = 256
 p["RECURRENT"] = False
 
 # Model parameters
@@ -54,33 +53,27 @@ p["TAU_MEM"] = 20.0
 p["TAU_MEM_OUTPUT"] = 20.0
 p["V_THRESH"] = 1.0
 p["V_RESET"] = 0.0
-p["INPUT_HIDDEN_MEAN"]= 0.078
-p["INPUT_HIDDEN_STD"]= 0.045
-p["HIDDEN_OUTPUT_MEAN"]= 0.2
-p["HIDDEN_OUTPUT_STD"]= 0.37
-p["HIDDEN_HIDDEN_MEAN"]= 0.2   # only used when recurrent
-p["HIDDEN_HIDDEN_STD"]= 0.37   # only used when recurrent
-p["PDROP_INPUT"] = 0.2
+p["INPUT_HIDDEN_MEAN"]= 0.02
+p["INPUT_HIDDEN_STD"]= 0.01
+p["HIDDEN_OUTPUT_MEAN"]= 0.0
+p["HIDDEN_OUTPUT_STD"]= 0.3
+p["HIDDEN_HIDDEN_MEAN"]= 0.0   # only used when recurrent
+p["HIDDEN_HIDDEN_STD"]= 0.02   # only used when recurrent
+p["PDROP_INPUT"] = 0.1
 p["PDROP_HIDDEN"] = 0.0
 p["REG_TYPE"]= "none"
-p["LBD_UPPER"]= 0.000005
-p["LBD_LOWER"]= 0.001
-p["NU_UPPER"]= 20*p["N_BATCH"]
-p["NU_LOWER"]= 0.1*p["N_BATCH"]
-p["RHO_UPPER"]= 5000.0
-p["GLB_UPPER"]= 0.00001
+p["LBD_UPPER"]= 2e-9
+p["LBD_LOWER"]= 2e-9
+p["NU_UPPER"]= 14
+p["NU_LOWER"]= 5
+p["RHO_UPPER"]= 10000.0
+p["GLB_UPPER"]= 1e-8
 
 # Learning parameters
-p["ETA"]= 5e-3
+p["ETA"]= 1e-3
 p["ADAM_BETA1"]= 0.9      
 p["ADAM_BETA2"]= 0.999    
 p["ADAM_EPS"]= 1e-8       
-# applied every epoch
-p["ETA_DECAY"]= 0.95
-# try a step-down of learning rate after substantial training
-p["ETA_FIDDELING"]= False
-p["ETA_REDUCE"]= 0.1
-p["ETA_REDUCE_PERIOD"]= 50
 
 # recording
 p["W_OUTPUT_EPOCH_TRIAL"] = []
@@ -94,8 +87,11 @@ p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
 
-# possible loss types: "first_spike", "first_spike_exp", "max", "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_sigmoid", "sum_weigh_input", "avg_xentropy"
+# possible loss types: "first_spike", "first_spike_exp", "max",
+# "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_sigmoid", "sum_weigh_input",
+# "avg_xentropy"
 p["LOSS_TYPE"]= "max"
+
 # possible evaluation types: "random", "speaker"
 p["EVALUATION"]= "random"
 p["CUDA_VISIBLE_DEVICES"]= False
@@ -110,15 +106,13 @@ p["TAU_0"]= 0.5
 p["TAU_1"]= 6.4
 p["ALPHA"]= 3e-3
 
-# for input- weighted sum losses
+# for input-weighted sum losses
 p["TAU_ACCUMULATOR"]= 20.0
 
 # Gaussian noise on hidden neurons' membrane potential
 p["HIDDEN_NOISE"]= 0.0
 
 p["SPEAKER_LEFT"]= 0
-
-
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -149,8 +143,7 @@ class SHD_model:
         else:
             self.tdatarng= np.random.default_rng()        
             
-        if p["DATASET"] == "SHD":
-            self.load_data_SHD_Zenke(p)
+        self.load_data_SHD_Zenke(p)
 
         if p["REDUCED_CLASSES"] is not None:
             self.X_train_orig, self.Y_train_orig, self.Z_train_orig= self.reduce_classes(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["REDUCED_CLASSES"])
@@ -327,7 +320,7 @@ class SHD_model:
         for i in range(len(units)):
             self.X_test_orig.append({"x": units[i], "t": times[i]})
         self.X_test_orig= np.array(self.X_test_orig)
-
+        
     def reduce_classes(self, X, Y, Z, classes):
         idx= [y in classes for y in Y]
         newX= X[idx]
@@ -396,15 +389,14 @@ class SHD_model:
         stidx_offset= 0
         self.max_stim_time= 0.0
         for i in range(N):
-            if p["DATASET"] == "SHD":
-                events= X[i]
-                spike_event_ids = events["x"]
-                i_end = np.cumsum(np.bincount(spike_event_ids.astype(int), 
-                                              minlength=self.num_input))+stidx_offset    
-                assert len(i_end) == self.num_input
-                tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
-                tx *= 1000.0
-                self.max_stim_time= max(self.max_stim_time, np.amax(tx))
+            events= X[i]
+            spike_event_ids = events["x"]
+            i_end = np.cumsum(np.bincount(spike_event_ids.astype(int), 
+                                          minlength=self.num_input))+stidx_offset    
+            assert len(i_end) == self.num_input
+            tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
+            tx *= 1000.0
+            self.max_stim_time= max(self.max_stim_time, np.amax(tx))
             all_sts.append(tx)
             i_start= np.empty(i_end.shape)
             i_start[0]= stidx_offset
@@ -1126,8 +1118,7 @@ class SHD_model:
             for var, val in self.hidden_init_vars.items():
                 self.hidden.vars[var].view[:]= val
             self.hidden.push_state_to_device()
-            if p["DATASET"] == "SHD":
-                self.hidden.extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
+            self.hidden.extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
             if p["HIDDEN_NOISE"] > 0.0:
                 self.hidden.extra_global_params["A_noise"].view[:]= p["HIDDEN_NOISE"]
             for var, val in self.output_init_vars.items():
@@ -1139,9 +1130,8 @@ class SHD_model:
                 all_hidden_n= []
                 all_sNSum= []
 
-            if p["DATASET"] == "SHD":
-                if p["REWIRE_SILENT"]:
-                    rewire_sNSum= []
+            if p["REWIRE_SILENT"]:
+                rewire_sNSum= []
 
             if p["COLLECT_CONFUSION"]:
                 conf= {
@@ -1157,8 +1147,7 @@ class SHD_model:
                 else:
                     phase= "eval"
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
-                    if p["DATASET"] == "SHD":
-                        self.hidden.extra_global_params["pDrop"].view[:]= 0.0
+                    self.hidden.extra_global_params["pDrop"].view[:]= 0.0
                     if p["HIDDEN_NOISE"] > 0.0:
                         self.hidden.extra_global_params["A_noise"].view[:]= 0.0
                 self.input_set.extra_global_params["trial"].view[:]= trial
@@ -1268,10 +1257,9 @@ class SHD_model:
                         spike_N_hidden= self.hidden_reset.extra_global_params["sNSum_all"].view[:].copy()
 
                 # collect data for rewiring rule for silent neurons
-                if p["DATASET"] == "SHD":
-                    if p["REWIRE_SILENT"]:
-                        self.hidden.pull_var_from_device("sNSum")
-                        rewire_sNSum.append(np.sum(self.hidden.vars["sNSum"].view.copy(),axis= 0))
+                if p["REWIRE_SILENT"]:
+                    self.hidden.pull_var_from_device("sNSum")
+                    rewire_sNSum.append(np.sum(self.hidden.vars["sNSum"].view.copy(),axis= 0))
 
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
@@ -1298,11 +1286,6 @@ class SHD_model:
                     for pr, lb in zip(pred,lbl):
                         conf[phase][pr,lb]+= 1
                         
-                if p["DEBUG"]:
-                    print(pred)
-                    print(lbl)
-                    print("---------------------------------------")
-
                 if p["LOSS_TYPE"][:-4] == "first_spike":
                     self.output.pull_var_from_device("expsum")
                     self.output.pull_var_from_device("exp_st")
@@ -1396,11 +1379,6 @@ class SHD_model:
                 resfile.write("\n")
                 resfile.flush()
             predict[phase]= np.hstack(predict[phase])
-            learning_rate *= p["ETA_DECAY"]
-            if p["ETA_FIDDELING"]:
-                if (epoch+1) % p["ETA_REDUCE_PERIOD"] == 0:
-                    learning_rate *= p["ETA_REDUCE"]
-                    adam_step= 1
 
             if p["COLLECT_CONFUSION"]:
                 for ph in ["train","eval"]:
@@ -1490,12 +1468,11 @@ class SHD_model:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
-        if p["DATASET"] == "SHD":
-            if p["EVALUATION"] == "random":
-                X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
-            if p["EVALUATION"] == "speaker":
-                X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["SPEAKER_LEFT"], p)
-            return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
+        if p["EVALUATION"] == "random":
+            X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
+        if p["EVALUATION"] == "speaker":
+            X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["SPEAKER_LEFT"], p)
+        return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
         
     def cross_validate_SHD(self, p):
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
@@ -1513,27 +1490,6 @@ class SHD_model:
             all_res.append([ res[4], res[5] ])
             times.append(perf_counter()-start_t)
         return all_res, times
-
-    """
-    def crossvalidate_enose(self, p):
-        self.define_model(p, p["SHUFFLE"])
-        if p["BUILD"]:
-            self.model.build()
-        resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
-        file_train = p["FILE_TRAIN"]   # -> add in p
-        data_loader = EnoseDataLoader(file_train)
-        folds = data_loader.get_train_val(kfold_cv=p["N_FOLDS"]) # -> add in p
-        
-        all_res = []
-        for fold in folds:
-            X_train, y_train, X_val, y_val = fold
-            X_train, y_train = data_loader.format_genn(X_train, y_train)
-            X_val, y_val = data_loader.format_genn(X_val, y_val)
-            
-            res = self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= y_train, X_t_eval= X_val, labels_eval= y_val, resfile= resfile)
-            all_res.append([ res[4], res[5] ])
-        return all_res
-    """
     
     def test(self, p):
         self.define_model(p, False)
