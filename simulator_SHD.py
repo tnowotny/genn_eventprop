@@ -170,24 +170,13 @@ class SHD_model:
         plt.show()
         
     def loss_func_first_spike(self, nfst, Y, trial):
-        #print("new first spikes: {}".format(nfst))
         t= nfst-trial*p["TRIAL_MS"]
-        #t[t < 0.0]= p["TRIAL_MS"]
-        #print("t_output: {}".format(t))
-        #expsum= np.sum(np.exp(-t/p["TAU_0"]),axis=-1)
         expsum= self.output.vars["expsum"].view[:,0]
         exp_st= self.output.vars["exp_st"].view
         pred= np.argmin(t,axis=-1)
         exp_st= np.array([ exp_st[i,pred[i]] for i in range(pred.shape[0])])
         selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
-        print(selected)
-        print('---------------------------------------------')
-        #print("expsum: {}, pred: {}, selected: {}".format(expsum,pred,selected))
-        #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
         loss= -np.sum(np.log(exp_st/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
-        #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum)-p["ALPHA"]/(1.01*p["TRIAL_MS"]-selected))
-        #loss= -np.sum(np.log(np.exp(-selected/p["TAU_0"])/expsum))
-        #print(np.sum(p["ALPHA"]/(1.05*p["TRIAL_MS"]-selected)))
         loss/= p["N_BATCH"]
         return loss
 
@@ -199,8 +188,7 @@ class SHD_model:
             print("exp_V flushed to 0 exception!")
             print(exp_V_correct)
             print(exp_V[np.where(exp_V_correct == 0),:])
-            exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0
-            
+            exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0            
         loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/p["N_BATCH"]
         return loss
 
@@ -1068,7 +1056,6 @@ class SHD_model:
                 "eval": []
             }
         for epoch in range(number_epochs):
-
             # if we are doing augmentation, the entire spike time array needs to be set up anew.
             if N_train > 0 and len(p["AUGMENTATION"]) > 0:
                 lX= copy.deepcopy(X_t_orig)
@@ -1124,7 +1111,7 @@ class SHD_model:
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
-            self.model.custom_update("EVPReduce")  # this zeros dw (so as to ignore eval gradients from last epoch!
+            self.model.custom_update("EVPReduce")  # this zeros dw (so as to ignore eval gradients from last epoch!)
 
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= []
@@ -1172,7 +1159,7 @@ class SHD_model:
                                 for btch in range(p["N_BATCH"]):
                                     spike_N_hidden[btch]+= len(x[btch][0])
 
-                    if ((epoch,trial) in p["REC_SPIKES_EPOCH_TRIAL"]) and (len(p["REC_SPIKES"]) > 0):
+                    if ([epoch,trial] in p["REC_SPIKES_EPOCH_TRIAL"]) and (len(p["REC_SPIKES"]) > 0):
                         if int_t%p["SPK_REC_STEPS"] == 0:
                             self.model.pull_recording_buffers_from_device()
                             for pop in p["REC_SPIKES"]:
@@ -1186,14 +1173,14 @@ class SHD_model:
                                     spike_t[pop].append(x[0]+epoch*N_trial*p["TRIAL_MS"])
                                     spike_ID[pop].append(x[1])
 
-                    if ((epoch,trial) in p["REC_NEURONS_EPOCH_TRIAL"]):
+                    if ([epoch,trial] in p["REC_NEURONS_EPOCH_TRIAL"]):
                         for pop, var in p["REC_NEURONS"]:
                             the_pop= self.model.neuron_populations[pop]
                             the_pop.pull_var_from_device(var)
                             rec_vars_n[var+pop].append(the_pop.vars[var].view.copy())
                         rec_n_t.append(self.model.t)
                             
-                    if ((epoch,trial) in p["REC_SYNAPSES_EPOCH_TRIAL"]):
+                    if ([epoch,trial] in p["REC_SYNAPSES_EPOCH_TRIAL"]):
                         for pop, var in p["REC_SYNAPSES"]:
                             the_pop= self.model.synapse_populations[pop]
                             if var == "in_syn":
@@ -1250,7 +1237,6 @@ class SHD_model:
 
                 if p["REG_TYPE"] == "Thomas1": 
                     self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
-                    #self.hidden.extra_global_params["sNSum_all"].view[:]= np.mean(self.hidden_reset.extra_global_params["sNSum_all"].view)
                     self.hidden.extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
                     self.hidden.push_extra_global_param_to_device("sNSum_all")
                     if p["DEBUG_HIDDEN_N"]:
@@ -1298,14 +1284,6 @@ class SHD_model:
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     losses= self.loss_func_avg_xentropy(lbl, p)   # uses self.output.vars["loss"].view
 
-                if ((epoch, trial) in p["REC_NEURONS_EPOCH_TRIAL"]):
-                    print(pred)
-                    print(lbl)
-                    print("---------------------------------------")
-                    #rec_exp_V.append(self.output.vars["exp_V"].view.copy())
-                    #rec_expsum.append(self.output.vars["expsum"].view.copy())
-                #print(f'{np.min(self.output.vars["expsum"].view)} {np.mean(self.output.vars["expsum"].view)} {np.max(self.output.vars["expsum"].view)}')
-
                 good[phase] += np.sum(pred == lbl)
                 predict[phase].append(pred)
                 the_loss[phase].append(losses)
@@ -1315,7 +1293,7 @@ class SHD_model:
                     self.hidden.pull_var_from_device("sNSum")
                     all_sNSum.append(np.mean(self.hidden.vars['sNSum'].view.copy(),axis= 0))
 
-                if ((epoch, trial) in p["W_OUTPUT_EPOCH_TRIAL"]): 
+                if ([epoch, trial] in p["W_OUTPUT_EPOCH_TRIAL"]): 
                     self.in_to_hid.pull_var_from_device("w")
                     np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
                     self.hid_to_out.pull_var_from_device("w")
@@ -1394,8 +1372,6 @@ class SHD_model:
                 print(rec_var[var+pop].shape)
             rec_t= np.array(rec_t)
 
-        #rec_exp_V= np.array(rec_exp_V)
-        #rec_expsum= np.array(rec_expsum)          
         rec_spk_lbl= np.array(rec_spk_lbl)
         rec_spk_pred= np.array(rec_spk_pred)
         rec_n_lbl= np.array(rec_n_lbl)
@@ -1417,8 +1393,6 @@ class SHD_model:
                     np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_"+pop+"_spike_ID"), spike_ID[pop])
 
             if len(p["REC_NEURONS"]) > 0:
-                #np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_exp_V"), rec_exp_V)
-                #np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_expsum"), rec_expsum)
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_t"), rec_n_t)
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_lbl"), rec_n_lbl)
                 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_n_pred"), rec_n_pred)

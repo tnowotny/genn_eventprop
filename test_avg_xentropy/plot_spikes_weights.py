@@ -19,9 +19,9 @@ ax[0].set_xlabel("time (ms)")
 ax[0].set_ylabel("hidden neuron")
 
 # plot the synaptic weights into the last trial's correct output neuron
-ax[1].barh(range(len(g[trgt::32])),g[trgt::32])
+ax[1].barh(range(len(g[trgt::20])),g[trgt::20])
 ax[1].set_xlabel("w to output 0 (nS)")
-mn= [ np.mean(g[i::32]) for i in range(20) ]
+mn= [ np.mean(g[i::20]) for i in range(20) ]
 print(mn)
 
 # consider the last batch
@@ -38,10 +38,12 @@ ax[0].set_ylim(0,25)
 ax[0].set_xlabel("number of spikes last trial (unitless)")
 ax[0].set_ylabel("hidden neuron")
 
-ax[1].barh(range(len(g[trgt::32])),g[trgt::32])
+ax[1].barh(range(len(g[trgt::20])),g[trgt::20])
 ax[1].set_xlabel("w to output 0 (nS)")
 
-allg= [ g[i::32] for i in range(20)]
+allg= [ g[i::20] for i in range(20)]
+print(len(allg))
+print(len(sNlast))
 x= np.vstack([allg,sNlast])
 #print(x.T)
 print(np.corrcoef(x))

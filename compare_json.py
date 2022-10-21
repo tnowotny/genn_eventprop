@@ -8,6 +8,9 @@ for i in range(2):
         p[i]= json.load(f)
 
 for lbl, val in p[0].items():
-    if p[1][lbl] != val:
-        print(f"{lbl}: {val} - {p[1][lbl]}")
+    if lbl not in p[1]:
+        print(f"{lbl} not in {sys.argv[2]}")
+    else:
+        if p[1][lbl] != val:
+            print(f"{lbl}: {val} - {p[1][lbl]}")
         

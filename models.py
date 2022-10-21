@@ -1323,6 +1323,8 @@ EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
         }
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
             $(lambda_V) += (1.0-expV/mexp)/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
+            //printf("%g, %g, %g \\n",$(t),expV,mexp);
+
             scalar x= -log(expV/mexp)/$(N_batch)/$(trial_t)*DT;
             if (x > 2) {
                 printf("%g, %g, %g, %g \\n",x,m,expV,mexp);

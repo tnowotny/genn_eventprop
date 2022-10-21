@@ -8,8 +8,8 @@ p["TRIAL_MS"]= 1400
 p["TRAIN_DATA_SEED"]= 372
 p["TEST_DATA_SEED"]= 814
 p["MODEL_SEED"]= 135
-p["NAME"]= "test102"
-p["NUM_HIDDEN"]= 512
+p["NAME"]= "test104"
+p["NUM_HIDDEN"]= 256
 p["N_MAX_SPIKE"]= 1500
 p["DT_MS"]= 1
 p["PDROP_INPUT"]= 0.1
@@ -18,11 +18,10 @@ p["ADAM_BETA1"]= 0.9
 p["ADAM_BETA2"]= 0.999   
 p["DEBUG_HIDDEN_N"]= True
 p["LOAD_LAST"]= False
-p["N_EPOCH"]= 200
+p["N_EPOCH"]= 100
 p["N_BATCH"]= 32
-p["SUPER_BATCH"]= 1
-p["N_TRAIN"]= 7644 
-p["N_VALIDATE"]= 512 
+p["N_TRAIN"]= 1000 #7644 
+p["N_VALIDATE"]= 75 #512 
 p["ETA"]= 1e-3 
 p["SHUFFLE"]= True
 p["INPUT_HIDDEN_MEAN"]= 0.02 
@@ -33,8 +32,8 @@ p["TAU_MEM"] = 20.0
 p["TAU_MEM_OUTPUT"]= 20.0
 p["TAU_SYN"] = 5.0 
 p["REG_TYPE"]= "simple"
-p["LBD_UPPER"]= 2e-9 
-p["LBD_LOWER"]= 2e-9 
+p["LBD_UPPER"]= 2e-10
+p["LBD_LOWER"]= 2e-8
 p["NU_UPPER"]= 14
 p["NU_LOWER"]= 5
 p["RHO_UPPER"]= 10000.0100
@@ -55,19 +54,19 @@ p["TAU_0"]= 2
 p["TAU_1"]= 25.0
 p["ALPHA"]= 1e-3 
 
-p["LOSS_TYPE"]= "sum_weigh_exp"
+p["LOSS_TYPE"]= "avg_xentropy"
 
 p["AUGMENTATION"]= {
     "random_shift": 40.0,
 }
 
-#p["REDUCED_CLASSES"]= [0]
+p["REDUCED_CLASSES"]= [0]
 
-p["SPEAKER_LEFT"]= 11
+p["SPEAKER_LEFT"]= 0
 p["COLLECT_CONFUSION"]= True
 p["TAU_ACCUMULATOR"]= 5.0
 
-p["HIDDEN_NOISE"]= 0.002
+p["HIDDEN_NOISE"]= 0.0
     
 found= False
 i= -1
