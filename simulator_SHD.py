@@ -145,7 +145,7 @@ class SHD_model:
             
         self.load_data_SHD_Zenke(p)
 
-        if p["REDUCED_CLASSES"] is not None:
+        if p["REDUCED_CLASSES"] is not None and len(p["REDUCED_CLASSES"]) > 0:
             self.X_train_orig, self.Y_train_orig, self.Z_train_orig= self.reduce_classes(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["REDUCED_CLASSES"])
             self.X_test_orig, self.Y_test_orig, self.Z_test_orig= self.reduce_classes(self.X_test_orig, self.Y_test_orig, self.Z_test_orig, p["REDUCED_CLASSES"])
 
