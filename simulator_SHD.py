@@ -36,11 +36,11 @@ p["TRIAL_MS"]= 1400.0
 # make buffers for maximally 400 spikes (200 in a 30 ms trial) - should be safe
 p["N_MAX_SPIKE"]= 400    
 p["N_BATCH"]= 32
-p["N_TRAIN"]= 7644
+p["N_TRAIN"]= 7644 # together with N_VALIDATE= 512 this is all 8156 samples
 p["N_VALIDATE"]= 512
 p["N_EPOCH"]= 100
 p["SHUFFLE"]= True
-p["N_TEST"]= 2264
+#p["N_TEST"]= 2264 - just for reference, simulator will derive from the data
 
 # Network structure
 p["NUM_HIDDEN"] = 256
