@@ -36,7 +36,6 @@ p["TRIAL_MS"]= 1400.0
 # make buffers for maximally 400 spikes (200 in a 30 ms trial) - should be safe
 p["N_MAX_SPIKE"]= 400    
 p["N_BATCH"]= 32
-p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 7644
 p["N_VALIDATE"]= 512
 p["N_EPOCH"]= 100
@@ -1216,7 +1215,7 @@ class SHD_model:
                         self.hid_to_out.push_in_syn_to_device()
 
                 # do not learn after the 0th trial where lambdas are meaningless
-                if (phase == "train") and trial > 0 and ((trial+1)%p["SUPER_BATCH"]) == 0:
+                if (phase == "train") and trial > 0:
                     update_adam(learning_rate, adam_step, self.optimisers)
                     adam_step += 1
                     self.model.custom_update("EVPReduce")
