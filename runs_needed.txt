@@ -1,0 +1,37 @@
+test_avg_xentropy:
+use settings of test_axe1 to run x-validation and 10x train - test.
+
+
+
+
+"sum" loss:
+scan_53_2 with batch size 32
+scan_53_3: batch 32 unstable with 5e-3 learning rate
+trying 32 with 1e-3 (would match the weighed integral)
+-> scan_53_4: but not as good as LR 5e-3/ batch 256
+-> scan_53_2 *final choice*
+
+avg_x_entropy - what parameters?
+
+"sum_weigh_exp" loss:
+sum_weigh_exp JUWELS_7/scan_60 but shift 40
+-> scan_60_2: OK (bit unstable looking but could be random)
+-"- but batch 256 ...
+-> scan_60_3: Not that great!?!
+-> scan_60_2 *final choice*
+
+"time" loss:
+"time" JUWELS_16/J16_scan_88 but LBD_UPPER rescaled (x32)
+-> J16_scan_88_2: looks dysfunctional (loads of phantom spikes,
+rewiring) - result chance level
+-> Use JUWELS_16/J16_scan_88 (no rescale)
+OR indeed JUWELS_16/J16_scan_160 (no rescale)
+
+"max" loss:
+scan_JUWELS_17/J17
+
+
+
+
+WITHOUT REWIRING?
+
