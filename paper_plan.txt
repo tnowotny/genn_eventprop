@@ -1,0 +1,73 @@
+start with avg\_x\_entropy: If used naively it does not learn - show
+analysis.
+
+
+run tests: avg\_x\_entropy, sum, sum\_weigh\_exp, first\_spike, max; report at 50, 100, 300 epochs:
+
+- sum is slow: present analysis
+
+- individual parameters for the different loss functions:
+1. LBD\_UPPER/ LBD\_LOWER (adjust close to instability?) -> could do
+an auto-adjust by measuring the avg gradient size ...?
+
+all with taum 20, taus 5 should be ok (except output layer spike-time based)
+
+Identify best performers:
+"sum_weigh_exp": See scan_JUWELS_7
+n_batch= [ 32, 64, 128 ]
+lbd= [ 5e-10, 1e-9, 2e-9 ]  -- this is not divided by N_batch
+shift= [ 0.0, 10.0, 20.0 ]
+dilate= [ 0.0, 0.1, 0.2 ]
+jitter= [ 0.0, 5.0]
+seeds= [[372, 371],[814,813],[135,134]]
+
+scan_60/ scan_61: about 76%
+32, 5e-9, 20, 0.0, 0.0, both seeds
+However: Since: shift 30 or 40 found to be better
+eta 1e-3
+
+---
+"sum": (as reported at CNS): scan_JUWELS_4/scan_53 (but 52 may be ok &
+more consistent because jitter 0)
+
+lbd 1e-12 (div by N_batch) 4e-15 (if not div by N_batch) 
+shift 20
+jitter 5 (but could be 0 for minimal detriment)
+300 epochs
+eta 5e-3
+
+-> looks good shift 40 slower but clearly better!
+-> need to test batch 32
+
+---
+
+"avg_x_entropy":
+1. something failing
+2. improved but bad performance with reduced time window?
+
+
+---
+
+"spike time based":
+see JUWELS_16 (not great but scan_88, 89)
+lbd 5e-9, 1e-8
+tau0 1
+tau1 30
+alpha 5e-4
+
+-> both tau0 and tau1 are on the limit chosen; could assess lower tau0
+and higher tau1 yet
+
+-> need to find the root cause for loss= infinity
+loss infinity appears to be from an old bug where the absolute spike
+time entered the loss instead of the time relative to the start of the
+trial - SOLVED
+
+-> scan_88 appears to be working well without scaling of LBD_UPPER:
+   Need to recheck with scaled LBD_UPPER (x32)
+
+---
+
+general Q:
+- what to do about output-hidden STD: 0.03 and 0.3 was used (for sum
+based) ...
