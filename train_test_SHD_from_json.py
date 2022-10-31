@@ -21,7 +21,7 @@ with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as file:
 
 mn= SHD_model(p)
 
-for i in range(5):
+for i in range(10):
     p["LOAD_LAST"]= False
     spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
     print("training correct: {}".format(correct))

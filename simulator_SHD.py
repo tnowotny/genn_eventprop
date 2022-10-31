@@ -100,7 +100,7 @@ p["REDUCED_CLASSES"]= None
 p["AUGMENTATION"]= {}
 p["DOWNLOAD_SHD"]= False
 p["COLLECT_CONFUSION"]= False
-
+p["REC_PREDICTIONS"]= False
 # "first_spike" loss function variables
 p["TAU_0"]= 0.5
 p["TAU_1"]= 6.4
@@ -1055,6 +1055,16 @@ class SHD_model:
                 "train": [],
                 "eval": []
             }
+        if p["REC_PREDICTIONS"]:
+            all_predict= {
+                "train": [],
+                "eval": []
+            }
+            all_label= {
+                "train": [],
+                "eval": []
+            }
+
         for epoch in range(number_epochs):
             # if we are doing augmentation, the entire spike time array needs to be set up anew.
             if N_train > 0 and len(p["AUGMENTATION"]) > 0:
@@ -1083,10 +1093,16 @@ class SHD_model:
                 self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
                 self.input_set.push_extra_global_param_to_device("allInputID")
 
-            predict= {
-                "train": [],
-                "eval": []
-            }
+            if p["REC_PREDICTIONS"]:
+                predict= {
+                    "train": [],
+                    "eval": []
+                }
+                label= {
+                    "train": [],
+                    "eval": []
+                }
+                
             the_loss= {
                 "train": [],
                 "eval": []
@@ -1125,6 +1141,7 @@ class SHD_model:
                     "train": np.zeros((self.N_class,self.N_class)),
                     "eval": np.zeros((self.N_class,self.N_class))
                 }
+
             for trial in range(N_trial):
                 trial_end= (trial+1)*p["TRIAL_MS"]
 
@@ -1271,7 +1288,7 @@ class SHD_model:
                 if p["COLLECT_CONFUSION"]:
                     for pr, lb in zip(pred,lbl):
                         conf[phase][pr,lb]+= 1
-                        
+
                 if p["LOSS_TYPE"][:-4] == "first_spike":
                     self.output.pull_var_from_device("expsum")
                     self.output.pull_var_from_device("exp_st")
@@ -1285,7 +1302,10 @@ class SHD_model:
                     losses= self.loss_func_avg_xentropy(lbl, p)   # uses self.output.vars["loss"].view
 
                 good[phase] += np.sum(pred == lbl)
-                predict[phase].append(pred)
+                if p["REC_PREDICTIONS"]:
+                    predict[phase].append(pred)
+                    label[phase].append(lbl)
+                    
                 the_loss[phase].append(losses)
 
                 if p["DEBUG_HIDDEN_N"]:
@@ -1356,8 +1376,12 @@ class SHD_model:
                     resfile.write(" {} {} {} {} {}".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum),n_silent))
                 resfile.write("\n")
                 resfile.flush()
-            predict[phase]= np.hstack(predict[phase])
-
+            if p["REC_PREDICTIONS"]:
+                predict[phase]= np.hstack(predict[phase])
+                label[phase]= np.hstack(label[phase])
+                all_predict[phase].append(predict[phase])
+                all_label[phase].append(label[phase])
+          
             if p["COLLECT_CONFUSION"]:
                 for ph in ["train","eval"]:
                     confusion[ph].append(conf[ph])
@@ -1382,7 +1406,14 @@ class SHD_model:
         if p["COLLECT_CONFUSION"]:
             for ph in ["train","eval"]:
                 confusion[ph]= np.array(confusion[ph])
-        
+
+        if p["REC_PREDICTIONS"]:
+            for ph in ["train","eval"]:
+                if len(all_predict[ph]) > 0:
+                    all_predict[ph]= np.vstack(all_predict[ph])
+                if len(all_label[ph]) > 0:
+                    all_label[ph]= np.vstack(all_label[ph])
+                
         # Saving results
         if p["WRITE_TO_DISK"]:
             if len(p["REC_SPIKES"]) > 0:
@@ -1408,7 +1439,15 @@ class SHD_model:
 
             if p["COLLECT_CONFUSION"]:
                 for ph in ["train","eval"]:
-                    np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_confusion"+ph), confusion[ph])
+                    np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_confusion_"+ph), confusion[ph])
+
+            if p["REC_PREDICTIONS"]:
+                for ph in ["train","eval"]:
+                    if len(all_predict[ph]) > 0:
+                        np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_predictions_"+ph), all_predict[ph])
+                    if len(all_label[ph]) > 0:
+                        np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_labels_"+ph), all_label[ph])
+                    
                 
         # Saving results
         if p["WRITE_TO_DISK"]:
