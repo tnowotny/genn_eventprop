@@ -168,32 +168,34 @@ class SHD_model:
                 ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
         plt.show()
         
-    def loss_func_first_spike(self, nfst, Y, trial):
+    def loss_func_first_spike(self, nfst, Y, trial, N_class):
         t= nfst-trial*p["TRIAL_MS"]
-        expsum= self.output.vars["expsum"].view[:,0]
-        exp_st= self.output.vars["exp_st"].view
+        expsum= self.output.vars["expsum"].view[:N_batch,0]
+        exp_st= self.output.vars["exp_st"].view[:N_batch,:self.N_class]
         pred= np.argmin(t,axis=-1)
         exp_st= np.array([ exp_st[i,pred[i]] for i in range(pred.shape[0])])
         selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
         loss= -np.sum(np.log(exp_st/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
-        loss/= p["N_BATCH"]
+        loss/= N_batch
         return loss
 
-    def loss_func_max_sum(self, Y, p):
-        expsum= self.output.vars["expsum"].view
-        exp_V= self.output.vars["exp_V"].view
+    def loss_func_max_sum(self, Y, N_batch):
+        #print(f"len(Y)= {len(Y)}, N_batch= {N_batch}")
+        expsum= self.output.vars["expsum"].view[:N_batch,:self.N_class]
+
+        exp_V= self.output.vars["exp_V"].view[:N_batch,:self.N_class]
         exp_V_correct= np.array([ exp_V[i,y] for i, y in enumerate(Y) ])
         if (np.sum(exp_V_correct == 0) > 0):
             print("exp_V flushed to 0 exception!")
             print(exp_V_correct)
             print(exp_V[np.where(exp_V_correct == 0),:])
             exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0            
-        loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/p["N_BATCH"]
+        loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/N_batch
         return loss
 
-    def loss_func_avg_xentropy(self, Y, p):
-        loss= self.output.vars["loss"].view
-        loss= np.sum(np.sum(loss))
+    def loss_func_avg_xentropy(self, N_batch):
+        loss= self.output.vars["loss"].view[:N_batch,:self.N_class]
+        loss= np.mean(np.sum(loss,axis= 1))
         return loss
 
     """
@@ -358,17 +360,31 @@ class SHD_model:
     # When data loading, we are doing that for N_trial ...
     # Needs tidying up!
     def generate_input_spiketimes_shuffle_fast(self, p, Xtrain, Ytrain, Xeval, Yeval):
+        Xempty= {
+            "x": np.array([]),
+            "t": np.array([])
+        }
+        Yempty= -1
         # N is the number of training/testing images: always use all images given
         if Xtrain is None:
             X= Xeval
             Y= Yeval
+            padN= p["N_BATCH"]- ((len(X)-1) % p["N_BATCH"] +1)
+            X= np.append(X, [Xempty]*padN)
+            Y= np.append(Y, [Yempty]*padN)
         else:
-            if Xeval is None:
-                X= Xtrain
-                Y= Ytrain
-            else:
-                X= np.append(Xtrain, Xeval, axis= 0)    
-                Y= np.append(Ytrain, Yeval, axis= 0)
+            X= Xtrain
+            Y= Ytrain
+            padN= p["N_BATCH"]- ((len(X)-1) % p["N_BATCH"] +1)
+            X= np.append(X, [Xempty]*padN)
+            Y= np.append(Y, [Yempty]*padN)
+            if Xeval is not None:
+                X= np.append(X, Xeval, axis= 0)    
+                Y= np.append(Y, Yeval, axis= 0)
+                padN= p["N_BATCH"]- ((len(X)-1) % p["N_BATCH"] +1)
+                X= np.append(X, [Xempty]*padN)
+                Y= np.append(Y, [Yempty]*padN)
+        Y= Y.astype(int)
         N= len(Y)
         all_sts= []
         all_input_end= []
@@ -383,7 +399,8 @@ class SHD_model:
             assert len(i_end) == self.num_input
             tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
             tx *= 1000.0
-            self.max_stim_time= max(self.max_stim_time, np.amax(tx))
+            if len(tx) > 0:
+                self.max_stim_time= max(self.max_stim_time, np.amax(tx))
             all_sts.append(tx)
             i_start= np.empty(i_end.shape)
             i_start[0]= stidx_offset
@@ -398,7 +415,6 @@ class SHD_model:
                 
     def define_model(self, p, shuffle):
         self.trial_steps= int(round(p["TRIAL_MS"]/p["DT_MS"]))
-
 
         # ----------------------------------------------------------------------------
         # Model description
@@ -973,7 +989,7 @@ class SHD_model:
     ----------------------------------------------------------------------------
     """
             
-    def run_model(self, number_epochs, p, shuffle, X_t_orig= None, labels= None, X_t_eval= None, labels_eval= None, resfile= None):
+    def run_model(self, number_epochs, p, shuffle, X_train= None, labels_train= None, X_eval= None, labels_eval= None, resfile= None):
         if p["LOAD_LAST"]:
             self.in_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_last.npy"))
             self.in_to_hid.push_var_to_device("w")
@@ -994,19 +1010,20 @@ class SHD_model:
 
         # set up run
         N_trial= 0
-        if X_t_orig is not None:
-            assert(labels is not None)
-            N_train= len(X_t_orig) // p["N_BATCH"]
-            N_trial+= N_train
+        if X_train is not None:
+            assert(labels_train is not None)
+            N_trial_train= (len(X_train)-1) // p["N_BATCH"] + 1  # large enough to fit potentially incomplete last batch
+            N_trial+= N_trial_train
         else:
-            N_train= 0
-        if X_t_eval is not None:
+            N_trial_train= 0
+        if X_eval is not None:
             assert(labels_eval is not None)
-            N_eval= len(X_t_eval) // p["N_BATCH"]
-            N_trial+= N_eval
+            N_trial_eval= (len(X_eval)-1) // p["N_BATCH"] + 1  # large enough to fit potentially incomplete last batch
+            N_trial+= N_trial_eval
         else:
-            N_eval= 0
+            N_trial_eval= 0
 
+        print(f"N_trial_train= {N_trial_train}, N_trial_eval= {N_trial_eval}")
         adam_step= 1
         learning_rate= p["ETA"]
 
@@ -1034,15 +1051,16 @@ class SHD_model:
         rec_s_pred= []
 
         # build and assign the input spike train and corresponding labels
-        X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_t_orig, labels, X_t_eval, labels_eval)
+        # these are padded to multiple of batch size for both train and eval portions
+        X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_train, labels_train, X_eval, labels_eval)
         self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
         self.input.push_extra_global_param_to_device("spikeTimes")
         self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
         self.input_set.push_extra_global_param_to_device("allStartSpike")
         self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
         self.input_set.push_extra_global_param_to_device("allEndSpike")
-        if labels is not None:
-            input_id= np.arange(labels.shape[0])
+        if labels_train is not None:
+            input_id= np.arange(labels_train.shape[0])
         else:
             input_id= []
         all_input_id= np.arange(Y.shape[0])
@@ -1066,8 +1084,8 @@ class SHD_model:
 
         for epoch in range(number_epochs):
             # if we are doing augmentation, the entire spike time array needs to be set up anew.
-            if N_train > 0 and len(p["AUGMENTATION"]) > 0:
-                lX= copy.deepcopy(X_t_orig)
+            if N_trial_train > 0 and len(p["AUGMENTATION"]) > 0:
+                lX= copy.deepcopy(X_train)
                 for aug in p["AUGMENTATION"]:
                     if aug == "random_shift":
                         lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug])
@@ -1075,7 +1093,7 @@ class SHD_model:
                         lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1])
                     if aug == "ID_jitter":
                         lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug])
-                X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, labels, X_t_eval, labels_eval)
+                X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, labels_train, X_eval, labels_eval)
                 self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
                 self.input.push_extra_global_param_to_device("spikeTimes")
                 self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
@@ -1083,10 +1101,12 @@ class SHD_model:
                 self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
                 self.input_set.push_extra_global_param_to_device("allEndSpike")
 
-            if N_train > 0 and shuffle:
+            if N_trial_train > 0 and shuffle:
+                # by virtue of input_id being the right length we do not shuffle
+                # padding inputs
                 self.datarng.shuffle(input_id)
                 all_input_id[:len(input_id)]= input_id
-                Y[:len(input_id)]= labels[input_id]
+                Y[:len(input_id)]= labels_train[input_id]
                 self.output.extra_global_params["label"].view[:len(Y)]= Y
                 self.output.push_extra_global_param_to_device("label")
                 self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
@@ -1141,14 +1161,25 @@ class SHD_model:
                     "eval": np.zeros((self.N_class,self.N_class))
                 }
 
+            spk_rec_offset= 0
             for trial in range(N_trial):
-                trial_end= (trial+1)*p["TRIAL_MS"]
+                trial_end= (trial+1)*p["TRIAL_MS"]                
 
                 # assign the input spike train and corresponding labels
-                if trial < N_train:
+                if trial < N_trial_train:
                     phase= "train"
+                    # set the actual batch size
+                    if trial == N_trial_train-1:
+                        N_batch= len(X_train)-(N_trial_train-1)*p["N_BATCH"]
+                    else:
+                        N_batch= p["N_BATCH"]
                 else:
                     phase= "eval"
+                    # set the actual batch size
+                    if trial == N_trial_train+N_trial_eval-1:
+                        N_batch= len(X_eval)-(N_trial_eval-1)*p["N_BATCH"]
+                    else:
+                        N_batch= p["N_BATCH"]
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
                     self.hidden.extra_global_params["pDrop"].view[:]= 0.0
                     if p["HIDDEN_NOISE"] > 0.0:
@@ -1159,7 +1190,7 @@ class SHD_model:
 
                 if p["DEBUG_HIDDEN_N"]:
                     if p["REG_TYPE"] != "Thomas1":
-                        spike_N_hidden= np.zeros(p["N_BATCH"])
+                        spike_N_hidden= np.zeros(N_batch)
 
                 int_t= 0
                 while (self.model.t < trial_end-1e-1*p["DT_MS"]):
@@ -1172,23 +1203,23 @@ class SHD_model:
                             if p["REG_TYPE"] != "Thomas1":
                                 self.model.pull_recording_buffers_from_device()
                                 x= self.model.neuron_populations["hidden"].spike_recording_data
-                                for btch in range(p["N_BATCH"]):
+                                for btch in range(N_batch):
                                     spike_N_hidden[btch]+= len(x[btch][0])
 
-                    if ([epoch,trial] in p["REC_SPIKES_EPOCH_TRIAL"]) and (len(p["REC_SPIKES"]) > 0):
+                    if len(p["REC_SPIKES"]) > 0:
                         if int_t%p["SPK_REC_STEPS"] == 0:
-                            self.model.pull_recording_buffers_from_device()
-                            for pop in p["REC_SPIKES"]:
-                                the_pop= self.model.neuron_populations[pop]
-                                x= the_pop.spike_recording_data
-                                if p["N_BATCH"] > 1:
-                                    for i in range(p["N_BATCH"]):
-                                        spike_t[pop].append(x[i][0]+(epoch*N_trial*p["N_BATCH"]+trial*p["N_BATCH"]+i-trial)*p["TRIAL_MS"]) # subtracting trial to compensate the progression of model.t by p["TRIAL_MS"] each trial
-                                        spike_ID[pop].append(x[i][1])
-                                else:
-                                    spike_t[pop].append(x[0]+epoch*N_trial*p["TRIAL_MS"])
-                                    spike_ID[pop].append(x[1])
-
+                            if [epoch,trial] in p["REC_SPIKES_EPOCH_TRIAL"]:
+                                self.model.pull_recording_buffers_from_device()
+                                for pop in p["REC_SPIKES"]:
+                                    the_pop= self.model.neuron_populations[pop]
+                                    x= the_pop.spike_recording_data
+                                    if p["N_BATCH"] > 1:
+                                        for i in range(N_batch):
+                                            spike_t[pop].append(x[i][0]+(spk_rec_offset+i)*p["TRIAL_MS"]) 
+                                            spike_ID[pop].append(x[i][1])
+                                    else:
+                                        spike_t[pop].append(x[0]+spk_rec_offset*p["TRIAL_MS"])
+                                        spike_ID[pop].append(x[1])
                     if ([epoch,trial] in p["REC_NEURONS_EPOCH_TRIAL"]):
                         for pop, var in p["REC_NEURONS"]:
                             the_pop= self.model.neuron_populations[pop]
@@ -1214,6 +1245,9 @@ class SHD_model:
                         self.hid_to_out.in_syn[:]= 0.0
                         self.hid_to_out.push_in_syn_to_device()
 
+                # at end of trial
+                spk_rec_offset+= N_batch-1  # the -1 for compensating the normal progression of time
+
                 # do not learn after the 0th trial where lambdas are meaningless
                 if (phase == "train") and trial > 0:
                     update_adam(learning_rate, adam_step, self.optimisers)
@@ -1235,9 +1269,9 @@ class SHD_model:
                 if p["LOSS_TYPE"][:-4] == "first_spike":
                     # need to copy new_first_spike_t from device before neuronReset!
                     self.output.pull_var_from_device("new_first_spike_t")
-                    nfst= self.output.vars["new_first_spike_t"].view.copy()
+                    nfst= self.output.vars["new_first_spike_t"].view[:N_batch,:self.N_class].copy()
                     # neurons that did not spike set to spike time in the future
-                    nfst[self.output.vars["new_first_spike_t"].view < 0.0]= self.model.t + 1.0
+                    nfst[nfst < 0.0]= self.model.t + 1.0
                     pred= np.argmin(nfst, axis=-1)
 
                 if p["LOSS_TYPE"] == "avg_xentropy":
@@ -1256,7 +1290,7 @@ class SHD_model:
                     self.hidden.extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
                     self.hidden.push_extra_global_param_to_device("sNSum_all")
                     if p["DEBUG_HIDDEN_N"]:
-                        spike_N_hidden= self.hidden_reset.extra_global_params["sNSum_all"].view[:].copy()
+                        spike_N_hidden= self.hidden_reset.extra_global_params["sNSum_all"].view[:N_batch].copy()
 
                 # collect data for rewiring rule for silent neurons
                 if p["REWIRE_SILENT"]:
@@ -1267,20 +1301,20 @@ class SHD_model:
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
                 if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
                     self.output.pull_var_from_device("exp_V")
-                    pred= np.argmax(self.output.vars["exp_V"].view[:,:self.N_class], axis=-1)
+                    pred= np.argmax(self.output.vars["exp_V"].view[:N_batch,:self.N_class], axis=-1)
 
                 if p["LOSS_TYPE"] == "avg_xentropy":
-                    pred= np.argmax(self.output.vars["sum_V"].view[:,:self.N_class], axis=-1)
+                    pred= np.argmax(self.output.vars["sum_V"].view[:N_batch,:self.N_class], axis=-1)
 
-                lbl= Y[trial*p["N_BATCH"]:(trial+1)*p["N_BATCH"]]
+                lbl= Y[(trial*p["N_BATCH"]):(trial*p["N_BATCH"]+N_batch)]
 
-                if ((epoch, trial) in p["REC_SPIKES_EPOCH_TRIAL"]):
+                if ([epoch, trial] in p["REC_SPIKES_EPOCH_TRIAL"]):
                     rec_spk_lbl.append(lbl.copy())
                     rec_spk_pred.append(pred.copy())
-                if ((epoch, trial) in p["REC_NEURONS_EPOCH_TRIAL"]):
+                if ([epoch, trial] in p["REC_NEURONS_EPOCH_TRIAL"]):
                     rec_n_lbl.append(lbl.copy())
                     rec_n_pred.append(pred.copy())
-                if ((epoch, trial) in p["REC_SYNAPSES_EPOCH_TRIAL"]):
+                if ([epoch, trial] in p["REC_SYNAPSES_EPOCH_TRIAL"]):
                     rec_s_lbl.append(lbl.copy())
                     rec_s_pred.append(pred.copy())
 
@@ -1291,14 +1325,14 @@ class SHD_model:
                 if p["LOSS_TYPE"][:-4] == "first_spike":
                     self.output.pull_var_from_device("expsum")
                     self.output.pull_var_from_device("exp_st")
-                    losses= self.loss_func_first_spike(nfst, lbl, trial)
+                    losses= self.loss_func_first_spike(nfst, lbl, trial, N_batch)
 
                 if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
                     self.output.pull_var_from_device("expsum")
-                    losses= self.loss_func_max_sum(lbl, p)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+                    losses= self.loss_func_max_sum(lbl, N_batch)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
 
                 if p["LOSS_TYPE"] == "avg_xentropy":
-                    losses= self.loss_func_avg_xentropy(lbl, p)   # uses self.output.vars["loss"].view
+                    losses= self.loss_func_avg_xentropy(lbl, N_batch)   # uses self.output.vars["loss"].view
 
                 good[phase] += np.sum(pred == lbl)
                 if p["REC_PREDICTIONS"]:
@@ -1310,7 +1344,7 @@ class SHD_model:
                 if p["DEBUG_HIDDEN_N"]:
                     all_hidden_n.append(spike_N_hidden)
                     self.hidden.pull_var_from_device("sNSum")
-                    all_sNSum.append(np.mean(self.hidden.vars['sNSum'].view.copy(),axis= 0))
+                    all_sNSum.append(np.mean(self.hidden.vars['sNSum'].view[:N_batch],axis= 0))
 
                 if ([epoch, trial] in p["W_OUTPUT_EPOCH_TRIAL"]): 
                     self.in_to_hid.pull_var_from_device("w")
@@ -1321,12 +1355,12 @@ class SHD_model:
                         self.hid_to_hid.pull_var_from_device("w")
                         np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_e{}_t{}.npy".format(epoch,trial)), self.hid_to_hid.vars["w"].view.copy())
                     
-            if N_train > 0:
-                correct= good["train"]/(N_train*p["N_BATCH"])
+            if N_trial_train > 0:
+                correct= good["train"]/len(X_train)
             else:
                 correct= 0
-            if N_eval > 0:
-                correct_eval= good["eval"]/(N_eval*p["N_BATCH"])
+            if N_trial_eval > 0:
+                correct_eval= good["eval"]/len(X_eval)
             else:
                 correct_eval= 0
 
@@ -1484,7 +1518,7 @@ class SHD_model:
             X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
         if p["EVALUATION"] == "speaker":
             X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["SPEAKER_LEFT"], p)
-        return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
+        return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= X_train, labels_train= Y_train, X_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
         
     def cross_validate_SHD(self, p):
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
@@ -1498,7 +1532,7 @@ class SHD_model:
                 self.model.build()
             self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
             X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, i, p)
-            res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_t_orig= X_train, labels= Y_train, X_t_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
+            res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= X_train, labels_train= Y_train, X_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
             all_res.append([ res[4], res[5] ])
             times.append(perf_counter()-start_t)
         return all_res, times
@@ -1508,4 +1542,4 @@ class SHD_model:
         if p["BUILD"]:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-        return self.run_model(1, p, False, X_t_eval= self.X_test_orig, labels_eval= self.Y_test_orig)
+        return self.run_model(1, p, False, X_eval= self.X_test_orig, labels_eval= self.Y_test_orig)
