@@ -704,7 +704,6 @@ class mnist_model:
             "beta2": p["ADAM_BETA2"],
             "epsilon": p["ADAM_EPS"],
             "tau_syn": p["TAU_SYN"],
-            "N_batch": p["N_BATCH"],
         }
         self.adam_init_vars= {
             "m": 0.0,

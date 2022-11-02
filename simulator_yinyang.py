@@ -208,7 +208,7 @@ class yinyang:
         # ----------------------------------------------------------------------------
         # Optimiser initialisation
         # ----------------------------------------------------------------------------
-        adam_params = {"beta1": p["ADAM_BETA1"], "beta2": p["ADAM_BETA2"], "epsilon": p["ADAM_EPS"], "tau_syn": p["TAU_SYN"], "N_batch": p["N_BATCH"]}
+        adam_params = {"beta1": p["ADAM_BETA1"], "beta2": p["ADAM_BETA2"], "epsilon": p["ADAM_EPS"], "tau_syn": p["TAU_SYN"],}
         self.adam_init_vars = {"m": 0.0, "v": 0.0}
 
         # ----------------------------------------------------------------------------

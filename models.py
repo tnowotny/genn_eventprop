@@ -29,7 +29,7 @@ EVP_grad_reduce= genn_model.create_custom_custom_update_class(
 # custom update to apply gradients using the Adam optimizer
 adam_optimizer_model = genn_model.create_custom_custom_update_class(
     "adam_optimizer",
-    param_names=["beta1", "beta2", "epsilon", "tau_syn", "N_batch"],
+    param_names=["beta1", "beta2", "epsilon", "tau_syn"],
     var_name_types=[("m", "scalar"), ("v", "scalar")],
     extra_global_params=[("alpha", "scalar"), ("firstMomentScale", "scalar"),
                          ("secondMomentScale", "scalar")],
