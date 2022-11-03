@@ -174,7 +174,7 @@ class mnist_model:
         X = mnist.train_images()
         Y = mnist.train_labels()
         self.data_full_length= 60000
-        self.max_length= self.data_full_length+2*p["N_BATCH"]  # maximal length of padded training array
+        self.max_length= self.data_full_length+10000+2*p["N_BATCH"]  # maximal length of padded training/validation/testing array
         self.N_class= 10
         self.num_input= 28*28
         self.num_output= self.N_class 
@@ -1216,3 +1216,13 @@ class mnist_model:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         return self.run_model(1, p, False, X_eval= self.X_test_orig, labels_eval= self.Y_test_orig)
+
+    def train_test(self, p):
+        # for this, p["N_TRAIN"] should be the full 60000
+        self.define_model(p, p["SHUFFLE"])
+        if p["BUILD"]:
+            self.model.build()
+        self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
+        resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
+        return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= self.X_train_orig, labels_train= self.Y_train_orig, X_eval= self.X_test_orig, labels_eval= self.Y_test_orig, resfile= resfile)
+        

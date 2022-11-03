@@ -953,7 +953,7 @@ EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
     if ($(back_spike)) {
         if ($(first_spike_t) > $(rev_t)) {// we are dealing with a "phantom spike" introduced because the correct neuron did not spike
             scalar fst= $(trial_t);
-            $(lambda_V) += $(alpha)/$(tau1)*exp((fst-$(trial_t)/2)/$(tau1))/$(N_batch);
+            $(lambda_V) += $(alpha)/$(tau1)*exp(fst/$(tau1))/$(N_batch);
             //printf("phantom spike neuron %d\\n",$(id));
         }
         else {
@@ -961,7 +961,7 @@ EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
             if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
                 scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
                 if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-                    $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp((fst-$(trial_t)/2.0)/$(tau1)))/$(N_batch);
+                    $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
                 }
                 else {
                     $(lambda_V) -= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*$(exp_st)/$(expsum)/$(tau0)/$(N_batch);
