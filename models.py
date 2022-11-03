@@ -182,6 +182,7 @@ EVP_reg_reduce= genn_model.create_custom_custom_update_class(
 )
 
 # custom update class for reducing regularisation terms across a batch
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_sNSum_apply= genn_model.create_custom_custom_update_class(
     "EVP_sNSum_apply",
     param_names=["N_batch"],
@@ -212,7 +213,7 @@ EVP_neuron_reset_output_yinyang_first_spike= genn_model.create_custom_custom_upd
         //printf(\"%g, %d, %g, %g\\n\",$(t),$(id),$(new_first_spike_t),$(rev_t));
         scalar sum= 0.0;
         for (int i= 0; i < $(N_class); i++) {
-            sum+= __shfl_sync(0xFFFFF, m, i);
+            sum+= __shfl_sync(0x7, m, i);
         }
         $(expsum)= sum;
         //printf(\"%g\\n\",$(expsum));
@@ -609,7 +610,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t")],
-    extra_global_params=[("t_k","scalar*"),("ImV","scalar*")],
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
@@ -635,7 +636,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
     """,
     threshold_condition_code="""
-    $(V) >= $(V_thresh)
+    ($(V) >= $(V_thresh)) && ($(gennrand_uniform) > $(pDrop))
     """,
     reset_code="""
     // this is after a forward spike
@@ -656,6 +657,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
 
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
 # Regularisation: each neuron towards a desired spike number; parameters lbd_upper/ nu_upper; uses sNSum
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower"],
@@ -673,18 +675,14 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
-//        if ($(batch) == 0) {
-//    printf("revIsyn %g, ImV %g, lambda_V %g += %g \\n", $(revIsyn), $(ImV)[buf_idx+$(rp_ImV)], $(lambda_V), 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)));
-    //}
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         // decrease read pointer (on ring buffer)
         $(rp_ImV)--;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         // contributions from regularisation
-        // printf("%f\\n",$(lbd_upper)*($(sNSum) - $(nu_upper)));
-    /*if ($(id) == 0 && $(batch) == 0) {
+    /* if ($(id) == 0 && $(batch) == 0) {
         printf("sNSum: %e, nu_upper: %e, lbd_upper: %e\\n", $(sNSum), $(nu_upper), $(lbd_upper));
-    printf("%e \\n", -$(lbd_upper)*($(sNSum) - $(nu_upper));
+    printf("%e \\n", -$(lbd_upper)*($(sNSum) - $(nu_upper)));
 }*/
         //$(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
          
@@ -729,6 +727,7 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
 # Regularisation: each neuron towards a desired spike number; parameters lbd_upper, lbd_lower/ nu_upper; uses sNSum
 # additionally has Gaussian noise on membrane potential
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_noise",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower"],
@@ -802,6 +801,7 @@ EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
 
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
 # Regularisation almost a la Zenke with exponent L=1 (but individual neuron activity averaged over batch before comparing to lower threshold); parameters rho_upper/ glb_upper, nu_lower/lbd_lower; uses sNSum and sNSum_all
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_Thomas1",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","tau_syn","lbd_lower","nu_lower","lbd_upper","nu_upper","rho_upper","glb_upper"],
@@ -865,6 +865,7 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
 )
 
 # LIF neuron model for output neurons (includes contribution from dl_p/dt_k loss function term at jumps and a 1/x loss for late or missing spikes (through phantom spikes))
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_first_spike",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
@@ -886,7 +887,7 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
         if ($(first_spike_t) > $(rev_t)) {// we are dealing with a "phantom spike" introduced because the correct neuron did not spike
             scalar fst= $(trial_t);
             $(lambda_V) += $(alpha)/((1.01*$(trial_t)-fst)*(1.01*$(trial_t)-fst))/$(N_batch);
-            printf("phantom spike neuron %d\\n",$(id));
+            //printf("phantom spike neuron %d\\n",$(id));
         }
         else {
             $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
@@ -931,6 +932,7 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
 )
 
 # LIF neuron model for output neurons (includes contribution from dl_p/dt_k loss function term at jumps and a exp loss for late or missing spikes (through phantom spikes))
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_first_spike_exp",
     param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
@@ -951,15 +953,15 @@ EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
     if ($(back_spike)) {
         if ($(first_spike_t) > $(rev_t)) {// we are dealing with a "phantom spike" introduced because the correct neuron did not spike
             scalar fst= $(trial_t);
-            $(lambda_V) += $(alpha)/$(tau1)*exp(fst/$(tau1))/$(N_batch);
-            printf("phantom spike neuron %d\\n",$(id));
+            $(lambda_V) += $(alpha)/$(tau1)*exp((fst-$(trial_t)/2)/$(tau1))/$(N_batch);
+            //printf("phantom spike neuron %d\\n",$(id));
         }
         else {
             $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
             if (abs(back_t - $(first_spike_t)) < 1e-2*DT) {
                 scalar fst= $(first_spike_t)-$(rev_t)+$(trial_t);
                 if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-                    $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp(fst/$(tau1)))/$(N_batch);
+                    $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*((1.0-$(exp_st)/$(expsum))/$(tau0)+$(alpha)/$(tau1)*exp((fst-$(trial_t)/2.0)/$(tau1)))/$(N_batch);
                 }
                 else {
                     $(lambda_V) -= 1.0/$(ImV)[buf_idx+$(rp_ImV)]*$(exp_st)/$(expsum)/$(tau0)/$(N_batch);
@@ -1000,6 +1002,7 @@ EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
 # LIF neuron model for output neurons in the MNIST task - non-spiking and jumps in backward
 # pass at times where the voltage reaches its maximum
 # NOTE TO SELF: why 1/trial_t on the jumps?
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_max = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_max",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
@@ -1043,7 +1046,7 @@ EVP_LIF_output_max = genn_model.create_custom_neuron_class(
 # LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
 # by dlV/dV (this is for a "sum-based loss function)"
 # NOTE TO SELF: why 1/trial_t on the lambda_V equation?
-# NOTE: this is not correct/ strange loss function (if it can even be mapped to one)
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
@@ -1079,7 +1082,7 @@ EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
 # LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
 # by dlV/dV (this is for a "sum-based loss function)"
 # NOTE TO SELF: why 1/trial_t on the lambda_V equation?
-# NOTE: this is not correct/ strange loss function (if it can even be mapped to one)
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_linear",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
@@ -1115,7 +1118,7 @@ EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
 # LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
 # by dlV/dV (this is for a "sum-based loss function)"
 # NOTE TO SELF: why 1/trial_t on the lambda_V equation?
-# NOTE: this is not correct/ strange loss function (if it can even be mapped to one)
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_exp",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
@@ -1151,7 +1154,7 @@ EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
 # LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
 # by dlV/dV (this is for a "sum-based loss function)"
 # NOTE TO SELF: why 1/trial_t on the lambda_V equation?
-# NOTE: this is not correct/ strange loss function (if it can even be mapped to one)
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_sigmoid",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
@@ -1190,7 +1193,7 @@ EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
 # LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
 # by dlV/dV (this is for a "sum-based loss function)"
 # NOTE TO SELF: why 1/trial_t on the lambda_V equation?
-# NOTE: this is not correct/ strange loss function (if it can even be mapped to one)
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_input",
     param_names=["tau_m","tau_syn","N_neurons","trial_t","N_batch","trial_steps"],
@@ -1229,9 +1232,10 @@ EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
-# LIF neuron model for output neurons in the MNIST task - non-spiking;
+# LIF neuron model for output neurons in the SHD task - non-spiking;
 # use the average cross-entropy loss of instantaneous V values instead of cross-entropy
 # of average Vs
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_MNIST_avg_xentropy",
     param_names=["tau_m","tau_syn","N_neurons","N_batch","trial_steps","trial_t","N_class"],
@@ -1251,35 +1255,28 @@ EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
     scalar lbdV= $(lambda_V);
     if ($(trial) > 0) {
         $(rp_V)--;
-        scalar mexp= 0.0;
-        scalar expV= 0.0;
-        scalar m= -1e37;
-        if ($(id) < $(N_class)) m= $(Vbuf)[buf_idx+$(rp_V)];
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x1));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x2));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x4));
-        m = fmax(m, __shfl_xor_sync(0xFFFF, m, 0x8));
-        //printf("%d \\n",buf_idx+$(rp_V));
-        if ($(id) < $(N_class)) {
-            mexp= exp($(Vbuf)[buf_idx+$(rp_V)] - m);
-            expV= mexp;
+        scalar m= $(Vbuf)[buf_idx+$(rp_V)];
+        for (int i= 0; i < $(N_class); i++) {
+            m = fmax(m, __shfl_sync(0x3FF, m, i));
         }
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x1);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x2);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x4);
-        mexp += __shfl_xor_sync(0xFFFF, mexp, 0x8);
+        m= exp($(Vbuf)[buf_idx+$(rp_V)] - m);
+        scalar expV= m;
+        scalar mexp= 0.0;
+        for (int i= 0; i < $(N_class); i++) {
+            mexp += __shfl_sync(0x3FF, m, i);
+        }
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
             $(lambda_V) += (1.0-expV/mexp)/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
-            scalar x= -log(expV/mexp)/$(N_batch)/$(trial_t)*DT;
-            if (x > 2) {
-                printf("%g, %g, %g,  %g \\n",x,m,expV,mexp);
-            }
-            $(loss) -= log(expV/mexp)/$(N_batch)/$(trial_t)*DT; // calculate contribution to loss
+            //printf("%g, %g, %g \\n",$(t),expV,mexp);
+
+            scalar x= -log(expV/mexp)/$(trial_t)*DT;
+            /* if (x > 2) {
+                printf("%g, %g, %g, %g \\n",x,m,expV,mexp);
+            } */
+            $(loss) += x; // calculate contribution to loss
         }
         else {
-            if ($(id) < $(N_class)) {
-                $(lambda_V) -= expV/mexp/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
-            }
+            $(lambda_V) -= expV/mexp/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
         }
     }
     $(lambda_V) -= lbdV/$(tau_m)*DT;  // simple Euler
@@ -1292,6 +1289,7 @@ EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
 # LIF neuron model for output neurons in the SHD task - non-spiking;
 # use the average cross-entropy loss of instantaneous V values instead of cross-entropy
 # of average Vs
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_SHD_avg_xentropy",
     param_names=["tau_m","tau_syn","N_neurons","N_batch","trial_steps","trial_t","N_class"],
@@ -1325,7 +1323,7 @@ EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
             $(lambda_V) += (1.0-expV/mexp)/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
             //printf("%g, %g, %g \\n",$(t),expV,mexp);
 
-            scalar x= -log(expV/mexp)/$(N_batch)/$(trial_t)*DT;
+            scalar x= -log(expV/mexp)/$(trial_t)*DT;
             if (x > 2) {
                 printf("%g, %g, %g, %g \\n",x,m,expV,mexp);
             }

@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
 from utils import random_shift, random_dilate, ID_jitter
-import mnist
 #import tonic
 from models import *
 import os
@@ -33,8 +32,7 @@ p["MODEL_SEED"]= None
 
 # Experiment parameters
 p["TRIAL_MS"]= 1400.0
-# make buffers for maximally 400 spikes (200 in a 30 ms trial) - should be safe
-p["N_MAX_SPIKE"]= 400    
+p["N_MAX_SPIKE"]= 400    # make buffers for maximally 400 spikes (200 in a 30 ms trial) - should be safe
 p["N_BATCH"]= 32
 p["N_TRAIN"]= 7644 # together with N_VALIDATE= 512 this is all 8156 samples
 p["N_VALIDATE"]= 512
@@ -135,7 +133,7 @@ class SHD_model:
         if p["TRAIN_DATA_SEED"] is not None:
             self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
         else:
-            self.datarng= np.random.default_rng()        
+            self.datarng= np.random.default_rng()
 
         if p["TEST_DATA_SEED"] is not None:
             self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
@@ -168,34 +166,45 @@ class SHD_model:
                 ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
         plt.show()
         
-    def loss_func_first_spike(self, nfst, Y, trial, N_class):
+    def loss_func_first_spike_exp(self, nfst, Y, trial, N_class, N_batch):
         t= nfst-trial*p["TRIAL_MS"]
         expsum= self.output.vars["expsum"].view[:N_batch,0]
         exp_st= self.output.vars["exp_st"].view[:N_batch,:self.N_class]
         pred= np.argmin(t,axis=-1)
         exp_st= np.array([ exp_st[i,pred[i]] for i in range(pred.shape[0])])
         selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
+        selected[selected > p["TRIAL_MS"]]= p["TRIAL_MS"]
         loss= -np.sum(np.log(exp_st/expsum)-p["ALPHA"]*(np.exp(selected/p["TAU_1"])-1))
         loss/= N_batch
         return loss
 
-    def loss_func_max_sum(self, Y, N_batch):
-        #print(f"len(Y)= {len(Y)}, N_batch= {N_batch}")
-        expsum= self.output.vars["expsum"].view[:N_batch,:self.N_class]
+    def loss_func_first_spike(self, nfst, Y, trial, N_class, N_batch):
+        t= nfst-trial*p["TRIAL_MS"]
+        expsum= self.output.vars["expsum"].view[:N_batch,0]
+        exp_st= self.output.vars["exp_st"].view[:N_batch,:self.N_class]
+        pred= np.argmin(t,axis=-1)
+        exp_st= np.array([ exp_st[i,pred[i]] for i in range(pred.shape[0])])
+        selected= np.array([ t[i,pred[i]] for i in range(pred.shape[0])])
+        selected[selected > p["TRIAL_MS"]]= p["TRIAL_MS"]
+        loss= -np.sum(np.log(exp_st/expsum)-p["ALPHA"]/(1.01*p["TRIAL_MS"]-selected))
+        loss/= N_batch
+        return loss
 
+    def loss_func_max_sum(self, Y, N_batch):
+        expsum= self.output.vars["expsum"].view[:N_batch,:self.N_class]
         exp_V= self.output.vars["exp_V"].view[:N_batch,:self.N_class]
         exp_V_correct= np.array([ exp_V[i,y] for i, y in enumerate(Y) ])
         if (np.sum(exp_V_correct == 0) > 0):
             print("exp_V flushed to 0 exception!")
             print(exp_V_correct)
             print(exp_V[np.where(exp_V_correct == 0),:])
-            exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0            
+            exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0
         loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/N_batch
         return loss
 
     def loss_func_avg_xentropy(self, N_batch):
         loss= self.output.vars["loss"].view[:N_batch,:self.N_class]
-        loss= np.mean(np.sum(loss,axis= 1))
+        loss= np.mean(np.sum(loss,axis= 1)) # use mean to achieve 1/N_batch here
         return loss
 
     """
@@ -365,7 +374,6 @@ class SHD_model:
             "t": np.array([])
         }
         Yempty= -1
-        # N is the number of training/testing images: always use all images given
         if Xtrain is None:
             X= Xeval
             Y= Yeval
@@ -385,6 +393,7 @@ class SHD_model:
                 X= np.append(X, [Xempty]*padN)
                 Y= np.append(Y, [Yempty]*padN)
         Y= Y.astype(int)
+        # N is the number of training/testing images: always use all images given
         N= len(Y)
         all_sts= []
         all_input_end= []
@@ -561,7 +570,7 @@ class SHD_model:
                 self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars)
             self.hidden.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
             self.hidden.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
-
+            
             hidden_reset_params= {
                 "V_reset": p["V_RESET"],
                 "N_max_spike": p["N_MAX_SPIKE"],
@@ -700,7 +709,7 @@ class SHD_model:
                 self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
             if p["LOSS_TYPE"] == "first_spike_exp":
                 self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike_exp, output_params, self.output_init_vars)
-                    
+            
             self.output.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"], dtype=np.float32))
             self.output.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"], dtype=np.float32))
             self.output.set_extra_global_param("label", np.zeros(self.data_full_length, dtype=np.float32)) # reserve space for labels
@@ -780,7 +789,6 @@ class SHD_model:
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
             }
-
             self.output_init_vars= {
                 "V": p["V_RESET"],
                 "lambda_V": 0.0,
@@ -997,15 +1005,6 @@ class SHD_model:
             if p["RECURRENT"]:
                 self.hid_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_last.npy"))
                 self.hid_to_hid.push_var_to_device("w")
-        else:
-            # zero the weights of synapses to "padding output neurons" - this should remove them from influencing the backward pass
-            mask= np.zeros((p["NUM_HIDDEN"],self.num_output))
-            mask[:,self.N_class:]= 1
-            mask= np.array(mask, dtype= bool).flatten()
-            self.hid_to_out.pull_var_from_device("w")
-            self.hid_to_out.vars["w"].view[mask]= 0
-            self.hid_to_out.push_var_to_device("w")
-            print("connections zeroed")
 
         # set up run
         N_trial= 0
@@ -1162,7 +1161,7 @@ class SHD_model:
 
             spk_rec_offset= 0
             for trial in range(N_trial):
-                trial_end= (trial+1)*p["TRIAL_MS"]                
+                trial_end= (trial+1)*p["TRIAL_MS"]
 
                 # assign the input spike train and corresponding labels
                 if trial < N_trial_train:
@@ -1324,7 +1323,10 @@ class SHD_model:
                 if p["LOSS_TYPE"][:-4] == "first_spike":
                     self.output.pull_var_from_device("expsum")
                     self.output.pull_var_from_device("exp_st")
-                    losses= self.loss_func_first_spike(nfst, lbl, trial, N_batch)
+                    if p["LOSS_TYPE"] == "first_spike":
+                        losses= self.loss_func_first_spike(nfst, lbl, trial, self.N_class, N_batch)
+                    if p["LOSS_TYPE"] == "first_spike_exp":
+                        losses= self.loss_func_first_spike_exp(nfst, lbl, trial, self.N_class, N_batch)
 
                 if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
                     self.output.pull_var_from_device("expsum")
@@ -1353,7 +1355,7 @@ class SHD_model:
                     if p["RECURRENT"]:
                         self.hid_to_hid.pull_var_from_device("w")
                         np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_e{}_t{}.npy".format(epoch,trial)), self.hid_to_hid.vars["w"].view.copy())
-                    
+
             if N_trial_train > 0:
                 correct= good["train"]/len(X_train)
             else:
