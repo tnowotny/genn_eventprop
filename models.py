@@ -1324,9 +1324,9 @@ EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
             //printf("%g, %g, %g \\n",$(t),expV,mexp);
 
             scalar x= -log(expV/mexp)/$(trial_t)*DT;
-            if (x > 2) {
+            /* if (x > 2) {
                 printf("%g, %g, %g, %g \\n",x,m,expV,mexp);
-            }
+            } */
             $(loss) += x; // calculate contribution to loss
         }
         else {
