@@ -1544,3 +1544,12 @@ class SHD_model:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         return self.run_model(1, p, False, X_eval= self.X_test_orig, labels_eval= self.Y_test_orig)
+
+    def train_test(self, p):
+        self.define_model(p, p["SHUFFLE"])
+        if p["BUILD"]:
+            self.model.build()
+        self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
+        resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
+        return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= self.X_train_orig, labels_train= self.Y_train_orig, X_eval= self.X_test_orig, labels_eval= self.Y_test_orig, resfile= resfile)
+        
