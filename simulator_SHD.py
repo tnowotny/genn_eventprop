@@ -220,16 +220,16 @@ class SHD_model:
             self.tdatarng= np.random.default_rng()        
         dataset = tonic.datasets.SHD(save_to='./data', train=True)
         sensor_size = dataset.sensor_size
-        self.data_full_length= len(dataset)
+        self.data_max_length= len(dataset)+2*p["N_BATCH"]
         self.N_class= len(dataset.classes)
         self.num_input= int(np.product(sensor_size))
         self.num_output= 32   # first power of two greater than class number
-        idx= np.arange(self.data_full_length)
+        idx= np.arange(len(dataset))
         if (shuffle):
             self.datarng.shuffle(idx)
 
         train_idx= idx[np.arange(p["N_TRAIN"])]
-        eval_idx= idx[np.arange(p["N_VALIDATE"])+(self.data_full_length-p["N_VALIDATE"])]
+        eval_idx= idx[np.arange(p["N_VALIDATE"])+(len(dataset)-p["N_VALIDATE"])]
         self.Y_train_orig= np.empty(len(train_idx), dtype= int)
         self.X_train_orig= []
         for i, s in enumerate(train_idx):
@@ -243,7 +243,7 @@ class SHD_model:
             self.Y_val_orig[i]= label
             self.X_val_orig.append(events)
         dataset = tonic.datasets.SHD(save_to='./data', train=False)
-        self.data_full_length= max(self.data_full_length, len(dataset))
+        self.data_max_length+= len(dataset)
         self.Y_test_orig= np.empty(len(dataset), dtype= int)
         self.X_test_orig= []
         for i in range(len(dataset)):
@@ -258,7 +258,7 @@ class SHD_model:
         print("Using cache dir: %s"%cache_dir)
         self.num_input= 700
         self.num_output= 20
-        self.data_full_length= 0
+        self.data_max_length= 2*p["N_BATCH"]
         if p["DOWNLOAD_SHD"]:
             # dowload the SHD data from the Zenke website
             # The remote directory with the data files
@@ -293,7 +293,7 @@ class SHD_model:
         times= fileh.root.spikes.times
         self.Y_train_orig= np.array(fileh.root.labels)
         self.Z_train_orig= np.array(fileh.root.extra.speaker)
-        self.data_full_length= max(self.data_full_length, len(units))
+        self.data_max_length+= len(units)
         self.N_class= len(set(self.Y_train_orig))
         self.X_train_orig= []
         for i in range(len(units)):
@@ -313,7 +313,7 @@ class SHD_model:
         times= fileh.root.spikes.times
         self.Y_test_orig= fileh.root.labels
         self.Z_test_orig= fileh.root.extra.speaker
-        self.data_full_length= max(self.data_full_length, len(units))
+        self.data_max_length+= len(units)
         self.X_test_orig= []
         for i in range(len(units)):
             self.X_test_orig.append({"x": units[i], "t": times[i]})
@@ -485,9 +485,9 @@ class SHD_model:
         }
         self.input_set= self.model.add_custom_update("input_set", "inputUpdate", EVP_input_set_MNIST_shuffle, input_set_params, {}, input_set_var_refs)
         # reserving memory for the worst case of the full training set
-        self.input_set.set_extra_global_param("allStartSpike", np.zeros(self.data_full_length*self.num_input, dtype=int))
-        self.input_set.set_extra_global_param("allEndSpike", np.zeros(self.data_full_length*self.num_input, dtype=int))
-        self.input_set.set_extra_global_param("allInputID", np.zeros(self.data_full_length, dtype=int))
+        self.input_set.set_extra_global_param("allStartSpike", np.zeros(self.data_max_length*self.num_input, dtype=int))
+        self.input_set.set_extra_global_param("allEndSpike", np.zeros(self.data_max_length*self.num_input, dtype=int))
+        self.input_set.set_extra_global_param("allInputID", np.zeros(self.data_max_length, dtype=int))
         self.input_set.set_extra_global_param("trial", 0)
 
 
@@ -712,7 +712,7 @@ class SHD_model:
             
             self.output.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"], dtype=np.float32))
             self.output.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"], dtype=np.float32))
-            self.output.set_extra_global_param("label", np.zeros(self.data_full_length, dtype=np.float32)) # reserve space for labels
+            self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
 
             output_reset_params= {
                 "V_reset": p["V_RESET"],
@@ -759,7 +759,7 @@ class SHD_model:
                 "exp_V": 1.0,
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_max, output_params, self.output_init_vars)
-            self.output.set_extra_global_param("label", np.zeros(self.data_full_length, dtype=np.float32)) # reserve space for labels
+            self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
 
             output_reset_params= {
                 "V_reset": p["V_RESET"],
@@ -816,7 +816,7 @@ class SHD_model:
                 self.output_init_vars["wp_V"]= 0;
                 self.output_init_vars["avgInback"]= 0.0;
             self.output= self.model.add_neuron_population("output", self.num_output, the_output_neuron_type, output_params, self.output_init_vars)
-            self.output.set_extra_global_param("label", np.zeros(self.data_full_length, dtype=np.float32)) # reserve space for labels
+            self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
             if p["LOSS_TYPE"] == "sum_weigh_input":
                 self.output.set_extra_global_param("aIbuf", np.zeros(p["N_BATCH"]*self.num_output*self.trial_steps*2, dtype=np.float32)) # reserve space for avgInput
             output_reset_params= {
@@ -864,7 +864,7 @@ class SHD_model:
                 "loss": 0,
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_SHD_avg_xentropy, output_params, self.output_init_vars)
-            self.output.set_extra_global_param("label", np.zeros(self.data_full_length, dtype=np.float32)) # reserve space for labels
+            self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
             self.output.set_extra_global_param("Vbuf", np.zeros(p["N_BATCH"]*self.num_output*self.trial_steps*2, dtype=np.float32)) # reserve space for voltage buffer
 
             output_reset_params= {
