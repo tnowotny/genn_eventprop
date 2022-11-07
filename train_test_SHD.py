@@ -1,4 +1,4 @@
-from simulator_MNIST import *
+from simulator_SHD import *
 import matplotlib.pyplot as plt
 import numpy as np
 import json
@@ -18,7 +18,7 @@ p["ADAM_BETA2"]= 0.999
 p["DEBUG"]= False
 p["DEBUG_HIDDEN_N"]= True
 p["LOAD_LAST"]= False
-p["N_EPOCH"]= 300
+p["N_EPOCH"]= 2
 p["N_BATCH"]= 256
 p["SUPER_BATCH"]= 1
 p["N_TRAIN"]= 8156 # that is all of them
@@ -46,7 +46,7 @@ p["ETA_REDUCE_PERIOD"]= 50
 p["TIMING"]= False
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["LOSS_TYPE"]= "sum"
-p["EVALUATION"]= "speaker"
+p["EVALUATION"]= "random"
 
 p["RECURRENT"]= True
 p["HIDDEN_HIDDEN_MEAN"]= 0.0
@@ -69,19 +69,11 @@ if p["DEBUG"]:
 with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'), 'w') as file:
     json.dump(p, file)
 
-mn= mnist_model(p)
-
-for i in range(5):
-    p["LOAD_LAST"]= False
-    spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
-    print("training correct: {}".format(correct))
-    print("training correct_eval: {}".format(correct_eval))
-    tc= correct
+p["N_TRAIN"]= 8156
+p["N_VALIDATE"]= 0
+for i in range(10):
+    mn= SHD_model(p)
+    spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train_test(p)
+    with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_traintest.txt'),'a') as f:
+        f.write("{} {}\n".format(correct,correct_eval))
     p["TRAIN_DATA_SEED"]+= 31
-    p["LOAD_LAST"]= True
-    spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.test(p)
-    print("test correct: {}".format(correct))
-    print("test correct_eval: {}".format(correct_eval))
-    p["TEST_DATA_SEED"]+= 31
-    with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_allresult.txt'),'a') as f:
-        f.write("{} {}\n".format(tc,correct_eval))

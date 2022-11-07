@@ -1515,10 +1515,16 @@ class SHD_model:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
-        if p["EVALUATION"] == "random":
-            X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
-        if p["EVALUATION"] == "speaker":
-            X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["SPEAKER_LEFT"], p)
+        if p["N_VALIDATE"] > 0:
+            if p["EVALUATION"] == "random":
+                X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
+            if p["EVALUATION"] == "speaker":
+                X_train, Y_train, X_eval, Y_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["SPEAKER_LEFT"], p)
+        else:
+            X_train= self.X_train_orig
+            Y_train= self.Y_train_orig
+            X_eval= None
+            Y_eval= None
         return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= X_train, labels_train= Y_train, X_eval= X_eval, labels_eval= Y_eval, resfile= resfile)
         
     def cross_validate_SHD(self, p):
