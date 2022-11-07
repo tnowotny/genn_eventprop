@@ -173,23 +173,23 @@ class mnist_model:
     def load_data_MNIST(self, p, shuffle= True):
         X = mnist.train_images()
         Y = mnist.train_labels()
-        self.data_full_length= 60000
-        self.max_length= self.data_full_length+10000+2*p["N_BATCH"]  # maximal length of padded training/validation/testing array
         self.N_class= 10
         self.num_input= 28*28
         self.num_output= self.N_class 
-        idx= np.arange(self.data_full_length)
+        self.data_max_length= len(Y)+2*p["N_BATCH"]
+        idx= np.arange(len(Y))
         if (shuffle):
             self.datarng.shuffle(idx)
             X= X[idx]
-        self.X_val_orig= X[self.data_full_length-p["N_VALIDATE"]:,:,:]
+        self.X_val_orig= X[len(Y)-p["N_VALIDATE"]:,:,:]
         self.X_train_orig= X[:p["N_TRAIN"],:,:]
         Y= Y[idx]
-        self.Y_val_orig= Y[self.data_full_length-p["N_VALIDATE"]:]
+        self.Y_val_orig= Y[len(Y)-p["N_VALIDATE"]:]
         self.Y_train_orig= Y[:p["N_TRAIN"]]
         # also load some testing data
         X = mnist.test_images()
         Y = mnist.test_labels()
+        self.data_max_length+= len(Y)
         idx= np.arange(10000)
         if (shuffle):
             self.tdatarng.shuffle(idx)
@@ -331,9 +331,9 @@ class mnist_model:
         }
         self.input_set= self.model.add_custom_update("input_set", "inputUpdate", EVP_input_set_MNIST_shuffle, input_set_params, {}, input_set_var_refs)
         # reserving memory for the worst case of the full training set
-        self.input_set.set_extra_global_param("allStartSpike", np.zeros(self.max_length*self.num_input, dtype=int))
-        self.input_set.set_extra_global_param("allEndSpike", np.zeros(self.max_length*self.num_input, dtype=int))
-        self.input_set.set_extra_global_param("allInputID", np.zeros(self.max_length, dtype=int))
+        self.input_set.set_extra_global_param("allStartSpike", np.zeros(self.data_max_length*self.num_input, dtype=int))
+        self.input_set.set_extra_global_param("allEndSpike", np.zeros(self.data_max_length*self.num_input, dtype=int))
+        self.input_set.set_extra_global_param("allInputID", np.zeros(self.data_max_length, dtype=int))
         self.input_set.set_extra_global_param("trial", 0)
 
 
@@ -555,7 +555,7 @@ class mnist_model:
             
             self.output.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"], dtype=np.float32))
             self.output.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*self.num_output*p["N_MAX_SPIKE"], dtype=np.float32))
-            self.output.set_extra_global_param("label", np.zeros(self.max_length, dtype=np.float32)) # reserve space for labels
+            self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
 
             output_reset_params= {
                 "V_reset": p["V_RESET"],
@@ -602,7 +602,7 @@ class mnist_model:
                 "exp_V": 1.0,
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_max, output_params, self.output_init_vars)
-            self.output.set_extra_global_param("label", np.zeros(self.max_length, dtype=np.float32)) # reserve space for labels
+            self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
 
             output_reset_params= {
                 "V_reset": p["V_RESET"],
@@ -643,7 +643,7 @@ class mnist_model:
                 "exp_V": 1.0,
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_sum, output_params, self.output_init_vars)
-            self.output.set_extra_global_param("label", np.zeros(self.max_length, dtype=np.float32)) # reserve space for labels
+            self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
 
             output_reset_params= {
                 "V_reset": p["V_RESET"],
@@ -684,7 +684,7 @@ class mnist_model:
                 "loss": 0,
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST_avg_xentropy, output_params, self.output_init_vars)
-            self.output.set_extra_global_param("label", np.zeros(self.max_length, dtype=np.float32)) # reserve space for labels
+            self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
             self.output.set_extra_global_param("Vbuf", np.zeros(p["N_BATCH"]*self.num_output*self.trial_steps*2, dtype=np.float32)) # reserve space for voltage buffer
 
             output_reset_params= {
