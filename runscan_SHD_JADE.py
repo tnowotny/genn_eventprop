@@ -1,4 +1,4 @@
-from simulator_MNIST import *
+from simulator_SHD import *
 import matplotlib.pyplot as plt
 import numpy as np
 import json
@@ -6,14 +6,13 @@ import sys
 
 fname= sys.argv[1]
 with open(fname,"r") as f:
-    p= json.load(f)
+    p0= json.load(f)
 
-mn= mnist_model(p)
-res, times= mn.cross_validate_SHD(p)
+for (name,value) in p0.items():
+    p[name]= value
+
+mn= SHD_model(p)
+res= mn.cross_validate_SHD(p)
 
 with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_summary.json'),'w') as f:
     json.dump(res, f)
-
-with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_times.txt'),'w') as f:
-    for t in times:
-        f.write("{}\n".format(t))
