@@ -248,13 +248,16 @@ class mnist_model:
         self.max_stim_time= 0.0
         for i in range(N):
             tx= X[i,:]
+            # identify the neurons that are spiking (threshold 1 on graylevels)
             ix= tx > 1
-            #ix= tx[tx > 5.1]
+            # select only those neurons that spike to produce a spike time
             tx= tx[ix]
+            # generate spike times; note, these are relative to trial start
             tx= self.spike_time_from_gray(tx)
             if len(tx) > 0:
                 self.max_stim_time= max(self.max_stim_time, np.amax(tx))
-            #tx= self.spike_time_from_gray2(tx)
+            # determine i_end from ix so that the right spike times are attributed to the
+            # right neurons (uses True == 1, False == 0 in cumsum)
             i_end= np.cumsum(ix)+stidx_offset
             all_sts.append(tx)
             i_start= np.empty(i_end.shape)

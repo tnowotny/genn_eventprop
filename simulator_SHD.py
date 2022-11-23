@@ -87,7 +87,7 @@ p["LOAD_LAST"]= False
 # possible loss types: "first_spike", "first_spike_exp", "max",
 # "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_sigmoid", "sum_weigh_input",
 # "avg_xentropy"
-p["LOSS_TYPE"]= "max"
+p["LOSS_TYPE"]= "sum_weigh_exp"
 
 # possible evaluation types: "random", "speaker"
 p["EVALUATION"]= "random"
