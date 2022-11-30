@@ -46,3 +46,51 @@ def random_dilate(X,rng,min_factor,max_factor):
         X[i]["t"]= X[i]["t"][idx]
         X[i]["x"]= X[i]["x"][idx]
     return X
+
+
+"""
+class for counting through bespoke tuples
+"""
+
+class incr:
+    def __init__(self, ranges, fix= [], fix_v= []):
+        self.x= np.zeros(len(ranges), dtype= int)
+        self.rngs= ranges
+        fix= np.array(fix, dtype= int)
+        self.fix= fix[fix < len(ranges)]
+        fix_v= np.array(fix_v)
+        self.x[self.fix]= fix_v[fix < len(ranges)]
+        self.calc_val()
+
+    def calc_val(self):
+        self.v= 0
+        for i in range(len(self.rngs)):
+            self.v= self.v*self.rngs[i]+self.x[i]
+            
+    def val(self):
+        return self.v
+
+    def next(self):
+        if self.v is not None:
+            cont= self.add(len(self.rngs)-1)
+            if cont:
+                self.calc_val()
+            else:
+                self.v= None
+            
+    def add(self,level):
+        down= False
+        if level not in self.fix:
+            self.x[level]+= 1
+            if self.x[level] >= self.rngs[level]:
+                self.x[level]= 0
+                down= True
+        else:
+            down= True
+        if down:
+            if level > 0:
+                return self.add(level-1)
+            else:
+                return False
+        else:
+            return True
