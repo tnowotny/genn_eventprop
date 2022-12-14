@@ -522,9 +522,10 @@ EVP_SSA = genn_model.create_custom_neuron_class(
 
 """
 A type of SpikeSourceArray that provides more efficient updating of input patterns when shuffling of inputs
-is required. the basic idea here is that spike patterns are pre-loaded into the spikeTimes array but each pattern
+is required. The basic idea here is that spike patterns are pre-loaded into the spikeTimes array but each pattern
 assumes a start at time 0 and patterns are not "concatenated" for each neuron. Then, there is a matching startSpike
 and endSpike array pointing into the right positions for each neuron for each input pattern. By indexing into the startspike and endSpike array, one can choose an input pattern (0 to #patterns-1).
+In this version spike times are recorded explicitly in a ring buffer and used in the next backward pass, so the previous input's spike times is not needed any more.
 As above, for the MNIST experiment, we need "dropout" or "unreliable spiking", which can be switched on (training) and off (testing)
 """
 EVP_SSA_MNIST_SHUFFLE = genn_model.create_custom_neuron_class(
