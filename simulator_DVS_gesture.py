@@ -128,7 +128,7 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
         o.extra_global_params["firstMomentScale"].view[:] = first_moment_scale
         o.extra_global_params["secondMomentScale"].view[:] = second_moment_scale
 
-class SMNIST_model:
+class DVSG_model:
 
     def __init__(self, p):
         if p["TRAIN_DATA_SEED"] is not None:
@@ -232,6 +232,14 @@ class SMNIST_model:
         self.X_train_orig= []
         for i in range(self.train_length):
             events, label = dataset[i]
+            #events= {
+            #    "x": [ x*y*p for (x, y, p, t) in events ],
+            #    "t": [ t for (x, y, p, t) in events ],
+            #}
+            events= {
+                "x": (events["y"]*32+events["x"])*2+events["p"],
+                "t": events["t"]
+            }
             self.Y_train_orig.append(label)
             self.X_train_orig.append(events)
         self.Y_train_orig= np.array(self.Y_train_orig)
@@ -242,9 +250,18 @@ class SMNIST_model:
         self.X_test_orig= []
         for i in range(len(dataset)):
             events, label = dataset[i]
+            #events= {
+            #    "x": [ x*y*p for (x, y, p, t) in events ],
+            #    "t": [ t for (x, y, p, t) in events ],
+            #}
+            events= {
+                "x": (events["y"]*32+events["x"])*2+events["p"],
+                "t": events["t"]
+            }
             self.Y_test_orig.append(label)
             self.X_test_orig.append(events)
         self.Y_test_orig= np.array(self.Y_test_orig)
+        print(self.X_train_orig[0])
         
     def reduce_classes(self, X, Y, classes):
         idx= [y in classes for y in Y]
@@ -316,7 +333,7 @@ class SMNIST_model:
                                           minlength=self.num_input))+stidx_offset    
             assert len(i_end) == self.num_input
             tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
-            tx /= 1000.0
+            #tx /= 1000.0
             if len(tx) > 0:
                 self.max_stim_time= max(self.max_stim_time, np.amax(tx))
             all_sts.append(tx)
@@ -371,7 +388,7 @@ class SMNIST_model:
         self.input= self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, input_params, self.input_init_vars)
         self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*p["N_MAX_SPIKE"], dtype=np.float32))
         # reserve enough space for any set of input spikes that is likely
-        self.input.set_extra_global_param("spikeTimes", np.zeros(350000000, dtype=np.float32))
+        self.input.set_extra_global_param("spikeTimes", np.zeros(400000000, dtype=np.float32))
 
         input_reset_params= {"N_max_spike": p["N_MAX_SPIKE"]}
         input_reset_var_refs= {
