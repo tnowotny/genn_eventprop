@@ -96,7 +96,6 @@ p["AVG_SNSUM"]= False
 p["REWIRE_SILENT"]= True
 p["REDUCED_CLASSES"]= None
 p["AUGMENTATION"]= {}
-p["DOWNLOAD_SHD"]= False
 p["COLLECT_CONFUSION"]= False
 p["REC_PREDICTIONS"]= False
 # "first_spike" loss function variables
