@@ -93,9 +93,9 @@ p["LOSS_TYPE"]= "sum_weigh_exp"
 p["EVALUATION"]= "random"
 p["CUDA_VISIBLE_DEVICES"]= False
 p["AVG_SNSUM"]= False
+p["REWIRE_SILENT"]= True
 p["REDUCED_CLASSES"]= None
 p["AUGMENTATION"]= {}
-p["DOWNLOAD_SHD"]= False
 p["COLLECT_CONFUSION"]= False
 p["REC_PREDICTIONS"]= False
 # "first_spike" loss function variables
@@ -220,7 +220,7 @@ class SMNIST_model:
             self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
         else:
             self.tdatarng= np.random.default_rng()        
-        dataset = tonic.datasets.SMNIST(save_to='./data', train=True)
+        dataset = tonic.datasets.SMNIST(save_to='./data', train=True, download=False)
         sensor_size = dataset.sensor_size
         self.data_max_length= len(dataset)+2*p["N_BATCH"]
         self.train_length= len(dataset)
@@ -234,7 +234,7 @@ class SMNIST_model:
             self.Y_train_orig.append(label)
             self.X_train_orig.append(events)
         self.Y_train_orig= np.array(self.Y_train_orig)
-        dataset = tonic.datasets.SMNIST(save_to='./data', train=False)
+        dataset = tonic.datasets.SMNIST(save_to='./data', train=False, download=False)
         self.data_max_length+= len(dataset)
         self_test_length= len(dataset)
         self.Y_test_orig= []
