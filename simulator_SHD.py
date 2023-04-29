@@ -111,11 +111,34 @@ p["HIDDEN_NOISE"]= 0.0
 
 p["SPEAKER_LEFT"]= 0
 
+# rescaling factor for the time, 1.0 means no rescaling
+p["RESCALE_T"]= 1.0
+# rescaling factor for the channels, 1.0 means no rescaling
+p["RESCALE_X"]= 1.0
+
 # ----------------------------------------------------------------------------
 # Helper functions
 # ----------------------------------------------------------------------------
 
 rng= np.random.default_rng()
+
+def rescale(x, t, p):
+    new_x= np.array(x*p["RESCALE_X"])
+    new_x= np.floor(new_x).astype(int)
+    new_t= np.array(t*p["RESCALE_T"]*1000.0) # do Zenke's seconds -> ms here
+    new_t= np.floor(new_t/p["DT_MS"]).astype(int)
+    fmatrix= np.zeros((int(700*p["RESCALE_X"]),int(p["TRIAL_MS"]/p["DT_MS"])))
+    for (lx, lt) in zip(new_x, new_t):
+        fmatrix[lx, lt]= 1
+    fin_x= []
+    fin_t= []
+    for i in range(fmatrix.shape[0]):
+        for j in range(fmatrix.shape[1]):
+            if fmatrix[i,j] == 1:
+                fin_x.append(i)
+                fin_t.append(j*p["DT_MS"])
+    sample= {"x": np.array(fin_x), "t": np.array(fin_t)}
+    return sample
 
 def update_adam(learning_rate, adam_step, optimiser_custom_updates):
     first_moment_scale = 1.0 / (1.0 - (p["ADAM_BETA1"] ** adam_step))
@@ -256,7 +279,7 @@ class SHD_model:
         cache_dir=os.path.expanduser("~/data")
         cache_subdir="SHD"
         print("Using cache dir: %s"%cache_dir)
-        self.num_input= 700
+        self.num_input= int(700*p["RESCALE_X"])
         self.num_output= 20
         self.data_max_length= 2*p["N_BATCH"]
         if p["DOWNLOAD_SHD"]:
@@ -297,7 +320,8 @@ class SHD_model:
         self.N_class= len(set(self.Y_train_orig))
         self.X_train_orig= []
         for i in range(len(units)):
-            self.X_train_orig.append({"x": units[i], "t": times[i]})
+            sample= rescale(units[i], times[i], p)
+            self.X_train_orig.append(sample)
         self.X_train_orig= np.array(self.X_train_orig)
         # do the test files
         if p["DOWNLOAD_SHD"]:
@@ -316,7 +340,8 @@ class SHD_model:
         self.data_max_length+= len(units)
         self.X_test_orig= []
         for i in range(len(units)):
-            self.X_test_orig.append({"x": units[i], "t": times[i]})
+            sample= rescale(units[i], times[i], p)
+            self.X_test_orig.append(sample)
         self.X_test_orig= np.array(self.X_test_orig)
         
     def reduce_classes(self, X, Y, Z, classes):
@@ -407,7 +432,6 @@ class SHD_model:
                                           minlength=self.num_input))+stidx_offset    
             assert len(i_end) == self.num_input
             tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
-            tx *= 1000.0
             if len(tx) > 0:
                 self.max_stim_time= max(self.max_stim_time, np.amax(tx))
             all_sts.append(tx)
@@ -1086,11 +1110,11 @@ class SHD_model:
                 lX= copy.deepcopy(X_train)
                 for aug in p["AUGMENTATION"]:
                     if aug == "random_shift":
-                        lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug])
+                        lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug],p)
                     if aug == "random_dilate":
-                        lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1])
+                        lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1],p)
                     if aug == "ID_jitter":
-                        lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug])
+                        lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug],p)
                 X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, labels_train, X_eval, labels_eval)
                 self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
                 self.input.push_extra_global_param_to_device("spikeTimes")
