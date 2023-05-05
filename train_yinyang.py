@@ -21,7 +21,7 @@ p["TRAINING_PLOT_INTERVAL"]= 1
 p["INPUT_HIDDEN_MEAN"]= 1.5
 p["INPUT_HIDDEN_STD"]= 0.78
 p["LOAD_LAST"]= False
-
+p["PDROP"]= 0.0
 
 x= [-3.     , -2.69897, -1.30103, -3.30103, -1.30103]
 x= [-2.5     , -2.69897, -1, -2, -1]
@@ -32,9 +32,8 @@ p["ETA_DECAY"]= 1-np.exp(x[1]*log10)
 p["ADAM_BETA1"]= 1-np.exp(x[2]*log10)
 p["ADAM_BETA2"]= 1-np.exp(x[3]*log10)
 p["ALPHA"]= np.exp(x[4]*log10)
-
 yy= yinyang(p)
-yy.train(p)
+spikes= yy.train(p)
 
 p["LOAD_LAST"]= True
 p["TRAINING_PLOT"]= True

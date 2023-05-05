@@ -227,6 +227,7 @@ class yinyang:
         self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars) 
         self.hidden.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
         self.hidden.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
+        self.hidden.set_extra_global_param("pDrop",p["PDROP"])
         
         self.output= self.model.add_neuron_population("output", NUM_OUTPUT, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
         self.output.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*NUM_OUTPUT*p["N_MAX_SPIKE"], dtype=np.float32))
