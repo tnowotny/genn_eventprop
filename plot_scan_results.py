@@ -25,7 +25,7 @@ print(idx)
 idx= np.array(idx.flatten(), dtype= int)
 final_cor= np.zeros((ht,wd))
 final_cor_e= np.zeros((ht,wd))
-fig, ax= plt.subplots(ht,wd,sharex= True, sharey= True)
+#fig, ax= plt.subplots(ht,wd,sharex= True, sharey= True)
 for i in range(ht):
     for j in range(wd):
         fname= basename+"_"+str(i*wd+j)+"_results.txt"
@@ -36,8 +36,8 @@ for i in range(ht):
             print("error trying to load {}".format(fname))
         else:
             if len(d) > 0:
-                ax[i,j].plot(1-d[:,1])
-                ax[i,j].plot(1-d[:,3])
+#                ax[i,j].plot(1-d[:,1])
+#                ax[i,j].plot(1-d[:,3])
                 mn= np.min([mn,np.amin(1-d[:,3])])
                 try:
                     final_cor[i,j]= np.mean(d[idx,1])
@@ -45,12 +45,12 @@ for i in range(ht):
                 except:
                     final_cor[i,j]= 0
                     final_cor_e[i,j]= 0
-            ax[i,j].set_title("scan_"+str(i*wd+j),fontsize= 6)
+#            ax[i,j].set_title("scan_"+str(i*wd+j),fontsize= 6)
 print(mn)
 #plt.yscale("log")
-fig.savefig(basename+"_accuracy.png")
+#fig.savefig(basename+"_accuracy.png")
 
-fig, ax= plt.subplots(1,2,sharey=True)
+#fig, ax= plt.subplots(1,2,sharey=True)
 for i in range(ht):
     for j in range(wd):
         fname= basename+"_"+str(i*wd+j)+"_results.txt"
@@ -59,16 +59,16 @@ for i in range(ht):
                 d= np.loadtxt(f)
         except:
             print("error trying to load {}".format(fname))
-        else:
-            if len(d) > 0:
-                ax[0].plot(1-d[:,1])
-                ax[1].plot(1-d[:,3])
+#        else:
+#            if len(d) > 0:
+#                ax[0].plot(1-d[:,1])
+#                ax[1].plot(1-d[:,3])
 #plt.yscale("log")
-fig.savefig(basename+"_accuracy_2.png")
+#fig.savefig(basename+"_accuracy_2.png")
 
 final_loss= np.zeros((ht,wd))
 final_loss_e= np.zeros((ht,wd))
-fig, ax= plt.subplots(ht,wd,sharex= True, sharey= True)
+#fig, ax= plt.subplots(ht,wd,sharex= True, sharey= True)
 mn= 10.0
 for i in range(ht):
     for j in range(wd):
@@ -80,8 +80,8 @@ for i in range(ht):
             print("error trying to load {}".format(fname))
         else:
             if len(d) > 0:
-                ax[i,j].plot(d[:,2])
-                ax[i,j].plot(d[:,4])
+#                ax[i,j].plot(d[:,2])
+#                ax[i,j].plot(d[:,4])
                 mn= np.min([mn,np.amin(d[:,4])])
                 try:
                     final_loss[i,j]= np.mean(d[idx,2])
@@ -89,11 +89,13 @@ for i in range(ht):
                 except:
                     final_loss[i,j]= 0
                     final_loss_e[i,j]= 0
-            ax[i,j].set_title("scan_"+str(i*wd+j))
+#            ax[i,j].set_title("scan_"+str(i*wd+j))
 #plt.yscale("log")
 #plt.ylim([0.01,10])
 print(mn)
-fig.savefig(basename+"_loss.png")
+#fig.savefig(basename+"_loss.png")
+
+"""
 fig, ax= plt.subplots(ht,wd,sharex= True, sharey= True)
 for i in range(ht):
     for j in range(wd):
@@ -110,6 +112,7 @@ for i in range(ht):
                 ax[i,j].plot(d[:,8])
             ax[i,j].set_title("scan_"+str(i*wd+j))
 fig.savefig(basename+"_activity.png")
+"""
 
 print(final_cor)
 print(final_cor_e)
