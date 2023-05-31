@@ -66,6 +66,9 @@ p["NU_LOWER"]= 5
 p["RHO_UPPER"]= 10000.0
 p["GLB_UPPER"]= 1e-8
 
+p["REWIRE_SILENT"]= False
+p["REWIRE_LIFT"]= 0.0
+
 # Learning parameters
 p["ETA"]= 1e-3
 p["ADAM_BETA1"]= 0.9      
@@ -1394,13 +1397,16 @@ class SHD_model:
                 rewire_sNSum= np.sum(np.array(rewire_sNSum),axis= 0)
                 print(rewire_sNSum.shape)
                 silent= rewire_sNSum == 0
+                n_silent= np.sum(silent)
                 # rewire input to hidden
                 self.in_to_hid.pull_var_from_device("w")
                 ith_w= self.in_to_hid.vars["w"].view[:]
-                ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
-                n_silent= np.sum(silent)
-                n_new= self.num_input*n_silent
-                ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent))
+                if p["REWIRE_LIFT"] != 0.0:
+                    ith_w+= p["REWIRE_LIFT"]
+                else:
+                    ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
+                    n_new= self.num_input*n_silent
+                    ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent))
                 self.in_to_hid.push_var_to_device("w")
                 ## rewire hidden to output
                 #self.hid_to_out.pull_var_from_device("w")

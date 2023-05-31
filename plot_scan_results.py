@@ -131,5 +131,5 @@ im= ax[1,0].imshow(final_loss,interpolation='none', cmap='jet')
 fig.colorbar(im,ax=ax[1,0])
 im= ax[1,1].imshow(final_loss_e,interpolation='none', cmap='jet')
 fig.colorbar(im,ax=ax[1,1])
-
+fig.savefig(basename+"summary.png",dpi=300)
 plt.show()
