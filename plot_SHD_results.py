@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import sys
 
 res= np.loadtxt(sys.argv[1]+"_results.txt", dtype= np.float32)
+print(res.shape)
+
 plt.figure(figsize=(20,15))
 plt.subplot(2,2,1)
 plt.plot(1-res[:,1])
