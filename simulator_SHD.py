@@ -56,6 +56,8 @@ p["HIDDEN_OUTPUT_MEAN"]= 0.0
 p["HIDDEN_OUTPUT_STD"]= 0.3
 p["HIDDEN_HIDDEN_MEAN"]= 0.0   # only used when recurrent
 p["HIDDEN_HIDDEN_STD"]= 0.02   # only used when recurrent
+p["HIDDEN_HIDDENFWD_MEAN"]= 0.02 # only used when > 1 hidden layer
+p["HIDDEN_HIDDENFWD_STD"]= 0.01 # only used when > 1 hidden layer
 p["PDROP_INPUT"] = 0.1
 p["PDROP_HIDDEN"] = 0.0
 p["REG_TYPE"]= "none"
@@ -119,6 +121,16 @@ p["RESCALE_T"]= 1.0
 # rescaling factor for the channels, 1.0 means no rescaling
 p["RESCALE_X"]= 1.0
 
+# whether to train neuron timescales
+p["TRAIN_TAUM"]= False
+p["N_HID_LAYER"]= 1
+
+# learning rate schedule depending on exponential moving average of performance
+p["EMA_ALPHA1"]= 0.8
+p["EMA_ALPHA2"]= 0.95
+p["ETA_FAC"]= 0.5
+p["MIN_EPOCH_ETA_FIXED"]= 20
+
 # ----------------------------------------------------------------------------
 # Helper functions
 # ----------------------------------------------------------------------------
@@ -156,6 +168,18 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
 class SHD_model:
 
     def __init__(self, p):
+        self.hidden= []
+        self.hidden_reset= []
+        self.hidden_reg_reduce= []
+        self.hidden_redSNSum_apply= []
+        self.hid_to_hidfwd= []
+        self.hid_to_hidfwd_reduce= []
+        self.hid_to_hidfwd_learn= []
+        self.hid_to_hid= []
+        self.hid_to_hid_reduce= [] 
+        self.hid_to_hid_learn= []
+        self.hidden_taum_reduce= []
+        self.hidden_taum_learn= []
         if p["TRAIN_DATA_SEED"] is not None:
             self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
         else:
@@ -542,31 +566,32 @@ class SHD_model:
                 "new_fwd_start": p["N_MAX_SPIKE"]-1,
                 "back_spike": 0,
             }
-            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars)
-            self.hidden.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
-            self.hidden.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
-
+            for l in range(p["N_HID_LAYER"]):
+                self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars))
+                self.hidden[l].set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
+                self.hidden[l].set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
+            
             hidden_reset_params= {
                 "V_reset": p["V_RESET"],
                 "N_max_spike": p["N_MAX_SPIKE"],
             }
-            hidden_reset_var_refs= {
-                "rp_ImV": genn_model.create_var_ref(self.hidden, "rp_ImV"),
-                "wp_ImV": genn_model.create_var_ref(self.hidden, "wp_ImV"),
-                "V": genn_model.create_var_ref(self.hidden, "V"),
-                "lambda_V": genn_model.create_var_ref(self.hidden, "lambda_V"),
-                "lambda_I": genn_model.create_var_ref(self.hidden, "lambda_I"),
-                "rev_t": genn_model.create_var_ref(self.hidden, "rev_t"),
-                "fwd_start": genn_model.create_var_ref(self.hidden, "fwd_start"),
-                "new_fwd_start": genn_model.create_var_ref(self.hidden, "new_fwd_start"),
-                "back_spike": genn_model.create_var_ref(self.hidden, "back_spike"),
-            }
-            self.hidden_reset= self.model.add_custom_update("hidden_reset", "neuronReset", EVP_neuron_reset, hidden_reset_params, {}, hidden_reset_var_refs)
+            for l in range(p["N_HID_LAYER"]):
+                hidden_reset_var_refs= {
+                    "rp_ImV": genn_model.create_var_ref(self.hidden[l], "rp_ImV"),
+                    "wp_ImV": genn_model.create_var_ref(self.hidden[l], "wp_ImV"),
+                    "V": genn_model.create_var_ref(self.hidden[l], "V"),
+                    "lambda_V": genn_model.create_var_ref(self.hidden[l], "lambda_V"),
+                    "lambda_I": genn_model.create_var_ref(self.hidden[l], "lambda_I"),
+                    "rev_t": genn_model.create_var_ref(self.hidden[l], "rev_t"),
+                    "fwd_start": genn_model.create_var_ref(self.hidden[l], "fwd_start"),
+                    "new_fwd_start": genn_model.create_var_ref(self.hidden[l], "new_fwd_start"),
+                    "back_spike": genn_model.create_var_ref(self.hidden[l], "back_spike"),
+                }
+                self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset, hidden_reset_params, {}, hidden_reset_var_refs))
 
 
         if p["REG_TYPE"] == "simple":
             hidden_params= {
-                "tau_m": p["TAU_MEM"],
                 "V_thresh": p["V_THRESH"],
                 "V_reset": p["V_RESET"],
                 "N_neurons": p["NUM_HIDDEN"],
@@ -591,44 +616,68 @@ class SHD_model:
                 "new_sNSum": 0.0,
             }
             if p["HIDDEN_NOISE"] > 0.0:
-                self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg_noise, hidden_params, self.hidden_init_vars)
-                self.hidden.set_extra_global_param("A_noise", p["HIDDEN_NOISE"])
+                hidden_params["tau_m"]= p["TAU_MEM"]
+                for l in range(p["N_HID_LAYER"]):
+                    self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_noise, hidden_params, self.hidden_init_vars))
+                    self.hidden[l].set_extra_global_param("A_noise", p["HIDDEN_NOISE"])
             else:
-                self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars)
-            self.hidden.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
-            self.hidden.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
+                if p["TRAIN_TAUM"]:
+                    hidden_params["trial_t"]= p["TRIAL_MS"]
+                    self.hidden_init_vars["ktau_m"]= np.log(p["TAU_MEM"])
+                    self.hidden_init_vars["dktaum"]= 0.0
+                    self.hidden_init_vars["fImV_roff"]= int(p["TRIAL_MS"]/p["DT_MS"])
+                    self.hidden_init_vars["fImV_woff"]= 0
+                    for l in range(p["N_HID_LAYER"]):
+                        self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_taum, hidden_params, self.hidden_init_vars))
+                        self.hidden[l].set_extra_global_param("fImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*int(p["TRIAL_MS"]/p["DT_MS"])*2))
+                else:
+                    hidden_params["tau_m"]= p["TAU_MEM"]
+                    for l in range(p["N_HID_LAYER"]):
+                        self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars))
+            for l in range(p["N_HID_LAYER"]):
+                self.hidden[l].set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
+                self.hidden[l].set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
             
             hidden_reset_params= {
                 "V_reset": p["V_RESET"],
                 "N_max_spike": p["N_MAX_SPIKE"],
                 "N_neurons": p["NUM_HIDDEN"],
             }
-            hidden_reset_var_refs= {
-                "rp_ImV": genn_model.create_var_ref(self.hidden, "rp_ImV"),
-                "wp_ImV": genn_model.create_var_ref(self.hidden, "wp_ImV"),
-                "V": genn_model.create_var_ref(self.hidden, "V"),
-                "lambda_V": genn_model.create_var_ref(self.hidden, "lambda_V"),
-                "lambda_I": genn_model.create_var_ref(self.hidden, "lambda_I"),
-                "rev_t": genn_model.create_var_ref(self.hidden, "rev_t"),
-                "fwd_start": genn_model.create_var_ref(self.hidden, "fwd_start"),
-                "new_fwd_start": genn_model.create_var_ref(self.hidden, "new_fwd_start"),
-                "back_spike": genn_model.create_var_ref(self.hidden, "back_spike"),
-                "sNSum": genn_model.create_var_ref(self.hidden, "sNSum"),
-                "new_sNSum": genn_model.create_var_ref(self.hidden, "new_sNSum"),
-            }
-            self.hidden_reset= self.model.add_custom_update("hidden_reset", "neuronReset", EVP_neuron_reset_reg, hidden_reset_params, {}, hidden_reset_var_refs)
+            for l in range(p["N_HID_LAYER"]):
+                hidden_reset_var_refs= {
+                    "rp_ImV": genn_model.create_var_ref(self.hidden[l], "rp_ImV"),
+                    "wp_ImV": genn_model.create_var_ref(self.hidden[l], "wp_ImV"),
+                    "V": genn_model.create_var_ref(self.hidden[l], "V"),
+                    "lambda_V": genn_model.create_var_ref(self.hidden[l], "lambda_V"),
+                    "lambda_I": genn_model.create_var_ref(self.hidden[l], "lambda_I"),
+                    "rev_t": genn_model.create_var_ref(self.hidden[l], "rev_t"),
+                    "fwd_start": genn_model.create_var_ref(self.hidden[l], "fwd_start"),
+                    "new_fwd_start": genn_model.create_var_ref(self.hidden[l], "new_fwd_start"),
+                    "back_spike": genn_model.create_var_ref(self.hidden[l], "back_spike"),
+                    "sNSum": genn_model.create_var_ref(self.hidden[l], "sNSum"),
+                    "new_sNSum": genn_model.create_var_ref(self.hidden[l], "new_sNSum"),
+                }
+                if p["TRAIN_TAUM"]:
+                    hidden_reset_params["trial_t"]= p["TRIAL_MS"]
+                    hidden_reset_var_refs["fImV_roff"]= genn_model.create_var_ref(self.hidden[l], "fImV_roff")
+                    hidden_reset_var_refs["fImV_woff"]= genn_model.create_var_ref(self.hidden[l], "fImV_woff")
+                    self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_taum, hidden_reset_params, {}, hidden_reset_var_refs))
+                else:
+                    self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg, hidden_reset_params, {}, hidden_reset_var_refs))
 
             if p["AVG_SNSUM"]:
                 params= {"reduced_sNSum": 0.0}
-                var_refs= {"sNSum": genn_model.create_var_ref(self.hidden, "sNSum")}
-                self.hidden_reg_reduce= self.model.add_custom_update("hidden_reg_reduce", "sNSumReduce", EVP_reg_reduce, {}, params, var_refs)
+                for l in range(p["N_HID_LAYER"]):
+                    var_refs= {"sNSum": genn_model.create_var_ref(self.hidden[l], "sNSum")}
+                    self.hidden_reg_reduce.append(self.model.add_custom_update("hidden_reg_reduce"+str(l), "sNSumReduce", EVP_reg_reduce, {}, params, var_refs))
 
                 params= {"N_batch": p["N_BATCH"]}
-                var_refs= {
-                    "reduced_sNSum": genn_model.create_var_ref(self.hidden_reg_reduce, "reduced_sNSum"),
-                    "sNSum": genn_model.create_var_ref(self.hidden, "sNSum")
-                }
-                self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply", "sNSumApply", EVP_sNSum_apply, params, {}, var_refs)
+                for l in range(p["N_HID_LAYER"]):
+                    var_refs= {
+                        "reduced_sNSum": genn_model.create_var_ref(self.hidden_reg_reduce[l], "reduced_sNSum"),
+                        "sNSum": genn_model.create_var_ref(self.hidden[l], "sNSum")
+                    }
+                    self.hidden_redSNSum_apply.append(self.model.add_custom_update("hidden_redSNSum_apply"+str(l), "sNSumApply", EVP_sNSum_apply, params, {}, var_refs))
 
 
         if p["REG_TYPE"] == "Thomas1":
@@ -661,43 +710,47 @@ class SHD_model:
                 "sNSum": 0.0,
                 "new_sNSum": 0.0,
             }
-            self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg_Thomas1, hidden_params, self.hidden_init_vars)
-            self.hidden.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
-            self.hidden.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
-            self.hidden.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
+            for l in range(p["N_HID_LAYER"]):
+                self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_Thomas1, hidden_params, self.hidden_init_vars))
+                self.hidden[l].set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
+                self.hidden[l].set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
+                self.hidden[l].set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
 
             hidden_reset_params= {
                 "V_reset": p["V_RESET"],
                 "N_max_spike": p["N_MAX_SPIKE"],
                 "N_neurons": p["NUM_HIDDEN"],
             }
-            hidden_reset_var_refs= {
-                "rp_ImV": genn_model.create_var_ref(self.hidden, "rp_ImV"),
-                "wp_ImV": genn_model.create_var_ref(self.hidden, "wp_ImV"),
-                "V": genn_model.create_var_ref(self.hidden, "V"),
-                "lambda_V": genn_model.create_var_ref(self.hidden, "lambda_V"),
-                "lambda_I": genn_model.create_var_ref(self.hidden, "lambda_I"),
-                "rev_t": genn_model.create_var_ref(self.hidden, "rev_t"),
-                "fwd_start": genn_model.create_var_ref(self.hidden, "fwd_start"),
-                "new_fwd_start": genn_model.create_var_ref(self.hidden, "new_fwd_start"),
-                "back_spike": genn_model.create_var_ref(self.hidden, "back_spike"),
-                "sNSum": genn_model.create_var_ref(self.hidden, "sNSum"),
-                "new_sNSum": genn_model.create_var_ref(self.hidden, "new_sNSum"),
-            }
-            self.hidden_reset= self.model.add_custom_update("hidden_reset", "neuronReset", EVP_neuron_reset_reg_global, hidden_reset_params, {}, hidden_reset_var_refs)
-            self.hidden_reset.set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
+            for l in range(p["N_HID_LAYER"]):
+                hidden_reset_var_refs= {
+                    "rp_ImV": genn_model.create_var_ref(self.hidden[l], "rp_ImV"),
+                    "wp_ImV": genn_model.create_var_ref(self.hidden[l], "wp_ImV"),
+                    "V": genn_model.create_var_ref(self.hidden[l], "V"),
+                    "lambda_V": genn_model.create_var_ref(self.hidden[l], "lambda_V"),
+                    "lambda_I": genn_model.create_var_ref(self.hidden[l], "lambda_I"),
+                    "rev_t": genn_model.create_var_ref(self.hidden[l], "rev_t"),
+                    "fwd_start": genn_model.create_var_ref(self.hidden[l], "fwd_start"),
+                    "new_fwd_start": genn_model.create_var_ref(self.hidden[l], "new_fwd_start"),
+                    "back_spike": genn_model.create_var_ref(self.hidden[l], "back_spike"),
+                    "sNSum": genn_model.create_var_ref(self.hidden[l], "sNSum"),
+                    "new_sNSum": genn_model.create_var_ref(self.hidden[l], "new_sNSum"),
+                }
+                self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_global, hidden_reset_params, {}, hidden_reset_var_refs))
+                self.hidden_reset[l].set_extra_global_param("sNSum_all", np.zeros(p["N_BATCH"]))
 
             if p["AVG_SNSUM"]:
                 params= {"reduced_sNSum": 0.0}
-                var_refs= {"sNSum": genn_model.create_var_ref(self.hidden, "sNSum")}
-                self.hidden_reg_reduce= self.model.add_custom_update("hidden_reg_reduce", "sNSumReduce", EVP_reg_reduce, {}, params, var_refs)
+                for l in range(p["N_HID_LAYER"]):            
+                    var_refs= {"sNSum": genn_model.create_var_ref(self.hidden[l], "sNSum")}
+                    self.hidden_reg_reduce.append(self.model.add_custom_update("hidden_reg_reduce"+str(l), "sNSumReduce", EVP_reg_reduce, {}, params, var_refs))
 
                 params= {"N_batch": p["N_BATCH"]}
-                var_refs= {
-                    "reduced_sNSum": genn_model.create_var_ref(self.hidden_reg_reduce, "reduced_sNSum"),
-                    "sNSum": genn_model.create_var_ref(self.hidden, "sNSum")
-                }
-                self.hidden_redSNSum_apply= self.model.add_custom_update("hidden_redSNSum_apply", "sNSumApply", EVP_sNSum_apply, params, {}, var_refs)
+                for l in range(p["N_HID_LAYER"]):
+                    var_refs= {
+                        "reduced_sNSum": genn_model.create_var_ref(self.hidden_reg_reduce[l], "reduced_sNSum"),
+                        "sNSum": genn_model.create_var_ref(self.hidden[l], "sNSum")
+                    }
+                    self.hidden_redSNSum_apply.append(self.model.add_custom_update("hidden_redSNSum_apply"+str(l), "sNSumApply", EVP_sNSum_apply, params, {}, var_refs))
 
 
         # ----------------------------------------------------------------------------
@@ -940,25 +993,36 @@ class SHD_model:
         self.hid_to_out_init_vars["w"]= genn_model.init_var(
             "Normal", {"mean": p["HIDDEN_OUTPUT_MEAN"], "sd": p["HIDDEN_OUTPUT_STD"]})
 
+        if p["N_HID_LAYER"] > 1:
+            self.hid_to_hidfwd_init_vars= {"dw": 0}
+            self.hid_to_hidfwd_init_vars["w"]= genn_model.init_var(
+                "Normal", {"mean": p["HIDDEN_HIDDENFWD_MEAN"], "sd": p["HIDDEN_HIDDENFWD_STD"]})
         if p["RECURRENT"]:
             self.hid_to_hid_init_vars= {"dw": 0}
             self.hid_to_hid_init_vars["w"]= genn_model.init_var(
                 "Normal", {"mean": p["HIDDEN_HIDDEN_MEAN"], "sd": p["HIDDEN_HIDDEN_STD"]})
 
         self.in_to_hid= self.model.add_synapse_population(
-            "in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
+            "in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden[0], EVP_input_synapse,
             {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
 
         self.hid_to_out= self.model.add_synapse_population(
-            "hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden, self.output, EVP_synapse,
+            "hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[-1], self.output, EVP_synapse,
             {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
 
+        for l in range(p["N_HID_LAYER"]-1):
+            self.hid_to_hidfwd.append(self.model.add_synapse_population(
+                "hid_to_hidfwd"+str(l), "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[l], self.hidden[l+1], EVP_synapse,
+                {}, self.hid_to_hidfwd_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}))
+        
         if p["RECURRENT"]:
-            self.hid_to_hid= self.model.add_synapse_population(
-                "hid_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden, self.hidden, EVP_synapse,
-                {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+            for l in range(p["N_HID_LAYER"]):
+                self.hid_to_hid.append(self.model.add_synapse_population(
+                    "hid_to_hid"+str(l), "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[l], self.hidden[l], EVP_synapse,
+                    {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}))
 
         self.optimisers= []
+        # learning updates for synapses
         var_refs = {"dw": genn_model.create_wu_var_ref(self.in_to_hid, "dw")}
         self.in_to_hid_reduce= self.model.add_custom_update(
             "in_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
@@ -978,21 +1042,45 @@ class SHD_model:
         self.hid_to_out.pre_target_var= "revIsyn"
         self.optimisers.append(self.hid_to_out_learn)
 
-        if p["RECURRENT"]:
-            var_refs = {"dw": genn_model.create_wu_var_ref(self.hid_to_hid, "dw")}
-            self.hid_to_hid_reduce= self.model.add_custom_update(
-                "hid_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
-            var_refs = {"gradient": genn_model.create_wu_var_ref(self.hid_to_hid_reduce, "reduced_dw"),
-                        "variable": genn_model.create_wu_var_ref(self.hid_to_hid, "w")}
-            self.hid_to_hid_learn= self.model.add_custom_update(
-                "hid_to_hid_learn","EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs)
-            self.hid_to_hid.pre_target_var= "revIsyn"
-            self.optimisers.append(self.hid_to_hid_learn)
+        for l in range(p["N_HID_LAYER"]-1):
+            var_refs = {"dw": genn_model.create_wu_var_ref(self.hid_to_hidfwd[l], "dw")}
+            self.hid_to_hidfwd_reduce.append(self.model.add_custom_update(
+                "hid_to_hidfwd_reduce"+str(l),"EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs))
+            var_refs = {"gradient": genn_model.create_wu_var_ref(self.hid_to_hidfwd_reduce[l], "reduced_dw"),
+                        "variable": genn_model.create_wu_var_ref(self.hid_to_hidfwd[l], "w")}
+            self.hid_to_hidfwd_learn.append(self.model.add_custom_update(
+                "hid_to_hidfwd_learn"+str(l),"EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs))
+            self.hid_to_hidfwd[l].pre_target_var= "revIsyn"
+            self.optimisers.append(self.hid_to_hidfwd_learn[l])            
 
+        if p["RECURRENT"]:
+            for l in range(p["N_HID_LAYER"]):
+                var_refs = {"dw": genn_model.create_wu_var_ref(self.hid_to_hid[l], "dw")}
+                self.hid_to_hid_reduce.append(self.model.add_custom_update(
+                    "hid_to_hid_reduce"+str(l),"EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs))
+                var_refs = {"gradient": genn_model.create_wu_var_ref(self.hid_to_hid_reduce[l], "reduced_dw"),
+                            "variable": genn_model.create_wu_var_ref(self.hid_to_hid[l], "w")}
+                self.hid_to_hid_learn.append(self.model.add_custom_update(
+                    "hid_to_hid_learn"+str(l),"EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs))
+                self.hid_to_hid[l].pre_target_var= "revIsyn"
+                self.optimisers.append(self.hid_to_hid_learn[l])
+        # learning updates for taum
+        if p["TRAIN_TAUM"]:
+            for l in range(p["N_HID_LAYER"]):            
+                var_refs = {"dw": genn_model.create_var_ref(self.hidden[l], "dktaum")}
+                self.hidden_taum_reduce.append(self.model.add_custom_update(
+                    "hidden_taum_reduce"+str(l),"EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs))
+                var_refs = {"gradient": genn_model.create_var_ref(self.hidden_taum_reduce[l], "reduced_dw"),
+                            "variable": genn_model.create_var_ref(self.hidden[l], "ktau_m")}
+                self.hidden_taum_learn.append(self.model.add_custom_update(
+                    "hidden_taum_learn"+str(l),"EVPLearn", adam_optimizer_model_taum, adam_params, self.adam_init_vars, var_refs))
+                self.optimisers.append(self.hidden_taum_learn[l])
+           
         # DEBUG hidden layer spike numbers
         if p["DEBUG_HIDDEN_N"]:
             if p["REG_TYPE"] != "Thomas1":
-                self.model.neuron_populations["hidden"].spike_recording_enabled= True
+                for l in range(p["N_HID_LAYER"]):            
+                    self.model.neuron_populations["hidden"+str(l)].spike_recording_enabled= True
 
         # enable buffered spike recording where desired
         for pop in p["REC_SPIKES"]:
@@ -1029,9 +1117,13 @@ class SHD_model:
             self.in_to_hid.push_var_to_device("w")
             self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"))
             self.hid_to_out.push_var_to_device("w")
+            for l in range(p["N_HID_LAYER"]-1):
+                self.hid_to_hidfwd[l].vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden"+str(l)+"_hidden"+str(l+1)+"_last.npy"))
+                self.hid_to_hidfwd[l].push_var_to_device("w")
             if p["RECURRENT"]:
-                self.hid_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_last.npy"))
-                self.hid_to_hid.push_var_to_device("w")
+                for l in range(p["N_HID_LAYER"]):
+                    self.hid_to_hid[l].vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden"+str(l)+"_last.npy"))
+                    self.hid_to_hid[l].push_var_to_device("w")
 
         # set up run
         N_trial= 0
@@ -1106,7 +1198,8 @@ class SHD_model:
                 "train": [],
                 "eval": []
             }
-
+        correctEMA= 0
+        correctEMAslow= 0
         for epoch in range(number_epochs):
             # if we are doing augmentation, the entire spike time array needs to be set up anew.
             if N_trial_train > 0 and len(p["AUGMENTATION"]) > 0:
@@ -1162,23 +1255,27 @@ class SHD_model:
                 self.input.vars[var].view[:]= val
             self.input.push_state_to_device()
             self.input.extra_global_params["pDrop"].view[:]= p["PDROP_INPUT"]
-            for var, val in self.hidden_init_vars.items():
-                self.hidden.vars[var].view[:]= val
-            self.hidden.push_state_to_device()
-            self.hidden.extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
-            if p["HIDDEN_NOISE"] > 0.0:
-                self.hidden.extra_global_params["A_noise"].view[:]= p["HIDDEN_NOISE"]
+            for l in range(p["N_HID_LAYER"]):
+                for var, val in self.hidden_init_vars.items():
+                    if var != "ktau_m":               # do not reset tau_m at beginning of epoch
+                        self.hidden[l].vars[var].view[:]= val
+                    else:
+                        self.hidden[l].pull_var_from_device(var)
+                self.hidden[l].push_state_to_device()
+                self.hidden[l].extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
+                if p["HIDDEN_NOISE"] > 0.0:
+                    self.hidden[l].extra_global_params["A_noise"].view[:]= p["HIDDEN_NOISE"]
             for var, val in self.output_init_vars.items():
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
             self.model.custom_update("EVPReduce")  # this zeros dw (so as to ignore eval gradients from last epoch!)
 
             if p["DEBUG_HIDDEN_N"]:
-                all_hidden_n= []
-                all_sNSum= []
+                all_hidden_n= [[] for _ in range(p["N_HID_LAYER"])]
+                all_sNSum= [[] for _ in range(p["N_HID_LAYER"])]
 
             if p["REWIRE_SILENT"]:
-                rewire_sNSum= []
+                rewire_sNSum= [[] for _ in range(p["N_HID_LAYER"])]
 
             if p["COLLECT_CONFUSION"]:
                 conf= {
@@ -1206,16 +1303,19 @@ class SHD_model:
                     else:
                         N_batch= p["N_BATCH"]
                     self.input.extra_global_params["pDrop"].view[:]= 0.0
-                    self.hidden.extra_global_params["pDrop"].view[:]= 0.0
-                    if p["HIDDEN_NOISE"] > 0.0:
-                        self.hidden.extra_global_params["A_noise"].view[:]= 0.0
+                    for l in range(p["N_HID_LAYER"]): 
+                        self.hidden[l].extra_global_params["pDrop"].view[:]= 0.0
+                        if p["HIDDEN_NOISE"] > 0.0:
+                            self.hidden[l].extra_global_params["A_noise"].view[:]= 0.0
                 self.input_set.extra_global_params["trial"].view[:]= trial
                 self.model.custom_update("inputUpdate")
                 self.input.extra_global_params["t_offset"].view[:]= self.model.t
 
                 if p["DEBUG_HIDDEN_N"]:
                     if p["REG_TYPE"] != "Thomas1":
-                        spike_N_hidden= np.zeros(N_batch)
+                        spike_N_hidden= []
+                        for l in range(p["N_HID_LAYER"]):
+                            spike_N_hidden.append(np.zeros(N_batch))
 
                 int_t= 0
                 while (self.model.t < trial_end-1e-1*p["DT_MS"]):
@@ -1227,9 +1327,10 @@ class SHD_model:
                         if int_t%p["SPK_REC_STEPS"] == 0:
                             if p["REG_TYPE"] != "Thomas1":
                                 self.model.pull_recording_buffers_from_device()
-                                x= self.model.neuron_populations["hidden"].spike_recording_data
-                                for btch in range(N_batch):
-                                    spike_N_hidden[btch]+= len(x[btch][0])
+                                for l in range(p["N_HID_LAYER"]):
+                                    x= self.model.neuron_populations["hidden"+str(l)].spike_recording_data
+                                    for btch in range(N_batch):
+                                        spike_N_hidden[l][btch]+= len(x[btch][0])
 
                     if len(p["REC_SPIKES"]) > 0:
                         if int_t%p["SPK_REC_STEPS"] == 0:
@@ -1269,7 +1370,14 @@ class SHD_model:
                         self.in_to_hid.push_in_syn_to_device()
                         self.hid_to_out.in_syn[:]= 0.0
                         self.hid_to_out.push_in_syn_to_device()
-
+                        for l in range(p["N_HID_LAYER"]-1):
+                            self.hid_to_hidfwd[l].in_syn[:]= 0.0
+                            self.hid_to_hidfwd[l].push_in_syn_to_device()
+                        if p["RECURRENT"]:
+                            for l in range(p["N_HID_LAYER"]):
+                                self.hid_to_hid[l].in_syn[:]= 0.0
+                                self.hid_to_hid[l].push_in_syn_to_device()
+                            
                 # at end of trial
                 spk_rec_offset+= N_batch-1  # the -1 for compensating the normal progression of time
 
@@ -1285,11 +1393,19 @@ class SHD_model:
                 self.in_to_hid.push_in_syn_to_device()
                 self.hid_to_out.in_syn[:]= 0.0
                 self.hid_to_out.push_in_syn_to_device()
+                for l in range(p["N_HID_LAYER"]-1):
+                    self.hid_to_hidfwd[l].in_syn[:]= 0.0
+                    self.hid_to_hidfwd[l].push_in_syn_to_device()
+                if p["RECURRENT"]:
+                    for l in range(p["N_HID_LAYER"]):
+                        self.hid_to_hid[l].in_syn[:]= 0.0
+                        self.hid_to_hid[l].push_in_syn_to_device()
 
                 if p["REG_TYPE"] == "Thomas1":
                     # for hidden regularistation prepare "sNSum_all"
-                    self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
-                    self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
+                    for l in range(p["N_HID_LAYER"]):
+                        self.hidden_reset[l].extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
+                        self.hidden_reset[l].push_extra_global_param_to_device("sNSum_all")
 
                 if p["LOSS_TYPE"][:-4] == "first_spike":
                     # need to copy new_first_spike_t from device before neuronReset!
@@ -1311,16 +1427,18 @@ class SHD_model:
                     self.model.custom_update("sNSumApply")
 
                 if p["REG_TYPE"] == "Thomas1": 
-                    self.hidden_reset.pull_extra_global_param_from_device("sNSum_all")
-                    self.hidden.extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
-                    self.hidden.push_extra_global_param_to_device("sNSum_all")
-                    if p["DEBUG_HIDDEN_N"]:
-                        spike_N_hidden= self.hidden_reset.extra_global_params["sNSum_all"].view[:N_batch].copy()
+                    for l in range(p["N_HID_LAYER"]):
+                        self.hidden_reset[l].pull_extra_global_param_from_device("sNSum_all")
+                        self.hidden[l].extra_global_params["sNSum_all"].view[:]= self.hidden_reset.extra_global_params["sNSum_all"].view[:]
+                        self.hidden[l].push_extra_global_param_to_device("sNSum_all")
+                        if p["DEBUG_HIDDEN_N"]:
+                            spike_N_hidden[l]= self.hidden_reset[l].extra_global_params["sNSum_all"].view[:N_batch].copy()
 
                 # collect data for rewiring rule for silent neurons
                 if p["REWIRE_SILENT"]:
-                    self.hidden.pull_var_from_device("sNSum")
-                    rewire_sNSum.append(np.sum(self.hidden.vars["sNSum"].view.copy(),axis= 0))
+                    for l in range(p["N_HID_LAYER"]):
+                        self.hidden[l].pull_var_from_device("sNSum")
+                        rewire_sNSum[l].append(np.sum(self.hidden[l].vars["sNSum"].view.copy(),axis= 0))
 
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
@@ -1370,18 +1488,29 @@ class SHD_model:
                 the_loss[phase].append(losses)
 
                 if p["DEBUG_HIDDEN_N"]:
-                    all_hidden_n.append(spike_N_hidden)
-                    self.hidden.pull_var_from_device("sNSum")
-                    all_sNSum.append(np.mean(self.hidden.vars['sNSum'].view[:N_batch],axis= 0))
+                    for l in range(p["N_HID_LAYER"]):
+                        all_hidden_n[l].append(spike_N_hidden)
+                        self.hidden[l].pull_var_from_device("sNSum")
+                        all_sNSum[l].append(np.mean(self.hidden[l].vars['sNSum'].view[:N_batch],axis= 0))
 
                 if ([epoch, trial] in p["W_OUTPUT_EPOCH_TRIAL"]): 
                     self.in_to_hid.pull_var_from_device("w")
                     np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_e{}_t{}.npy".format(epoch,trial)), self.in_to_hid.vars["w"].view.copy())
                     self.hid_to_out.pull_var_from_device("w")
                     np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_e{}_t{}.npy".format(epoch,trial)), self.hid_to_out.vars["w"].view.copy())
+                    for l in range(p["N_HID_LAYER"]-1):
+                        self.hid_to_hidfwd[l].pull_var_from_device("w")
+                        np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden"+str(l)+"_hidden"+str(l+1)+"_e{}_t{}.npy".format(epoch,trial)), self.hid_to_hidfwd[l].vars["w"].view.copy())
+                       
                     if p["RECURRENT"]:
-                        self.hid_to_hid.pull_var_from_device("w")
-                        np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_e{}_t{}.npy".format(epoch,trial)), self.hid_to_hid.vars["w"].view.copy())
+                        for l in range(p["N_HID_LAYER"]):
+                            self.hid_to_hid[l].pull_var_from_device("w")
+                            np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hid_to_hid[l].vars["w"].view.copy())
+                if p["TRAIN_TAUM"]:
+                    if ([epoch,trial] in p["TAUM_OUTPUT_EPOCH_TRIAL"]):
+                        for l in range(p["N_HID_LAYER"]):
+                            self.hidden[l].pull_var_from_device("ktau_m")
+                            np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_kaum_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hidden[l].vars["ktau_m"].view.copy())
 
             if N_trial_train > 0:
                 correct= good["train"]/len(X_train)
@@ -1392,54 +1521,53 @@ class SHD_model:
             else:
                 correct_eval= 0
 
-            n_silent= 0
+            n_silent= []
             if p["REWIRE_SILENT"]:
-                rewire_sNSum= np.sum(np.array(rewire_sNSum),axis= 0)
-                print(rewire_sNSum.shape)
-                silent= rewire_sNSum == 0
-                n_silent= np.sum(silent)
-                # rewire input to hidden
-                self.in_to_hid.pull_var_from_device("w")
-                ith_w= self.in_to_hid.vars["w"].view[:]
-                if p["REWIRE_LIFT"] != 0.0:
-                    ith_w+= p["REWIRE_LIFT"]
-                else:
-                    ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
-                    n_new= self.num_input*n_silent
-                    ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent))
-                self.in_to_hid.push_var_to_device("w")
-                ## rewire hidden to output
-                #self.hid_to_out.pull_var_from_device("w")
-                #hto_w= self.hid_to_out.vars["w"].view[:]
-                #hto_w.shape= (p["NUM_HIDDEN"],self.num_output)
-                #n_new= n_silent*self.num_output
-                #hto_w[silent,:]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_OUTPUT_STD"]+p["HIDDEN_OUTPUT_MEAN"], (n_silent,self.num_output))
-                #self.hid_to_out.push_var_to_device("w")
-                ## rewire recurrent connections
-                #if p["RECURRENT"]:
-                #    self.hid_to_hid.pull_var_from_device("w")
-                #    hth_w= self.hid_to_hid.vars["w"].view[:]
-                #    hth_w.shape= (p["NUM_HIDDEN"],p["NUM_HIDDEN"])
-                #    n_new= n_silent*p["NUM_HIDDEN"]
-                #    hth_w[silent,:]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_HIDDEN_STD"]+p["HIDDEN_HIDDEN_MEAN"], (n_silent,p["NUM_HIDDEN"]))
-                #    hth_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["HIDDEN_HIDDEN_STD"]+p["HIDDEN_HIDDEN_MEAN"], (p["NUM_HIDDEN"],n_silent))
-                #    self.hid_to_hid.push_var_to_device("w")
-
+                for l in range(p["N_HID_LAYER"]):
+                    rewire_sNSum[l]= np.sum(np.array(rewire_sNSum[l]),axis= 0)
+                    silent= rewire_sNSum[l] == 0
+                    n_silent.append(np.sum(silent))
+                    # rewire input to hidden or hidden to hidden fwd
+                    if l == 0:
+                        pop= self.in_to_hid
+                    else:
+                        pop= self.hid_to_hidfwd[l-1]
+                        
+                    pop.pull_var_from_device("w")
+                    ith_w= pop.vars["w"].view[:]
+                    if p["REWIRE_LIFT"] != 0.0:
+                        ith_w+= p["REWIRE_LIFT"]
+                    else:
+                        ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
+                        n_new= self.num_input*n_silent[l]
+                        ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent[l]))
+                    pop.push_var_to_device("w")
+                        
             if p["DEBUG_HIDDEN_N"]:
-                all_hidden_n= np.hstack(all_hidden_n)
-                all_sNSum= np.hstack(all_sNSum)
-                print("Hidden spikes in model per trial: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
-                print("Hidden spikes per trial per neuron across batches: {} +/- {}, min {}, max {}".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum)))
+                for l in range(p["N_HID_LAYER"]):
+                    all_hidden_n[l]= np.hstack(all_hidden_n[l])
+                    all_sNSum[l]= np.hstack(all_sNSum[l])
+                    print("Hidden spikes "+str(l)+" in model per trial: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n[l]),np.std(all_hidden_n[l]),np.amin(all_hidden_n[l]),np.amax(all_hidden_n[l])))
+                    print("Hidden spikes "+str(l)+" per trial per neuron across batches: {} +/- {}, min {}, max {}".format(np.mean(all_sNSum[l]),np.std(all_sNSum[l]),np.amin(all_sNSum[l]),np.amax(all_sNSum[l])))
 
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}, Rewired: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]), n_silent))
 
             if resfile is not None:
                 resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
                 if p["DEBUG_HIDDEN_N"]:
-                    resfile.write(" {} {} {} {}".format(np.mean(all_hidden_n),np.std(all_hidden_n),np.amin(all_hidden_n),np.amax(all_hidden_n)))
-                    resfile.write(" {} {} {} {} {}".format(np.mean(all_sNSum),np.std(all_sNSum),np.amin(all_sNSum),np.amax(all_sNSum),n_silent))
+                    for l in range(p["N_HID_LAYER"]):
+                        resfile.write(" {} {} {} {}".format(np.mean(all_hidden_n[l]),np.std(all_hidden_n[l]),np.amin(all_hidden_n[l]),np.amax(all_hidden_n[l])))
+                        resfile.write(" {} {} {} {} {}".format(np.mean(all_sNSum[l]),np.std(all_sNSum[l]),np.amin(all_sNSum[l]),np.amax(all_sNSum[l]),n_silent[l]))
                 resfile.write("\n")
                 resfile.flush()
+
+            # learning rate schedule depending on EMA of performance
+            correctEMA= (1.0-p["EMA_ALPHA1"])*correctEMA+p["EMA_ALPHA1"]*correct_eval
+            correctEMAslow= (1.0-p["EMA_ALPHA2"])*correctEMAslow+p["EMA_ALPHA2"]*correct_eval
+            if epoch > p["MIN_EPOCH_ETA_FIXED"] and correctEMA <= correctEMAslow:
+                learning_rate*= p["ETA_FAC"]
+                print("Reduced LR to {}".format(learning_rate))
+                
             if p["REC_PREDICTIONS"]:
                 predict[phase]= np.hstack(predict[phase])
                 label[phase]= np.hstack(label[phase])
@@ -1519,9 +1647,14 @@ class SHD_model:
             np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_last.npy"), self.in_to_hid.vars["w"].view)
             self.hid_to_out.pull_var_from_device("w")
             np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"), self.hid_to_out.vars["w"].view)
+            for l in range(p["N_HID_LAYER"]-1):
+                self.hid_to_hidfwd[l].pull_var_from_device("w")
+                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden"+str(l)+"_hidden"+str(l+1)+"_last.npy"), self.hid_to_hidfwd[l].vars["w"].view)
+                
             if p["RECURRENT"]:
-                self.hid_to_hid.pull_var_from_device("w")
-                np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden_last.npy"), self.hid_to_hid.vars["w"].view)
+                for l in range(p["N_HID_LAYER"]):
+                    self.hid_to_hid[l].pull_var_from_device("w")
+                    np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden"+str(l)+"_last.npy"), self.hid_to_hid[l].vars["w"].view)
 
         if p["TIMING"]:
             print("Init: %f" % self.model.init_time)
