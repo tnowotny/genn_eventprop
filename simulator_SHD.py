@@ -168,18 +168,6 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
 class SHD_model:
 
     def __init__(self, p):
-        self.hidden= []
-        self.hidden_reset= []
-        self.hidden_reg_reduce= []
-        self.hidden_redSNSum_apply= []
-        self.hid_to_hidfwd= []
-        self.hid_to_hidfwd_reduce= []
-        self.hid_to_hidfwd_learn= []
-        self.hid_to_hid= []
-        self.hid_to_hid_reduce= [] 
-        self.hid_to_hid_learn= []
-        self.hidden_taum_reduce= []
-        self.hidden_taum_learn= []
         if p["TRAIN_DATA_SEED"] is not None:
             self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
         else:
@@ -474,6 +462,18 @@ class SHD_model:
         return (X, Y, input_start, input_end) 
                 
     def define_model(self, p, shuffle):
+        self.hidden= []
+        self.hidden_reset= []
+        self.hidden_reg_reduce= []
+        self.hidden_redSNSum_apply= []
+        self.hid_to_hidfwd= []
+        self.hid_to_hidfwd_reduce= []
+        self.hid_to_hidfwd_learn= []
+        self.hid_to_hid= []
+        self.hid_to_hid_reduce= [] 
+        self.hid_to_hid_learn= []
+        self.hidden_taum_reduce= []
+        self.hidden_taum_learn= []
         self.trial_steps= int(round(p["TRIAL_MS"]/p["DT_MS"]))
 
         # ----------------------------------------------------------------------------
@@ -1198,8 +1198,9 @@ class SHD_model:
                 "train": [],
                 "eval": []
             }
-        correctEMA= 0
-        correctEMAslow= 0
+        correctEMA= 0       # exponential moving average of evaluation correct (fast)
+        correctEMAslow= 0   # exponential moving average of evaluation correct (slow)
+        red_lr_last= 0      # epoch when LR was last reduced
         for epoch in range(number_epochs):
             # if we are doing augmentation, the entire spike time array needs to be set up anew.
             if N_trial_train > 0 and len(p["AUGMENTATION"]) > 0:
@@ -1564,9 +1565,14 @@ class SHD_model:
             # learning rate schedule depending on EMA of performance
             correctEMA= (1.0-p["EMA_ALPHA1"])*correctEMA+p["EMA_ALPHA1"]*correct_eval
             correctEMAslow= (1.0-p["EMA_ALPHA2"])*correctEMAslow+p["EMA_ALPHA2"]*correct_eval
-            if epoch > p["MIN_EPOCH_ETA_FIXED"] and correctEMA <= correctEMAslow:
+            if epoch-red_lr_last > p["MIN_EPOCH_ETA_FIXED"] and correctEMA <= correctEMAslow:
                 learning_rate*= p["ETA_FAC"]
+<<<<<<< HEAD
                 print("EMA {}, EMAslow {}, Reduced LR to {}".format(correctEMA, correctEMAslow, learning_rate))
+=======
+                red_lr_last= epoch
+                print("Reduced LR to {}".format(learning_rate))
+>>>>>>> c6dfdd38a2b1d30d2cdc8665992830c5498cdba5
                 
             if p["REC_PREDICTIONS"]:
                 predict[phase]= np.hstack(predict[phase])
