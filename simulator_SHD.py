@@ -1566,7 +1566,7 @@ class SHD_model:
             correctEMAslow= (1.0-p["EMA_ALPHA2"])*correctEMAslow+p["EMA_ALPHA2"]*correct_eval
             if epoch > p["MIN_EPOCH_ETA_FIXED"] and correctEMA <= correctEMAslow:
                 learning_rate*= p["ETA_FAC"]
-                print("Reduced LR to {}".format(learning_rate))
+                print("EMA {}, EMAslow {}, Reduced LR to {}".format(correctEMA, correctEMAslow, learning_rate))
                 
             if p["REC_PREDICTIONS"]:
                 predict[phase]= np.hstack(predict[phase])
