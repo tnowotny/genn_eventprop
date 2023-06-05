@@ -35,7 +35,9 @@ which translates to 1e-12 if dividing by N_batch. Comparing output neuron Lambda
 will rescale the regularisation by 1/N_batch. This will need rescaling of LBD_UPPER, LBD_LOWER by N_batch compared to previous runs.
 
 
-
+----
+2023-04-30: still to run
+sbatch --array 512-767 runscan_SHD_JUWELS_27.sh
 
 
 
