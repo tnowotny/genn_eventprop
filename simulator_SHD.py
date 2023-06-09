@@ -178,8 +178,10 @@ class SHD_model:
         else:
             self.tdatarng= np.random.default_rng()        
             
+        print("loading data ...")
         self.load_data_SHD_Zenke(p)
-
+        print("loading data complete ...")
+        
         if p["REDUCED_CLASSES"] is not None and len(p["REDUCED_CLASSES"]) > 0:
             self.X_train_orig, self.Y_train_orig, self.Z_train_orig= self.reduce_classes(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["REDUCED_CLASSES"])
             self.X_test_orig, self.Y_test_orig, self.Z_test_orig= self.reduce_classes(self.X_test_orig, self.Y_test_orig, self.Z_test_orig, p["REDUCED_CLASSES"])
@@ -335,7 +337,10 @@ class SHD_model:
         self.N_class= len(set(self.Y_train_orig))
         self.X_train_orig= []
         for i in range(len(units)):
-            sample= rescale(units[i], times[i], p)
+            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
+                sample= rescale(units[i], times[i], p)
+            else:
+                sample= {"x": units[i], "t": times[i]}
             self.X_train_orig.append(sample)
         self.X_train_orig= np.array(self.X_train_orig)
         # do the test files
@@ -355,7 +360,10 @@ class SHD_model:
         self.data_max_length+= len(units)
         self.X_test_orig= []
         for i in range(len(units)):
-            sample= rescale(units[i], times[i], p)
+            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
+                sample= rescale(units[i], times[i], p)
+            else:
+                sample= {"x": units[i], "t": times[i]}
             self.X_test_orig.append(sample)
         self.X_test_orig= np.array(self.X_test_orig)
         
@@ -476,6 +484,7 @@ class SHD_model:
         self.hidden_taum_learn= []
         self.trial_steps= int(round(p["TRIAL_MS"]/p["DT_MS"]))
 
+        print("starting model definition ...")
         # ----------------------------------------------------------------------------
         # Model description
         # ----------------------------------------------------------------------------
@@ -756,7 +765,7 @@ class SHD_model:
         # ----------------------------------------------------------------------------
         # output neuron initialisation
         # ----------------------------------------------------------------------------
-
+        print("defining output ...")
         if p["LOSS_TYPE"][:-4] == "first_spike":
             output_params= {
                 "tau_m": p["TAU_MEM_OUTPUT"],
@@ -1104,7 +1113,7 @@ class SHD_model:
                 "V": genn_model.create_var_ref(self.accumulator, "V"),
             } 
             self.accumulator_reset= self.model.add_custom_update("accumulator_reset", "neuronReset", EVP_neuron_reset_input_accumulator, {}, {}, accumulator_reset_var_refs)
-
+        print("model definition complete ...")
     """
     ----------------------------------------------------------------------------
     Run the model
@@ -1275,8 +1284,7 @@ class SHD_model:
                 all_hidden_n= [[] for _ in range(p["N_HID_LAYER"])]
                 all_sNSum= [[] for _ in range(p["N_HID_LAYER"])]
 
-            if p["REWIRE_SILENT"]:
-                rewire_sNSum= [[] for _ in range(p["N_HID_LAYER"])]
+            rewire_sNSum= [[] for _ in range(p["N_HID_LAYER"])]
 
             if p["COLLECT_CONFUSION"]:
                 conf= {
@@ -1436,10 +1444,9 @@ class SHD_model:
                             spike_N_hidden[l]= self.hidden_reset[l].extra_global_params["sNSum_all"].view[:N_batch].copy()
 
                 # collect data for rewiring rule for silent neurons
-                if p["REWIRE_SILENT"]:
-                    for l in range(p["N_HID_LAYER"]):
-                        self.hidden[l].pull_var_from_device("sNSum")
-                        rewire_sNSum[l].append(np.sum(self.hidden[l].vars["sNSum"].view.copy(),axis= 0))
+                for l in range(p["N_HID_LAYER"]):
+                    self.hidden[l].pull_var_from_device("sNSum")
+                    rewire_sNSum[l].append(np.sum(self.hidden[l].vars["sNSum"].view.copy(),axis= 0))
 
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
@@ -1523,11 +1530,11 @@ class SHD_model:
                 correct_eval= 0
 
             n_silent= []
-            if p["REWIRE_SILENT"]:
-                for l in range(p["N_HID_LAYER"]):
-                    rewire_sNSum[l]= np.sum(np.array(rewire_sNSum[l]),axis= 0)
-                    silent= rewire_sNSum[l] == 0
-                    n_silent.append(np.sum(silent))
+            for l in range(p["N_HID_LAYER"]):
+                rewire_sNSum[l]= np.sum(np.array(rewire_sNSum[l]),axis= 0)
+                silent= rewire_sNSum[l] == 0
+                n_silent.append(np.sum(silent))
+                if p["REWIRE_SILENT"]:
                     # rewire input to hidden or hidden to hidden fwd
                     if l == 0:
                         pop= self.in_to_hid
@@ -1551,7 +1558,7 @@ class SHD_model:
                     print("Hidden spikes "+str(l)+" in model per trial: {} +/- {}, min {}, max {}".format(np.mean(all_hidden_n[l]),np.std(all_hidden_n[l]),np.amin(all_hidden_n[l]),np.amax(all_hidden_n[l])))
                     print("Hidden spikes "+str(l)+" per trial per neuron across batches: {} +/- {}, min {}, max {}".format(np.mean(all_sNSum[l]),np.std(all_sNSum[l]),np.amin(all_sNSum[l]),np.amax(all_sNSum[l])))
 
-            print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}, Rewired: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]), n_silent))
+            print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}, Silent: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]), n_silent))
 
             if resfile is not None:
                 resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
@@ -1719,8 +1726,12 @@ class SHD_model:
     def train_test(self, p):
         self.define_model(p, p["SHUFFLE"])
         if p["BUILD"]:
+            print("building model ...")
             self.model.build()
+            print("build complete ...")
+        print("loading model ...")
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
+        print("loading complete ...")
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= self.X_train_orig, labels_train= self.Y_train_orig, X_eval= self.X_test_orig, labels_eval= self.Y_test_orig, resfile= resfile)
         
