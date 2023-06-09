@@ -25,6 +25,7 @@ mn= SHD_model(p)
 p["N_TRAIN"]= 8156
 p["N_VALIDATE"]= 0
 p["CUDA_VISIBLE_DEVICES"]= False
+
 for i in range(1):
     mn= SHD_model(p)
     spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train_test(p)
