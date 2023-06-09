@@ -337,11 +337,11 @@ class SHD_model:
         self.N_class= len(set(self.Y_train_orig))
         self.X_train_orig= []
         for i in range(len(units)):
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_Y"] != 1.0:
+            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
                 sample= rescale(units[i], times[i], p)
             else:
                 sample= {"x": units[i], "t": times[i]}
-            self.X_test_orig.append(sample)
+            self.X_train_orig.append(sample)
         self.X_train_orig= np.array(self.X_train_orig)
         # do the test files
         if p["DOWNLOAD_SHD"]:
@@ -360,7 +360,7 @@ class SHD_model:
         self.data_max_length+= len(units)
         self.X_test_orig= []
         for i in range(len(units)):
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_Y"] != 1.0:
+            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
                 sample= rescale(units[i], times[i], p)
             else:
                 sample= {"x": units[i], "t": times[i]}
