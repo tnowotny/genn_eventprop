@@ -23,7 +23,7 @@ p= {}
 p["NAME"]= "test"
 p["DEBUG_HIDDEN_N"]= False
 p["OUT_DIR"]= "."
-p["DT_MS"] = 0.1
+p["DT_MS"] = 1.0
 p["BUILD"] = True
 p["TIMING"] = True
 p["TRAIN_DATA_SEED"]= 123
@@ -129,7 +129,7 @@ p["N_HID_LAYER"]= 1
 p["EMA_ALPHA1"]= 0.8
 p["EMA_ALPHA2"]= 0.95
 p["ETA_FAC"]= 0.5
-p["MIN_EPOCH_ETA_FIXED"]= 20
+p["MIN_EPOCH_ETA_FIXED"]= 300
 
 p["TAUM_OUTPUT_EPOCH_TRIAL"]= []
 
@@ -142,19 +142,15 @@ rng= np.random.default_rng()
 def rescale(x, t, p):
     new_x= np.array(x*p["RESCALE_X"])
     new_x= np.floor(new_x).astype(int)
-    new_t= np.array(t*p["RESCALE_T"]*1000.0) # do Zenke's seconds -> ms here
+    new_t= np.array(t*p["RESCALE_T"]) 
     new_t= np.floor(new_t/p["DT_MS"]).astype(int)
     fmatrix= np.zeros((int(700*p["RESCALE_X"]),int(p["TRIAL_MS"]/p["DT_MS"])))
     for (lx, lt) in zip(new_x, new_t):
         fmatrix[lx, lt]= 1
     fin_x= []
     fin_t= []
-    for i in range(fmatrix.shape[0]):
-        for j in range(fmatrix.shape[1]):
-            if fmatrix[i,j] == 1:
-                fin_x.append(i)
-                fin_t.append(j*p["DT_MS"])
-    sample= {"x": np.array(fin_x), "t": np.array(fin_t)}
+    idx= np.where(fmatrix == 1)
+    sample= {"x": idx[0], "t": idx[1]*p["DT_MS"]}
     return sample
 
 def update_adam(learning_rate, adam_step, optimiser_custom_updates):
@@ -294,6 +290,25 @@ class SHD_model:
             self.X_test_orig.append(events)
     """
 
+    """
+    # could do scaling and save to disk but in then end not that much savings
+    def load_data_SHD_prescaled(self, p):
+        path= "data/SHD/"
+        name= f"_x{p['RESCALE_X']}_t{p['RESCALE_T']}.npy"
+        self.X_train_orig= np.load(path+"X_train"+name,allow_pickle=True)
+        self.Y_train_orig= np.load(path+"Y_train"+name,allow_pickle=True)
+        self.Z_train_orig= np.load(path+"Z_train"+name,allow_pickle=True)
+        self.X_test_orig= np.load(path+"X_test"+name,allow_pickle=True)
+        self.Y_test_orig= np.load(path+"Y_test"+name,allow_pickle=True)
+        self.Z_test_orig= np.load(path+"Z_test"+name,allow_pickle=True)
+        self.num_input= int(700*p["RESCALE_X"])
+        self.num_output= 20
+        self.data_max_length= 2*p["N_BATCH"]
+        self.data_max_length+= len(self.X_train_orig)
+        self.data_max_length+= len(self.X_test_orig)
+        self.N_class= len(set(self.Y_train_orig))
+    """
+    
     def load_data_SHD_Zenke(self, p):
         cache_dir=os.path.expanduser("~/data")
         cache_subdir="SHD"
@@ -340,9 +355,9 @@ class SHD_model:
         self.X_train_orig= []
         for i in range(len(units)):
             if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(units[i], times[i], p)
+                sample= rescale(units[i], times[i]*1000.0, p)
             else:
-                sample= {"x": units[i], "t": times[i]}
+                sample= {"x": units[i], "t": times[i]*1000.0}
             self.X_train_orig.append(sample)
         self.X_train_orig= np.array(self.X_train_orig)
         # do the test files
@@ -363,9 +378,9 @@ class SHD_model:
         self.X_test_orig= []
         for i in range(len(units)):
             if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(units[i], times[i], p)
+                sample= rescale(units[i], times[i]*1000.0, p)
             else:
-                sample= {"x": units[i], "t": times[i]}
+                sample= {"x": units[i], "t": times[i]*1000.0}
             self.X_test_orig.append(sample)
         self.X_test_orig= np.array(self.X_test_orig)
         
