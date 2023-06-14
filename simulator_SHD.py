@@ -145,10 +145,7 @@ def rescale(x, t, p):
     new_t= np.array(t*p["RESCALE_T"]) 
     new_t= np.floor(new_t/p["DT_MS"]).astype(int)
     fmatrix= np.zeros((int(700*p["RESCALE_X"]),int(p["TRIAL_MS"]/p["DT_MS"])))
-    for (lx, lt) in zip(new_x, new_t):
-        fmatrix[lx, lt]= 1
-    fin_x= []
-    fin_t= []
+    fmatrix[new_x, new_t]= 1
     idx= np.where(fmatrix == 1)
     sample= {"x": idx[0], "t": idx[1]*p["DT_MS"]}
     return sample
@@ -203,6 +200,31 @@ class SHD_model:
             for x in range(len(td)):
                 ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
         plt.show()
+
+    def plot_example_means(self,spkrs,digits,nsample,phase,p):
+        if phase == "train":
+            X= self.X_train_orig
+            Y= self.Y_train_orig
+            Z= self.Z_train_orig
+        else:
+            X= self.X_test_orig
+            Y= self.Y_test_orig
+            Z= self.Z_test_orig
+
+        ydim= len(spkrs)
+        xdim= len(digits)
+        fig, ax= plt.subplots(ydim,xdim,sharex= True, sharey= True)
+        mat= np.zeros
+        for y in range(ydim):
+            for x in range(xdim):
+                td= X[np.logical_and(Z == spkrs[y], Y == digits[x])][:nsample]
+                mat= np.zeros((self.num_input,int(p["TRIAL_MS"]/p["DT_MS"])))
+                for spk in td:
+                    mat[spk["x"].astype(int),spk["t"].astype(int)]+= 1.0
+                im= ax[y,x].imshow(mat, cmap="jet")
+                plt.colorbar(im, ax= ax[y,x])
+        plt.show()
+
         
     def loss_func_first_spike_exp(self, nfst, Y, trial, N_class, N_batch):
         t= nfst-trial*p["TRIAL_MS"]

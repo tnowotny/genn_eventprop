@@ -42,7 +42,7 @@ def random_dilate(X,rng,min_factor,max_factor,p):
     for i in range(len(X)):
         fac= np.exp(rng.uniform(mn,mx))
         X[i]["t"]= X[i]["t"]*fac
-        idx= X[i]["t"] < 1.4
+        idx= X[i]["t"] < p["TRIAL_MS"]
         X[i]["t"]= X[i]["t"][idx]
         X[i]["x"]= X[i]["x"][idx]
     return X
