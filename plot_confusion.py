@@ -6,7 +6,7 @@ import sys
 name= sys.argv[1]
 epoch= int(sys.argv[2])
 for ph in ["train","eval"]:
-    data= np.load(name+"_confusion"+ph+".npy")
+    data= np.load(name+"_confusion_"+ph+".npy")
     plt.figure()
     plt.title(ph)
     plt.imshow(data[epoch])
