@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from pygenn import genn_model
 from pygenn.genn_wrapper import NO_DELAY
 from utils import random_shift, random_dilate, ID_jitter, blend, blend_dataset
-#import tonic
+import tonic
 from models import *
 import os
 import urllib.request
@@ -13,7 +13,8 @@ from tensorflow.keras.utils import get_file
 import tables
 import copy
 from time import perf_counter
-
+from dataclasses import dataclass
+from typing import Tuple
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -142,6 +143,41 @@ p["BALANCE_EVAL_CLASSES"]= False
 
 rng= np.random.default_rng()
 
+@dataclass
+class EventsToGrid:
+    sensor_size: Tuple[int, int, int]
+    dt: float
+
+    def __call__(self, events):
+        # Tuple of possible axis names
+        axes = ("x", "y", "p")
+
+        # Build bin and sample data structures for histogramdd
+        bins = []
+        sample = []
+        for s, a in zip(self.sensor_size, axes):
+            if a in events.dtype.names:
+                bins.append(np.linspace(0, s, s + 1))
+                sample.append(events[a])
+
+        # Add time bins
+        bins.append(np.arange(0.0, np.amax(events["t"]) + self.dt, self.dt))
+        sample.append(events["t"])
+
+        # Build histogram
+        event_hist,_ = np.histogramdd(tuple(sample), tuple(bins))
+        new_events = np.where(event_hist > 0)
+
+        # Copy x, y, p data into new structured array
+        grid_events = np.empty(len(new_events[0]), dtype=events.dtype)
+        for i, a in enumerate(axes):
+            if a in grid_events.dtype.names:
+                grid_events[a] = new_events[i]
+
+        # Add t, scaling by dt
+        grid_events["t"] = new_events[-1] * self.dt
+        return grid_events
+
 def rescale(x, t, p):
     new_x= np.array(x*p["RESCALE_X"])
     new_x= np.floor(new_x).astype(int)
@@ -180,7 +216,8 @@ class SHD_model:
             self.tdatarng= np.random.default_rng()        
             
         print("loading data ...")
-        self.load_data_SHD_Zenke(p)
+        #self.load_data_SHD_Zenke(p)
+        self.load_data_SHD(p)
         print("loading data complete ...")
         
         if p["REDUCED_CLASSES"] is not None and len(p["REDUCED_CLASSES"]) > 0:
@@ -332,9 +369,7 @@ class SHD_model:
         loss= np.mean(np.sum(loss,axis= 1)) # use mean to achieve 1/N_batch here
         return loss
 
-    """
-    For now I will disable this - uses tonic,which might be nicer but doesn't give access to speaker info
-    def load_data_SHD(self, p, shuffle= True):
+    def load_data_SHD(self, p):
         if p["TRAIN_DATA_SEED"] is not None:
             self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
         else:
@@ -343,39 +378,38 @@ class SHD_model:
             self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
         else:
             self.tdatarng= np.random.default_rng()        
-        dataset = tonic.datasets.SHD(save_to='./data', train=True)
+        dataset = tonic.datasets.SHD(save_to='./data', train=True, transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SHD.sensor_size, p["DT_MS"] * 1000.0)]))
         sensor_size = dataset.sensor_size
         self.data_max_length= len(dataset)+2*p["N_BATCH"]
         self.N_class= len(dataset.classes)
         self.num_input= int(np.product(sensor_size))
-        self.num_output= 32   # first power of two greater than class number
-        idx= np.arange(len(dataset))
-        if (shuffle):
-            self.datarng.shuffle(idx)
-
-        train_idx= idx[np.arange(p["N_TRAIN"])]
-        eval_idx= idx[np.arange(p["N_VALIDATE"])+(len(dataset)-p["N_VALIDATE"])]
-        self.Y_train_orig= np.empty(len(train_idx), dtype= int)
+        self.num_output= self.N_class
+        self.Y_train_orig= np.empty(len(dataset), dtype= int)
         self.X_train_orig= []
-        for i, s in enumerate(train_idx):
-            events, label = dataset[s]
+        for i in range(len(dataset)):
+            events, label = dataset[i]
             self.Y_train_orig[i]= label
-            self.X_train_orig.append(events)
-        self.Y_val_orig= np.empty(len(eval_idx), dtype= int)
-        self.X_val_orig= []
-        for i, s in enumerate(eval_idx):
-            events, label = dataset[s]
-            self.Y_val_orig[i]= label
-            self.X_val_orig.append(events)
-        dataset = tonic.datasets.SHD(save_to='./data', train=False)
+            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
+                sample= rescale(events["x"], events["t"]/1000.0, p)
+            else:
+                sample= {"x": events["x"], "t": events["t"]/1000.0}
+            self.X_train_orig.append(sample)
+        self.X_train_orig= np.array(self.X_train_orig)
+        self.Z_train_orig= dataset.speaker
+        dataset = tonic.datasets.SHD(save_to='./data', train=False, transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SHD.sensor_size, p["DT_MS"] * 1000.0)]))
         self.data_max_length+= len(dataset)
         self.Y_test_orig= np.empty(len(dataset), dtype= int)
         self.X_test_orig= []
         for i in range(len(dataset)):
             events, label = dataset[i]
             self.Y_test_orig[i]= label
-            self.X_test_orig.append(events)
-    """
+            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
+                sample= rescale(events["x"], events["t"]/1000.0, p)
+            else:
+                sample= {"x": events["x"], "t": events["t"]/1000.0}
+            self.X_test_orig.append(sample)
+        self.X_test_orig= np.array(self.X_test_orig)
+        self.Z_test_orig= dataset.speaker
     
     def load_data_SHD_Zenke(self, p):
         cache_dir=os.path.expanduser("~/data")
@@ -1700,7 +1734,7 @@ class SHD_model:
 
                 if p["DEBUG_HIDDEN_N"]:
                     for l in range(p["N_HID_LAYER"]):
-                        all_hidden_n[l].append(spike_N_hidden)
+                        all_hidden_n[l].append(spike_N_hidden[l])
                         self.hidden[l].pull_var_from_device("sNSum")
                         all_sNSum[l].append(np.mean(self.hidden[l].vars['sNSum'].view[:N_batch],axis= 0))
 
