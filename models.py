@@ -1182,16 +1182,25 @@ EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
     sim_code="""
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
-    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
-    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
+    scalar alpha= exp(-DT/$(tau_m));
+    scalar beta= exp(-DT/$(tau_syn));
+    scalar gamma= $(tau_m)/($(tau_m)-$(tau_syn));
+    scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += (1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            A= (1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t); 
         }
         else {
-            $(lambda_V) -= $(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            A= -$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t);
         }
     }
+    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    $(lambda_V)= A + ($(lambda_V)-A)*alpha;
+    //if (($(id) == 0) && ($(batch) == 0)) {
+    //    printf("%f, %f, %f, %f, %f, %f\\n",alpha, beta, gamma, A, $(lambda_V), $(lambda_I));
+    //}
     // forward pass
     // update the summed voltage
     $(new_sum_V)+= $(V)/$(trial_t)*DT; // simple Euler
