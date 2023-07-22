@@ -667,7 +667,7 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
@@ -721,7 +721,7 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
@@ -729,12 +729,6 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
         $(rp_ImV)--;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         // contributions from regularisation
-    /* if ($(id) == 0 && $(batch) == 0) {
-        printf("sNSum: %e, nu_upper: %e, lbd_upper: %e\\n", $(sNSum), $(nu_upper), $(lbd_upper));
-    printf("%e \\n", -$(lbd_upper)*($(sNSum) - $(nu_upper)));
-}*/
-        //$(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
-         
         if ($(sNSum) > $(nu_upper)) {
             $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
         }
@@ -793,7 +787,7 @@ EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
     //$(lambda_V) -= $(lambda_V)/exp($(ktau_m))*DT;
-    $(lambda_I)= exp($(ktau_m))/($(tau_syn)-exp($(ktau_m)))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/exp($(ktau_m))))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_I)= exp($(ktau_m))/($(ktau_m)-exp($(tau_syn)))*$(lambda_V)*(exp(-DT/exp($(ktau_m))-exp(-DT/$(tau_syn))))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/exp($(ktau_m)));
     // calculate gradient component for taum training
     $(dktaum)-= $(fImV)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_V)*exp($(ktau_m));
@@ -803,12 +797,6 @@ EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
         $(rp_ImV)--;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         // contributions from regularisation
-    /* if ($(id) == 0 && $(batch) == 0) {
-        printf("sNSum: %e, nu_upper: %e, lbd_upper: %e\\n", $(sNSum), $(nu_upper), $(lbd_upper));
-    printf("%e \\n", -$(lbd_upper)*($(sNSum) - $(nu_upper)));
-}*/
-        //$(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
-         
         if ($(sNSum) > $(nu_upper)) {
             $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
         }
@@ -866,24 +854,14 @@ EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
-//        if ($(batch) == 0) {
-//    printf("revIsyn %g, ImV %g, lambda_V %g += %g \\n", $(revIsyn), $(ImV)[buf_idx+$(rp_ImV)], $(lambda_V), 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn)));
-    //}
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         // decrease read pointer (on ring buffer)
         $(rp_ImV)--;
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         // contributions from regularisation
-        // printf("%f\\n",$(lbd_upper)*($(sNSum) - $(nu_upper)));
-    /*if ($(id) == 0 && $(batch) == 0) {
-        printf("sNSum: %e, nu_upper: %e, lbd_upper: %e\\n", $(sNSum), $(nu_upper), $(lbd_upper));
-    printf("%e \\n", -$(lbd_upper)*($(sNSum) - $(nu_upper));
-}*/
-        //$(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
-         
         if ($(sNSum) > $(nu_upper)) {
             $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
         }
@@ -940,7 +918,7 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
@@ -949,13 +927,13 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
         if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
         // contributions from regularisation
         if ($(sNSum_all)[$(batch)] > $(rho_upper)) {
-            $(lambda_V) -= $(glb_upper)/$(N_neurons)/$(N_batch);
+            $(lambda_V) -= $(glb_upper)*($(sNSum_all)-$(rho_upper))/$(N_neurons)/$(N_batch);
         }
         if ($(sNSum) > $(nu_upper)) {
-            $(lambda_V) += 2*$(lbd_upper)*($(nu_upper) - $(sNSum))/$(N_neurons)/$(N_batch);
+            $(lambda_V) -= $(lbd_upper)*($(sNSum)-$(nu_upper))/$(N_batch);
         }
-        if ($(sNSum) < $(nu_lower)) {
-            $(lambda_V) += 2*$(lbd_lower)*($(nu_lower) - $(sNSum))/$(N_neurons)/$(N_batch);
+        else {
+            $(lambda_V) -= $(lbd_lower)*($(sNSum)-$(nu_lower))/$(N_batch);
         }
         $(back_spike)= 0;
     }   
@@ -1004,7 +982,7 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
@@ -1071,7 +1049,7 @@ EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
@@ -1140,17 +1118,14 @@ EVP_LIF_output_max = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
-    $(lambda_I)= $(tau_m)/($(tau_syn)-$(tau_m))*$(lambda_V)*(exp(-DT/$(tau_syn))-exp(-DT/$(tau_m)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if (($(trial) > 0) && (abs(back_t - $(max_t)) < 1e-3*DT)) {
-        //if (($(id) == 0) && ($(batch) == 0) && ($(trial) < 11)) printf("%d\\n",$(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]);
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += ((1.0-$(exp_V)/$(expsum))/$(tau_m))/$(N_batch)/$(trial_t);
-            //printf("%d. up: label= %d, lambda_V(l(i))= %g \\n", ($(trial)-1)*(int)$(N_batch)+$(batch), $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)], $(lambda_V));
+            $(lambda_V) += ((1.0-$(exp_V)/$(expsum))/$(tau_m))/$(trial_t)/$(N_batch);
         }
         else {
-            $(lambda_V) -= ($(exp_V)/$(expsum)/$(tau_m))/$(N_batch)/$(trial_t);
-            //printf("%d. down: label= %d, lambda_Vk= %g \\n", ($(trial)-1)*(int)$(N_batch)+$(batch), $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)], $(lambda_V));        
+            $(lambda_V) -= ($(exp_V)/$(expsum)/$(tau_m))/$(trial_t)/$(N_batch);
         }
     }    
     // forward pass
@@ -1198,9 +1173,6 @@ EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
     }
     $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
-    //if (($(id) == 0) && ($(batch) == 0)) {
-    //    printf("%f, %f, %f, %f, %f, %f\\n",alpha, beta, gamma, A, $(lambda_V), $(lambda_I));
-    //}
     // forward pass
     // update the summed voltage
     $(new_sum_V)+= $(V)/$(trial_t)*DT; // simple Euler
@@ -1226,17 +1198,20 @@ EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
-    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
-    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
-    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
+    scalar alpha= exp(-DT/$(tau_m));
+    scalar beta= exp(-DT/$(tau_syn));
+    scalar gamma= $(tau_m)/($(tau_m)-$(tau_syn));
+    scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += (($(t)-$(rev_t))/$(trial_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            A= (($(t)-$(rev_t))/$(trial_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            $(lambda_V) -= (($(t)-$(rev_t))/$(trial_t))*$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            A= -(($(t)-$(rev_t))/$(trial_t))*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
+    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
     $(new_sum_V)+= (1-($(t)-$(rev_t))/$(trial_t))*$(V)/$(trial_t)*DT; // simple Euler
@@ -1263,16 +1238,20 @@ EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
     sim_code="""
     // backward pass
     const double local_t= ($(t)-$(rev_t))/$(trial_t);
-    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
-    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
+    scalar alpha= exp(-DT/$(tau_m));
+    scalar beta= exp(-DT/$(tau_syn));
+    scalar gamma= $(tau_m)/($(tau_m)-$(tau_syn));
+    scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += exp(-(1.0-local_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            A= exp(-(1.0-local_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            $(lambda_V) -= exp(-(1.0-local_t))*$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            A= -exp(-(1.0-local_t))*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
+    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
     $(new_sum_V)+= exp(-local_t)*$(V)/$(trial_t)*DT; // simple Euler
@@ -1299,18 +1278,21 @@ EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
     sim_code="""
     // backward pass
     const double local_t= ($(t)-$(rev_t))/$(trial_t);
+    scalar alpha= exp(-DT/$(tau_m));
+    scalar beta= exp(-DT/$(tau_syn));
+    scalar gamma= $(tau_m)/($(tau_m)-$(tau_syn));
+    scalar A= 0.0;
     #define SIGMOID(x) (1/(1+exp((x-0.5)/0.2)))
-    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
-    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
-    if ($(trial) > 0) {
-        
+    if ($(trial) > 0) {        
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += SIGMOID(1.0-local_t)*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            A= SIGMOID(1.0-local_t)*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            $(lambda_V) -= SIGMOID(1.0-local_t)*$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            A= -SIGMOID(1.0-local_t)*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
+    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
     $(new_sum_V)+= SIGMOID(local_t)*$(V)/$(trial_t)*DT; // simple Euler
@@ -1342,17 +1324,21 @@ EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
     $(aIbuf)[buf_idx+$(wp_V)]= $(avgIn);
     $(wp_V)++;
     // backward pass
-    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
-    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
-    $(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
+    const double back_t= 2.0*$(rev_t)-$(t)-DT;
+    scalar alpha= exp(-DT/$(tau_m));
+    scalar beta= exp(-DT/$(tau_syn));
+    scalar gamma= $(tau_m)/($(tau_m)-$(tau_syn));
+    scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += $(avgInback)*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            A= $(avgInback)*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            $(lambda_V) -= $(avgInback)*$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t)*DT; // simple Euler
+            A= -$(avgInback)*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
+    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
     $(new_sum_V)+= $(avgIn)*$(V)/$(trial_t)*DT; // simple Euler
@@ -1384,7 +1370,10 @@ EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
     $(Vbuf)[buf_idx+$(wp_V)]= $(V);
     $(wp_V)++;
     // backward pass
-    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
+    scalar alpha= exp(-DT/$(tau_m));
+    scalar beta= exp(-DT/$(tau_syn));
+    scalar gamma= $(tau_m)/($(tau_m)-$(tau_syn));
+    scalar A= 0.0;
     scalar lbdV= $(lambda_V);
     if ($(trial) > 0) {
         $(rp_V)--;
@@ -1399,20 +1388,16 @@ EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
             mexp += __shfl_sync(0x3FF, m, i);
         }
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += (1.0-expV/mexp)/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
-            //printf("%g, %g, %g \\n",$(t),expV,mexp);
-
+            A= (1.0-expV/mexp)/$(tau_m)/$(trial_t)/$(N_batch);
             scalar x= -log(expV/mexp)/$(trial_t)*DT;
-            /* if (x > 2) {
-                printf("%g, %g, %g, %g \\n",x,m,expV,mexp);
-            } */
             $(loss) += x; // calculate contribution to loss
         }
         else {
-            $(lambda_V) -= expV/mexp/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
+            A= -expV/mexp/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
-    $(lambda_V) -= lbdV/$(tau_m)*DT;  // simple Euler
+    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     """,
     threshold_condition_code="",
     reset_code="",
@@ -1438,7 +1423,10 @@ EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
     $(Vbuf)[buf_idx+$(wp_V)]= $(V);
     $(wp_V)++;
     // backward pass
-    $(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
+    scalar alpha= exp(-DT/$(tau_m));
+    scalar beta= exp(-DT/$(tau_syn));
+    scalar gamma= $(tau_m)/($(tau_m)-$(tau_syn));
+    scalar A= 0.0;
     scalar lbdV= $(lambda_V);
     if ($(trial) > 0) {
         $(rp_V)--;
@@ -1453,20 +1441,16 @@ EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
             mexp += __shfl_sync(0xFFFFF, m, i);
         }
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            $(lambda_V) += (1.0-expV/mexp)/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
-            //printf("%g, %g, %g \\n",$(t),expV,mexp);
-
+            A= (1.0-expV/mexp)/$(tau_m)/$(trial_t)/$(N_batch);
             scalar x= -log(expV/mexp)/$(trial_t)*DT;
-            /* if (x > 2) {
-                printf("%g, %g, %g, %g \\n",x,m,expV,mexp);
-            } */
             $(loss) += x; // calculate contribution to loss
         }
         else {
-            $(lambda_V) -= expV/mexp/$(N_batch)/$(tau_m)/$(trial_t)*DT; // simple Euler
+            A= -expV/mexp/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
-    $(lambda_V) -= lbdV/$(tau_m)*DT;  // simple Euler
+    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     """,
     threshold_condition_code="",
     reset_code="",

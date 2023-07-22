@@ -1858,14 +1858,14 @@ class SHD_model:
                 resfile.flush()
 
             # learning rate schedule depending on EMA of performance
-            correctEMA= (1.0-p["EMA_ALPHA1"])*correctEMA+p["EMA_ALPHA1"]*correct_eval
-            correctEMAslow= (1.0-p["EMA_ALPHA2"])*correctEMAslow+p["EMA_ALPHA2"]*correct_eval
-            if epoch-red_lr_last > p["MIN_EPOCH_ETA_FIXED"] and correctEMA <= correctEMAslow:
+            correctEMA= p["EMA_ALPHA1"]*correctEMA+(1.0-p["EMA_ALPHA1"])*correct_eval
+            correctEMAslow= p["EMA_ALPHA2"]*correctEMAslow+(1.0-p["EMA_ALPHA2"])*correct_eval
+            if (epoch-red_lr_last > p["MIN_EPOCH_ETA_FIXED"]) and (correctEMA <= correctEMAslow):
                 learning_rate*= p["ETA_FAC"]
                 red_lr_last= epoch
                 print("EMA {}, EMAslow {}, Reduced LR to {}".format(correctEMA, correctEMAslow, learning_rate))
-            print(learning_rate)
-                
+                print(learning_rate)
+            print(f"EMA: {correctEMA}, EMA_slow: {correctEMAslow}")
             if p["REC_PREDICTIONS"]:
                 predict[phase]= np.hstack(predict[phase])
                 label[phase]= np.hstack(label[phase])
