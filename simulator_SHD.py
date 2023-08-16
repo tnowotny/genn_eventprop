@@ -15,6 +15,7 @@ import copy
 from time import perf_counter
 from dataclasses import dataclass
 from typing import Tuple
+import sys
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -137,6 +138,8 @@ p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= False
 p["BALANCE_TRAIN_CLASSES"]= False
 p["BALANCE_EVAL_CLASSES"]= False
 
+p["DATA_SET"]= "SHD"
+
 # ----------------------------------------------------------------------------
 # Helper functions
 # ----------------------------------------------------------------------------
@@ -217,7 +220,10 @@ class SHD_model:
             
         print("loading data ...")
         #self.load_data_SHD_Zenke(p)
-        self.load_data_SHD(p)
+        if p["DATA_SET"] == "SHD":
+            self.load_data_SHD(p)
+        if p["DATA_SET"] == "SSC":
+            self.load_data_SSC(p)
         print("loading data complete ...")
         
         if p["REDUCED_CLASSES"] is not None and len(p["REDUCED_CLASSES"]) > 0:
@@ -239,11 +245,19 @@ class SHD_model:
             X= self.normalise_spike_number(X)
         ydim= len(spkrs)
         xdim= nsample
-        fig, ax= plt.subplots(ydim,xdim,sharex= True, sharey= True)
-        for y in range(ydim):
-            td= X[np.logical_and(Z == spkrs[y], Y == digit)][:nsample]
-            for x in range(len(td)):
-                ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
+        if ydim > 0:
+            fig, ax= plt.subplots(ydim,xdim,sharex= True, sharey= True)
+            for y in range(ydim):
+                td= X[np.logical_and(Z == spkrs[y], Y == digit)][:nsample]
+                for x in range(len(td)):
+                    ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
+        else: # no speaker info
+            fig, ax= plt.subplots(5,xdim,sharex= True, sharey= True)
+            for y in range(5):
+                td= X[Y == digit][:nsample]
+                for x in range(len(td)):
+                    ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
+ 
         plt.show()
 
     def plot_example_means(self,spkrs,digits,nsample,phase,p):
@@ -411,6 +425,72 @@ class SHD_model:
         self.X_test_orig= np.array(self.X_test_orig)
         self.Z_test_orig= dataset.speaker
     
+    def load_data_SSC(self, p):
+        if p["TRAIN_DATA_SEED"] is not None:
+            self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
+        else:
+            self.datarng= np.random.default_rng()        
+        if p["TEST_DATA_SEED"] is not None:
+            self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
+        else:
+            self.tdatarng= np.random.default_rng()        
+        dataset = tonic.datasets.SSC(save_to='./data', split="train", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+        print("Training data loaded from tonic")
+        print(f"Dataset is {sys.getsizeof(dataset)} bytes")
+        sensor_size = dataset.sensor_size
+        self.data_max_length= len(dataset)+2*p["N_BATCH"]
+        self.N_class= len(dataset.classes)
+        self.num_input= int(np.product(sensor_size))
+        self.num_output= self.N_class
+        self.Z_train_orig= None
+        self.Y_train_orig= np.empty(len(dataset), dtype= int)
+        self.X_train_orig= []
+        for i in range(len(dataset)):
+            events, label = dataset[i]
+            self.Y_train_orig[i]= label
+            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
+                sample= rescale(events["x"], events["t"]/1000.0, p)
+            else:
+                sample= {"x": events["x"], "t": events["t"]/1000.0}
+            self.X_train_orig.append(sample)
+        self.X_train_orig= np.array(self.X_train_orig)
+        print("Training data reformatted")        
+        dataset = tonic.datasets.SSC(save_to='./data', split="valid", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+        print("Evaluation data loaded from tonic")
+        print(f"Dataset is {sys.getsizeof(dataset)} bytes")
+        self.data_max_length+= len(dataset)
+        self.Z_eval_orig= None
+        self.Y_eval_orig= np.empty(len(dataset), dtype= int)
+        self.X_eval_orig= []
+        for i in range(len(dataset)):
+            events, label = dataset[i]
+            self.Y_eval_orig[i]= label
+            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
+                sample= rescale(events["x"], events["t"]/1000.0, p)
+            else:
+                sample= {"x": events["x"], "t": events["t"]/1000.0}
+            self.X_eval_orig.append(sample)
+        self.X_eval_orig= np.array(self.X_eval_orig)
+        print("Evaluation data reformatted")        
+        dataset = tonic.datasets.SSC(save_to='./data', split="test", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+        print("Test data loaded from tonic")
+        print(f"Dataset is {sys.getsizeof(dataset)} bytes")
+        self.data_max_length+= len(dataset)
+        self.Z_test_orig= None
+        self.Y_test_orig= np.empty(len(dataset), dtype= int)
+        self.X_test_orig= []
+        for i in range(len(dataset)):
+            events, label = dataset[i]
+            self.Y_test_orig[i]= label
+            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
+                sample= rescale(events["x"], events["t"]/1000.0, p)
+            else:
+                sample= {"x": events["x"], "t": events["t"]/1000.0}
+            self.X_test_orig.append(sample)
+        self.X_test_orig= np.array(self.X_test_orig)
+        print("Test data reformatted")        
+
+
     def load_data_SHD_Zenke(self, p):
         cache_dir=os.path.expanduser("~/data")
         cache_subdir="SHD"
@@ -664,7 +744,7 @@ class SHD_model:
         self.input= self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, input_params, self.input_init_vars)
         self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*p["N_MAX_SPIKE"], dtype=np.float32))
         # reserve enough space for any set of input spikes that is likely
-        self.input.set_extra_global_param("spikeTimes", np.zeros(200000000, dtype=np.float32))
+        self.input.set_extra_global_param("spikeTimes", np.zeros(700000000, dtype=np.float32))
 
         input_reset_params= {"N_max_spike": p["N_MAX_SPIKE"]}
         input_reset_var_refs= {
@@ -1326,18 +1406,22 @@ class SHD_model:
                 self.hid_to_hid[l].push_in_syn_to_device()
 
     def calc_balance(self,Y_t, Z_t, Y_e):
-        speakers= set(Z_t)
-        print("train:")
-        sn= []
-        for s in speakers:
-            sn.append([ np.sum(np.logical_and(Y_t == d, Z_t == s)) for d in range(20) ])
-            print(f"Speaker {s}: {sn[-1]}")
-        sn= np.array(sn)
-        snm= np.sum(sn, axis=0)
-        print(f"Sum across speakers: {snm}")
-        print("eval:")
-        sne= [ np.sum(Y_e == d) for d in range(20) ]
-        print(sne)
+        if Z_t is not None:
+            speakers= set(Z_t)
+            print("train:")
+            sn= []
+            for s in speakers:
+                sn.append([ np.sum(np.logical_and(Y_t == d, Z_t == s)) for d in range(20) ])
+                print(f"Speaker {s}: {sn[-1]}")
+            sn= np.array(sn)
+            snm= np.sum(sn, axis=0)
+            print(f"Sum across speakers: {snm}")
+            print("eval:")
+            sne= [ np.sum(Y_e == d) for d in range(20) ]
+            print(sne)
+        else:
+            snm= []
+            sne= []
         return (snm, sne)
 
 
@@ -1345,7 +1429,6 @@ class SHD_model:
         N_trial= 0
         if X_train is not None:
             assert(Y_train is not None)
-            assert(Z_train is not None)
             if "blend" in p["AUGMENTATION"]:
                 N_train= p["N_TRAIN"]
             else:
@@ -1981,6 +2064,13 @@ class SHD_model:
                 X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
             if p["EVALUATION"] == "speaker":
                 X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["SPEAKER_LEFT"], p)
+            if p["EVALUATION"] == "validation_set":
+                X_train= self.X_train_orig
+                Y_train= self.Y_train_orig
+                Z_train= self.Z_train_orig
+                X_eval= self.X_eval_orig
+                Y_eval= self.Y_eval_orig
+                Z_eval= self.Z_eval_orig
         else:
             X_train= self.X_train_orig
             Y_train= self.Y_train_orig
