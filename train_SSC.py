@@ -71,6 +71,8 @@ p["HIDDEN_NOISE"]= 0.0
 
 p["DATA_SET"]= "SSC"
 p["EVALUATION"]= "validation_set"
+p["READ_BUFFERED"]= False
+p["DATA_BUFFER_NAME"]= "./data/SSC/mySSC"
 
 print(p)
 
