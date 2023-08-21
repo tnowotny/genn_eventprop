@@ -41,7 +41,6 @@ p["RHO_UPPER"]= 10000.0100
 p["GLB_UPPER"]= 1e-8
 p["TIMING"]= True
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
-p["EVALUATION"]= "speaker"
 
 p["RECURRENT"]= True
 p["HIDDEN_HIDDEN_MEAN"]= 0.0
@@ -64,15 +63,16 @@ p["AUGMENTATION"]= {
 #p["REDUCED_CLASSES"]= [0]
 
 p["SPEAKER_LEFT"]= 0
-p["COLLECT_CONFUSION"]= False
+p["COLLECT_CONFUSION"]= True
 p["TAU_ACCUMULATOR"]= 5.0
 
 p["HIDDEN_NOISE"]= 0.0
 
 p["DATA_SET"]= "SSC"
 p["EVALUATION"]= "validation_set"
-p["READ_BUFFERED"]= False
+p["READ_BUFFERED"]= True
 p["DATA_BUFFER_NAME"]= "./data/SSC/mySSC"
+p["REC_PREDICTIONS"]= True
 
 print(p)
 

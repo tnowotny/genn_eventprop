@@ -775,7 +775,7 @@ class SHD_model:
         self.input= self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, input_params, self.input_init_vars)
         self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*p["N_MAX_SPIKE"], dtype=np.float32))
         # reserve enough space for any set of input spikes that is likely
-        self.input.set_extra_global_param("spikeTimes", np.zeros(700000000, dtype=np.float32))
+        self.input.set_extra_global_param("spikeTimes", np.zeros(750000000, dtype=np.float32))
 
         input_reset_params= {"N_max_spike": p["N_MAX_SPIKE"]}
         input_reset_var_refs= {
