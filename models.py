@@ -8,7 +8,7 @@ We use "EVP" in naming to indicate "eventprop".
 """
 import numpy as np
 from pygenn import genn_model 
-from pygenn.genn_wrapper.Models import VarAccessDuplication_SHARED, VarAccess_REDUCE_BATCH_SUM, VarAccessMode_READ_ONLY, VarAccess_READ_ONLY, VarAccess_READ_ONLY_DUPLICATE
+from pygenn.genn_wrapper.Models import VarAccessDuplication_SHARED, VarAccess_REDUCE_BATCH_SUM, VarAccessMode_READ_ONLY, VarAccess_READ_ONLY, VarAccess_READ_ONLY_DUPLICATE, VarAccess_REDUCE_NEURON_MAX, VarAccess_REDUCE_NEURON_SUM
 
 # ----------------------------------------------------------------------------
 # Custom models
@@ -450,27 +450,14 @@ EVP_neuron_reset_output_SHD_max= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_SHD_sum",
     param_names=["V_reset","N_class"],
-    var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
+    var_refs=[("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("trial","int"),("sum_V","scalar"),("rev_t","scalar")],
     update_code= """
-    scalar m= $(new_sum_V);
-    for (int i= 0; i < $(N_class); i++) {
-        m = fmax(m, __shfl_sync(0xFFFFF, m, i));
-    }
-    m= exp($(new_sum_V) - m);
-    $(exp_V)= m;
-    scalar mexp= 0.0; 
-    for (int i= 0; i < $(N_class); i++) {
-        mexp += __shfl_sync(0xFFFFF, m, i);
-    }
-    $(expsum)= mexp;
-    //printf(\"%g, %g\\n\",$(exp_V),$(expsum));
-    $(rev_t)= $(t);
+    $(V)= $(V_reset);
     $(lambda_V)= 0.0;
     $(lambda_I)= 0.0;
-    $(V)= $(V_reset);
-    $(sum_V)= $(new_sum_V);
-    $(new_sum_V)= 0.0;
     $(trial)++;
+    $(sum_V)= 0.0;
+    $(rev_t)= $(t);
     """
 )
 
@@ -480,31 +467,51 @@ EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output_SHD_sum_weigh_input= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_SHD_sum_weigh_input",
     param_names=["V_reset","N_class","trial_steps"],
-    var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int"),("rp_V","int"),("wp_V","int")],
+    var_refs=[("sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("trial","int"),("rp_V","int"),("wp_V","int")],
     update_code= """
-    scalar m= $(new_sum_V);
-    for (int i= 0; i < $(N_class); i++) {
-        m = fmax(m, __shfl_sync(0xFFFFF, m, i));
-    }
-    m= exp($(new_sum_V) - m);
-    $(exp_V)= m;
-    scalar mexp= 0.0;
-    for (int i= 0; i < $(N_class); i++) {
-        mexp += __shfl_sync(0xFFFFF, m, i);
-    }
-    $(expsum)= mexp;
-    //printf(\"%g\\n\",$(expsum));
     $(rev_t)= $(t);
     $(lambda_V)= 0.0;
     $(lambda_I)= 0.0;
     $(V)= $(V_reset);
-    $(sum_V)= $(new_sum_V);
-    $(new_sum_V)= 0.0;
+    $(sum_V)= 0.0;
     $(trial)++;
     $(rp_V)= $(wp_V);
     $(wp_V)= $(wp_V)%(2* (int) $(trial_steps));
     """
 )
+
+# First pass of softmax - calculate max
+softmax_1_model = genn_model.create_custom_custom_update_class(
+    "sofmax_1_model",
+    var_name_types= [("MaxVal", "scalar", VarAccess_REDUCE_NEURON_MAX)],
+    var_refs= [("Val", "scalar", VarAccessMode_READ_ONLY)],
+    update_code= """
+    $(MaxVal) = $(Val);
+    """
+    )
+
+# Second pass of softmax - calculate scaled sum of exp(value)
+softmax_2_model = genn_model.create_custom_custom_update_class(
+    "softmax_2_model",
+    var_name_types= [("SumExpVal", "scalar", VarAccess_REDUCE_NEURON_SUM)],
+    var_refs= [("Val", "scalar", VarAccessMode_READ_ONLY),
+                 ("MaxVal", "scalar", VarAccessMode_READ_ONLY)],
+    update_code= """
+    $(SumExpVal) = exp($(Val) - $(MaxVal));
+    """
+    )
+
+# Third pass of softmax - calculate softmax value
+softmax_3_model = genn_model.create_custom_custom_update_class(
+    "softmax_3_model",
+    var_refs= [("Val", "scalar", VarAccessMode_READ_ONLY),
+               ("MaxVal", "scalar", VarAccessMode_READ_ONLY),
+               ("SumExpVal", "scalar", VarAccessMode_READ_ONLY),
+               ("SoftmaxVal", "scalar")],
+    update_code= """
+    $(SoftmaxVal) = exp($(Val) - $(MaxVal)) / $(SumExpVal);
+    """
+    )
 
 # This version for "average xentropy loss function"
 EVP_neuron_reset_output_avg_xentropy= genn_model.create_custom_custom_update_class(
@@ -1150,8 +1157,7 @@ EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("sum_V","scalar"),("new_sum_V","scalar"),
-                    ("expsum","scalar"),("exp_V","scalar"),
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
                     ("trial","int")],
     extra_global_params=[("label","int*")], 
     sim_code="""
@@ -1165,17 +1171,17 @@ EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
     scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            A= (1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t); 
+            A= (1.0-$(SoftmaxVal))/$(tau_m)/$(N_batch)/$(trial_t); 
         }
         else {
-            A= -$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t);
+            A= -$(SoftmaxVal)/$(tau_m)/$(N_batch)/$(trial_t);
         }
     }
     $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
-    $(new_sum_V)+= $(V)/$(trial_t)*DT; // simple Euler
+    $(sum_V)+= $(V)/$(trial_t)*DT; // simple Euler
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
     $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
     """,
@@ -1192,8 +1198,7 @@ EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_linear",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("sum_V","scalar"),("new_sum_V","scalar"),
-                    ("expsum","scalar"),("exp_V","scalar"),
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
                     ("trial","int")],
     extra_global_params=[("label","int*")], 
     sim_code="""
@@ -1204,17 +1209,17 @@ EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
     scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            A= (($(t)-$(rev_t))/$(trial_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
+            A= (($(t)-$(rev_t))/$(trial_t))*(1.0-$(SoftmaxVal))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            A= -(($(t)-$(rev_t))/$(trial_t))*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
+            A= -(($(t)-$(rev_t))/$(trial_t))*$(SoftmaxVal)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
     $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
-    $(new_sum_V)+= (1-($(t)-$(rev_t))/$(trial_t))*$(V)/$(trial_t)*DT; // simple Euler
+    $(sum_V)+= (1-($(t)-$(rev_t))/$(trial_t))*$(V)/$(trial_t)*DT; // simple Euler
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
     $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
     """,
@@ -1231,8 +1236,7 @@ EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_exp",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("sum_V","scalar"),("new_sum_V","scalar"),
-                    ("expsum","scalar"),("exp_V","scalar"),
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
                     ("trial","int")],
     extra_global_params=[("label","int*")], 
     sim_code="""
@@ -1244,17 +1248,17 @@ EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
     scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            A= exp(-(1.0-local_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
+            A= exp(-(1.0-local_t))*(1.0-$(SoftmaxVal))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            A= -exp(-(1.0-local_t))*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
+            A= -exp(-(1.0-local_t))*$(SoftmaxVal)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
     $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
-    $(new_sum_V)+= exp(-local_t)*$(V)/$(trial_t)*DT; // simple Euler
+    $(sum_V)+= exp(-local_t)*$(V)/$(trial_t)*DT; // simple Euler
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
     $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
     """,
@@ -1271,8 +1275,7 @@ EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_sigmoid",
     param_names=["tau_m","tau_syn","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("sum_V","scalar"),("new_sum_V","scalar"),
-                    ("expsum","scalar"),("exp_V","scalar"),
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
                     ("trial","int")],
     extra_global_params=[("label","int*")], 
     sim_code="""
@@ -1285,10 +1288,10 @@ EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
     #define SIGMOID(x) (1/(1+exp((x-0.5)/0.2)))
     if ($(trial) > 0) {        
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            A= SIGMOID(1.0-local_t)*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
+            A= SIGMOID(1.0-local_t)*(1.0-$(SoftmaxVal))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            A= -SIGMOID(1.0-local_t)*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
+            A= -SIGMOID(1.0-local_t)*$(SoftmaxVal)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
     $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
@@ -1313,8 +1316,7 @@ EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_input",
     param_names=["tau_m","tau_syn","N_neurons","trial_t","N_batch","trial_steps"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("sum_V","scalar"),("new_sum_V","scalar"),
-                    ("expsum","scalar"),("exp_V","scalar"),
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
                     ("trial","int"),("rp_V","int"),("wp_V","int"),("avgInback","scalar")],
     extra_global_params=[("label","int*"),("aIbuf","scalar*")], 
     sim_code="""
@@ -1331,17 +1333,17 @@ EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
     scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            A= $(avgInback)*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
+            A= $(avgInback)*(1.0-$(SoftmaxVal))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            A= -$(avgInback)*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
+            A= -$(avgInback)*$(SoftmaxVal)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
     $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
-    $(new_sum_V)+= $(avgIn)*$(V)/$(trial_t)*DT; // simple Euler
+    $(sum_V)+= $(avgIn)*$(V)/$(trial_t)*DT; // simple Euler
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
     $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
     """,

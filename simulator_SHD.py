@@ -16,6 +16,7 @@ from time import perf_counter
 from dataclasses import dataclass
 from typing import Tuple
 import sys
+from tqdm import tqdm
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -139,6 +140,10 @@ p["BALANCE_TRAIN_CLASSES"]= False
 p["BALANCE_EVAL_CLASSES"]= False
 
 p["DATA_SET"]= "SHD"
+
+p["READ_BUFFERED"]= False
+p["DATA_BUFFER_NAME"]= "./data/SSC/mySSC"
+
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -366,7 +371,7 @@ class SHD_model:
         loss/= N_batch
         return loss
 
-    def loss_func_max_sum(self, Y, N_batch):
+    def loss_func_max(self, Y, N_batch):
         expsum= self.output.vars["expsum"].view[:N_batch,:self.N_class]
         exp_V= self.output.vars["exp_V"].view[:N_batch,:self.N_class]
         exp_V_correct= np.array([ exp_V[i,y] for i, y in enumerate(Y) ])
@@ -376,6 +381,17 @@ class SHD_model:
             print(exp_V[np.where(exp_V_correct == 0),:])
             exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0
         loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/N_batch
+        return loss
+
+    def loss_func_sum(self, Y, N_batch):
+        SoftmaxVal= self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class]
+        SoftmaxVal_correct= np.array([ SoftmaxVal[i,y] for i, y in enumerate(Y) ])
+        if (np.sum(SoftmaxVal_correct == 0) > 0):
+            print("exp_V flushed to 0 exception!")
+            print(softmaxVal_V_correct)
+            print(softmaxVal[np.where(softmaxVal_correct == 0),:])
+            softMaxVal_correct[softmaxVal_correct == 0]+= 2e-45 # make sure all exp_V are > 0
+        loss= -np.sum(np.log(SoftmaxVal_correct))/N_batch
         return loss
 
     def loss_func_avg_xentropy(self, N_batch):
@@ -434,9 +450,8 @@ class SHD_model:
             self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
         else:
             self.tdatarng= np.random.default_rng()        
+           
         dataset = tonic.datasets.SSC(save_to='./data', split="train", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
-        print("Training data loaded from tonic")
-        print(f"Dataset is {sys.getsizeof(dataset)} bytes")
         sensor_size = dataset.sensor_size
         self.data_max_length= len(dataset)+2*p["N_BATCH"]
         self.N_class= len(dataset.classes)
@@ -445,51 +460,67 @@ class SHD_model:
         self.Z_train_orig= None
         self.Y_train_orig= np.empty(len(dataset), dtype= int)
         self.X_train_orig= []
-        for i in range(len(dataset)):
-            events, label = dataset[i]
-            self.Y_train_orig[i]= label
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(events["x"], events["t"]/1000.0, p)
-            else:
-                sample= {"x": events["x"], "t": events["t"]/1000.0}
-            self.X_train_orig.append(sample)
-        self.X_train_orig= np.array(self.X_train_orig)
-        print("Training data reformatted")        
+        if p["READ_BUFFERED"]:
+            self.X_train_orig= np.load(p["DATA_BUFFER_NAME"]+"_X_train_orig.npy",allow_pickle= True)
+            self.Y_train_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_train_orig.npy",allow_pickle= True)
+            print(f"data loaded from buffered file {p['DATA_BUFFER_NAME']+'_*_train_orig.npy'}")
+        else:
+            for i in tqdm(range(len(dataset))):
+                events, label = dataset[i]
+                self.Y_train_orig[i]= label
+                if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
+                    sample= rescale(events["x"], events["t"]/1000.0, p)
+                else:
+                    sample= {"x": events["x"], "t": events["t"]/1000.0}
+                self.X_train_orig.append(sample)
+            self.X_train_orig= np.array(self.X_train_orig)
+            np.save(p["DATA_BUFFER_NAME"]+"_X_train_orig", self.X_train_orig, allow_pickle= True)
+            np.save(p["DATA_BUFFER_NAME"]+"_Y_train_orig", self.Y_train_orig, allow_pickle= True)
+            print(f"data saved to buffer file {p['DATA_BUFFER_NAME']+'_*_train_orig.npy'}")
         dataset = tonic.datasets.SSC(save_to='./data', split="valid", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
-        print("Evaluation data loaded from tonic")
-        print(f"Dataset is {sys.getsizeof(dataset)} bytes")
         self.data_max_length+= len(dataset)
         self.Z_eval_orig= None
         self.Y_eval_orig= np.empty(len(dataset), dtype= int)
         self.X_eval_orig= []
-        for i in range(len(dataset)):
-            events, label = dataset[i]
-            self.Y_eval_orig[i]= label
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(events["x"], events["t"]/1000.0, p)
-            else:
-                sample= {"x": events["x"], "t": events["t"]/1000.0}
-            self.X_eval_orig.append(sample)
-        self.X_eval_orig= np.array(self.X_eval_orig)
-        print("Evaluation data reformatted")        
+        if p["READ_BUFFERED"]:
+            self.X_eval_orig= np.load(p["DATA_BUFFER_NAME"]+"_X_eval_orig.npy",allow_pickle= True)
+            self.Y_eval_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_eval_orig.npy",allow_pickle= True)
+            print(f"data loaded from buffered file {p['DATA_BUFFER_NAME']+'_*_eval_orig.npy'}")
+        else:
+            for i in tqdm(range(len(dataset))):
+                events, label = dataset[i]
+                self.Y_eval_orig[i]= label
+                if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
+                    sample= rescale(events["x"], events["t"]/1000.0, p)
+                else:
+                    sample= {"x": events["x"], "t": events["t"]/1000.0}
+                self.X_eval_orig.append(sample)
+            self.X_eval_orig= np.array(self.X_eval_orig)
+            np.save(p["DATA_BUFFER_NAME"]+"_X_eval_orig", self.X_eval_orig, allow_pickle= True)
+            np.save(p["DATA_BUFFER_NAME"]+"_Y_eval_orig", self.Y_eval_orig, allow_pickle= True)
+            print(f"data saved to buffer file {p['DATA_BUFFER_NAME']+'_*_eval_orig.npy'}")
         dataset = tonic.datasets.SSC(save_to='./data', split="test", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
-        print("Test data loaded from tonic")
-        print(f"Dataset is {sys.getsizeof(dataset)} bytes")
         self.data_max_length+= len(dataset)
         self.Z_test_orig= None
         self.Y_test_orig= np.empty(len(dataset), dtype= int)
         self.X_test_orig= []
-        for i in range(len(dataset)):
-            events, label = dataset[i]
-            self.Y_test_orig[i]= label
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(events["x"], events["t"]/1000.0, p)
-            else:
-                sample= {"x": events["x"], "t": events["t"]/1000.0}
-            self.X_test_orig.append(sample)
-        self.X_test_orig= np.array(self.X_test_orig)
-        print("Test data reformatted")        
-
+        if p["READ_BUFFERED"]:
+            self.X_test_orig= np.load(p["DATA_BUFFER_NAME"]+"_X_test_orig.npy",allow_pickle= True)
+            self.Y_test_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_test_orig.npy",allow_pickle= True)
+            print(f"data loaded from buffered file {p['DATA_BUFFER_NAME']+'_*_test_orig.npy'}")
+        else:
+            for i in tqdm(range(len(dataset))):
+                events, label = dataset[i]
+                self.Y_test_orig[i]= label
+                if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
+                    sample= rescale(events["x"], events["t"]/1000.0, p)
+                else:
+                    sample= {"x": events["x"], "t": events["t"]/1000.0}
+                self.X_test_orig.append(sample)
+            self.X_test_orig= np.array(self.X_test_orig)
+            np.save(p["DATA_BUFFER_NAME"]+"_X_test_orig", self.X_test_orig, allow_pickle= True)
+            np.save(p["DATA_BUFFER_NAME"]+"_Y_test_orig", self.Y_test_orig, allow_pickle= True)
+            print(f"data saved to buffer file {p['DATA_BUFFER_NAME']+'_*_test_orig.npy'}")
 
     def load_data_SHD_Zenke(self, p):
         cache_dir=os.path.expanduser("~/data")
@@ -1126,10 +1157,8 @@ class SHD_model:
                 "lambda_I": 0.0,
                 "trial": 0,
                 "sum_V": 0.0,
-                "new_sum_V": 0.0,
+                "SoftmaxVal": 0.0,
                 "rev_t": 0.0,
-                "expsum": 1.0,
-                "exp_V": 1.0,
             }
             if p["LOSS_TYPE"] == "sum":
                 print("Output neurons: EVP_LIF_output_sum")
@@ -1155,6 +1184,30 @@ class SHD_model:
             self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
             if p["LOSS_TYPE"] == "sum_weigh_input":
                 self.output.set_extra_global_param("aIbuf", np.zeros(p["N_BATCH"]*self.num_output*self.trial_steps*2, dtype=np.float32)) # reserve space for avgInput
+
+            # updates to do do softmax
+            softmax_1_init_vars= {
+                "MaxVal": -1e10
+            }
+            softmax_1_var_refs= {
+                "Val": genn_model.create_var_ref(self.output, "sum_V")
+            }
+            softmax_1= self.model.add_custom_update("softmax_1", "Softmax1", softmax_1_model, {}, softmax_1_init_vars, softmax_1_var_refs)
+            softmax_2_init_vars= {
+                "SumExpVal": 0.0
+            }
+            softmax_2_var_refs= {
+                "Val": genn_model.create_var_ref(self.output, "sum_V"),
+                "MaxVal": genn_model.create_var_ref(softmax_1, "MaxVal")
+            }
+            softmax_2= self.model.add_custom_update("softmax_2", "Softmax2", softmax_2_model, {}, softmax_2_init_vars, softmax_2_var_refs)
+            softmax_3_var_refs= {
+                "Val": genn_model.create_var_ref(self.output, "sum_V"),
+                "MaxVal": genn_model.create_var_ref(softmax_1, "MaxVal"),
+                "SumExpVal": genn_model.create_var_ref(softmax_2, "SumExpVal"),
+                "SoftmaxVal":genn_model.create_var_ref(self.output,"SoftmaxVal")
+            }
+            softmax_3= self.model.add_custom_update("softmax_3", "Softmax3", softmax_3_model, {}, {}, softmax_3_var_refs)
             output_reset_params= {
                 "V_reset": p["V_RESET"],
                 "N_class": self.N_class,
@@ -1165,10 +1218,7 @@ class SHD_model:
                 "lambda_I": genn_model.create_var_ref(self.output, "lambda_I"),
                 "trial": genn_model.create_var_ref(self.output, "trial"),
                 "sum_V": genn_model.create_var_ref(self.output, "sum_V"),
-                "new_sum_V": genn_model.create_var_ref(self.output, "new_sum_V"),
                 "rev_t": genn_model.create_var_ref(self.output, "rev_t"),
-                "expsum": genn_model.create_var_ref(self.output, "expsum"),
-                "exp_V": genn_model.create_var_ref(self.output, "exp_V"),
             }
             if p["LOSS_TYPE"] == "sum_weigh_input":
                 output_reset_params["trial_steps"]= self.trial_steps
@@ -1796,6 +1846,12 @@ class SHD_model:
                     self.output.pull_var_from_device("sum_V")
                     self.output.pull_var_from_device("loss")
 
+                if p["LOSS_TYPE"][:3] == "sum":
+                    # do the custom updates for softmax!
+                    self.model.custom_update("Softmax1")
+                    self.model.custom_update("Softmax2")
+                    self.model.custom_update("Softmax3")
+                    
                 self.model.custom_update("neuronReset")
 
                 if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
@@ -1817,15 +1873,17 @@ class SHD_model:
 
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
-                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
+                if p["LOSS_TYPE"] == "max":
                     self.output.pull_var_from_device("exp_V")
                     pred= np.argmax(self.output.vars["exp_V"].view[:N_batch,:self.N_class], axis=-1)
-
+                if p["LOSS_TYPE"][:3] == "sum":
+                    self.output.pull_var_from_device("SoftmaxVal")
+                    pred= np.argmax(self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class], axis=-1)
+                    
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     pred= np.argmax(self.output.vars["sum_V"].view[:N_batch,:self.N_class], axis=-1)
 
                 lbl= Y[(trial*p["N_BATCH"]):(trial*p["N_BATCH"]+N_batch)]
-
                 if ([epoch, trial] in p["REC_SPIKES_EPOCH_TRIAL"]):
                     rec_spk_lbl.append(lbl.copy())
                     rec_spk_pred.append(pred.copy())
@@ -1848,9 +1906,12 @@ class SHD_model:
                     if p["LOSS_TYPE"] == "first_spike_exp":
                         losses= self.loss_func_first_spike_exp(nfst, lbl, trial, self.N_class, N_batch)
 
-                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
+                if p["LOSS_TYPE"] == "max":
                     self.output.pull_var_from_device("expsum")
-                    losses= self.loss_func_max_sum(lbl, N_batch)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+                    losses= self.loss_func_max(lbl, N_batch)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+
+                if p["LOSS_TYPE"][:3] == "sum":
+                    losses= self.loss_func_sum(lbl, N_batch)   # uses self.output.vars["SoftmaxVal"].view 
 
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     losses= self.loss_func_avg_xentropy(lbl, N_batch)   # uses self.output.vars["loss"].view
