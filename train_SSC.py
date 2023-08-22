@@ -56,9 +56,7 @@ p["ALPHA"]= 1e-3
 
 p["LOSS_TYPE"]= "sum_weigh_exp"
 
-p["AUGMENTATION"]= {
-    "random_shift": 40.0,
-}
+p["AUGMENTATION"]= {}
 
 #p["REDUCED_CLASSES"]= [0]
 

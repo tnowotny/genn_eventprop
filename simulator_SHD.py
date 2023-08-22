@@ -1605,7 +1605,8 @@ class SHD_model:
         if len(p["AUGMENTATION"]) == 0:
             # build and assign the input spike train and corresponding labels
             # these are padded to multiple of batch size for both train and eval portions
-            X_train, Y_train, Z_train, X_eval, Y_eval= self.balance_classes(X_train, Y_train, Z_train, X_eval, Y_eval, snm, sne, p)
+            if p["BALANCE_TRAIN_CLASSES"] or p["BALANCE_EVAL_CLASSES"]:
+                X_train, Y_train, Z_train, X_eval, Y_eval= self.balance_classes(X_train, Y_train, Z_train, X_eval, Y_eval, snm, sne, p)
             X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_train, Y_train, X_eval, Y_eval)
             self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
             self.input.push_extra_global_param_to_device("spikeTimes")
@@ -1645,7 +1646,8 @@ class SHD_model:
             lZ= copy.deepcopy(Z_train)
             lX_eval= copy.deepcopy(X_eval)
             lY_eval= copy.deepcopy(Y_eval)
-            lX, lY, lZ, lX_eval, lY_eval= self.balance_classes(lX, lY, lZ, lX_eval, lY_eval, snm, sne, p)
+            if p["BALANCE_TRAIN_CLASSES"] or p["BALANCE_EVAL_CLASSES"]:
+                lX, lY, lZ, lX_eval, lY_eval= self.balance_classes(lX, lY, lZ, lX_eval, lY_eval, snm, sne, p)
             if ("NORMALISE_SPIKE_NUMBER" in p["AUGMENTATION"]) and (p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]):
                 lX, lX_eval= self.normalise_spike_number(lX, lX_eval)
             if N_trial_train > 0 and len(p["AUGMENTATION"]) > 0:
@@ -1878,6 +1880,8 @@ class SHD_model:
                     pred= np.argmax(self.output.vars["exp_V"].view[:N_batch,:self.N_class], axis=-1)
                 if p["LOSS_TYPE"][:3] == "sum":
                     self.output.pull_var_from_device("SoftmaxVal")
+                    if phase == "eval":
+                        print(self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class])
                     pred= np.argmax(self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class], axis=-1)
                     
                 if p["LOSS_TYPE"] == "avg_xentropy":
@@ -1917,6 +1921,9 @@ class SHD_model:
                     losses= self.loss_func_avg_xentropy(lbl, N_batch)   # uses self.output.vars["loss"].view
 
                 good[phase] += np.sum(pred == lbl)
+                if phase == "eval":
+                    print(pred)
+                    print(lbl)
                 #xx= pred == lbl
                 #print(xx.astype(int))
                 if p["REC_PREDICTIONS"]:
