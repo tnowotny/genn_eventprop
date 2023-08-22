@@ -141,7 +141,6 @@ p["BALANCE_EVAL_CLASSES"]= False
 
 p["DATA_SET"]= "SHD"
 
-p["READ_BUFFERED"]= False
 p["DATA_BUFFER_NAME"]= "./data/SSC/mySSC"
 
 
@@ -388,7 +387,7 @@ class SHD_model:
         SoftmaxVal_correct= np.array([ SoftmaxVal[i,y] for i, y in enumerate(Y) ])
         if (np.sum(SoftmaxVal_correct == 0) > 0):
             print("exp_V flushed to 0 exception!")
-            print(softmaxVal_V_correct)
+            print(softmaxVal_correct)
             print(softmaxVal[np.where(softmaxVal_correct == 0),:])
             softMaxVal_correct[softmaxVal_correct == 0]+= 2e-45 # make sure all exp_V are > 0
         loss= -np.sum(np.log(SoftmaxVal_correct))/N_batch
@@ -460,7 +459,7 @@ class SHD_model:
         self.Z_train_orig= None
         self.Y_train_orig= np.empty(len(dataset), dtype= int)
         self.X_train_orig= []
-        if p["READ_BUFFERED"]:
+        if os.path.exists(p["DATA_BUFFER_NAME"]+"_X_train_orig.npy"):
             self.X_train_orig= np.load(p["DATA_BUFFER_NAME"]+"_X_train_orig.npy",allow_pickle= True)
             self.Y_train_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_train_orig.npy",allow_pickle= True)
             print(f"data loaded from buffered file {p['DATA_BUFFER_NAME']+'_*_train_orig.npy'}")
@@ -482,7 +481,7 @@ class SHD_model:
         self.Z_eval_orig= None
         self.Y_eval_orig= np.empty(len(dataset), dtype= int)
         self.X_eval_orig= []
-        if p["READ_BUFFERED"]:
+        if os.path.exists(p["DATA_BUFFER_NAME"]+"_X_eval_orig.npy"):
             self.X_eval_orig= np.load(p["DATA_BUFFER_NAME"]+"_X_eval_orig.npy",allow_pickle= True)
             self.Y_eval_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_eval_orig.npy",allow_pickle= True)
             print(f"data loaded from buffered file {p['DATA_BUFFER_NAME']+'_*_eval_orig.npy'}")
@@ -504,7 +503,7 @@ class SHD_model:
         self.Z_test_orig= None
         self.Y_test_orig= np.empty(len(dataset), dtype= int)
         self.X_test_orig= []
-        if p["READ_BUFFERED"]:
+        if os.path.exists(p["DATA_BUFFER_NAME"]+"_X_test_orig.npy"):
             self.X_test_orig= np.load(p["DATA_BUFFER_NAME"]+"_X_test_orig.npy",allow_pickle= True)
             self.Y_test_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_test_orig.npy",allow_pickle= True)
             print(f"data loaded from buffered file {p['DATA_BUFFER_NAME']+'_*_test_orig.npy'}")
@@ -1853,7 +1852,8 @@ class SHD_model:
                     self.model.custom_update("Softmax1")
                     self.model.custom_update("Softmax2")
                     self.model.custom_update("Softmax3")
-                    
+                    #self.output.pull_var_from_device("sum_V")
+                          
                 self.model.custom_update("neuronReset")
 
                 if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
@@ -1880,8 +1880,10 @@ class SHD_model:
                     pred= np.argmax(self.output.vars["exp_V"].view[:N_batch,:self.N_class], axis=-1)
                 if p["LOSS_TYPE"][:3] == "sum":
                     self.output.pull_var_from_device("SoftmaxVal")
-                    if phase == "eval":
-                        print(self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class])
+                    #if phase == "eval":
+                    #    for i in range(N_batch):
+                    #        print(f"{np.argmax(self.output.vars['sum_V'].view[i,:self.N_class])},{np.max(self.output.vars['sum_V'].view[i,:self.N_class])}")
+                    #        print(f"{np.argmax(self.output.vars['SoftmaxVal'].view[i,:self.N_class])},{np.max(self.output.vars['SoftmaxVal'].view[i,:self.N_class])}")
                     pred= np.argmax(self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class], axis=-1)
                     
                 if p["LOSS_TYPE"] == "avg_xentropy":
@@ -1920,10 +1922,13 @@ class SHD_model:
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     losses= self.loss_func_avg_xentropy(lbl, N_batch)   # uses self.output.vars["loss"].view
 
+                #with open("debug.txt","a") as f:
+                #    for i in range(len(lbl)):
+                #        f.write(f"{lbl[i]}\n")
                 good[phase] += np.sum(pred == lbl)
-                if phase == "eval":
-                    print(pred)
-                    print(lbl)
+                #if phase == "eval":
+                #    print(pred)
+                #    print(lbl)
                 #xx= pred == lbl
                 #print(xx.astype(int))
                 if p["REC_PREDICTIONS"]:
