@@ -794,7 +794,7 @@ EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
     //$(lambda_V) -= $(lambda_V)/exp($(ktau_m))*DT;
-    $(lambda_I)= exp($(ktau_m))/($(ktau_m)-exp($(tau_syn)))*$(lambda_V)*(exp(-DT/exp($(ktau_m))-exp(-DT/$(tau_syn))))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_I)= exp($(ktau_m))/(exp($(ktau_m))-$(tau_syn))*$(lambda_V)*(exp(-DT/exp($(ktau_m))-exp(-DT/$(tau_syn))))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/exp($(ktau_m)));
     // calculate gradient component for taum training
     $(dktaum)-= $(fImV)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_V)*exp($(ktau_m));
