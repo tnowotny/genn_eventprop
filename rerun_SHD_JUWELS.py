@@ -15,6 +15,8 @@ for k,v in p0.items():
 if len(sys.argv) > 2:
     p["NAME"]+= sys.argv[2]
 
+p["TRAIN_TAUM"]= True
+
 #p["LOSS_TYPE"]= "sum"
 #p["TAU_MEM"]= 10.0
 #p["TAU_SYN"]*= 1.5
@@ -29,7 +31,9 @@ if len(sys.argv) > 2:
 ##p["EVALUATION"]= "speaker"
 #p["COLLECT_CONFUSION"]= True
 p["WRITE_TO_DISK"]= True
-#p["N_EPOCH"] = 1
+
+p["N_EPOCH"] = 1
+
 #p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= True
 p["BALANCE_TRAIN_CLASSES"]= False
 p["BALANCE_EVAL_CLASSES"]= False
@@ -63,14 +67,14 @@ p["TRIAL_MS"]= 1000.0
 #p["TAU_SYN"]/=10
 #p["TRIAL_MS"]=100
 p["MIN_EPOCH_ETA_FIXED"]= 50
-p["EMA_ALPHA2"]= 0.99
+p["EMA_ALPHA2"]= 0.95
 p["EMA_ALPHA1"]= 0.9
 
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 
 
-#p["REC_NEURONS"] = [("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
-#p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4] ]
+p["REC_NEURONS"] = [("hidden0","ktau_m"),("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
+p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4], [0,5], [0,6] ]
 #p["REC_SPIKES"]= ["hidden0"]
 #p["REC_SPIKES_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4] ]
 
