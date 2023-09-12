@@ -52,7 +52,9 @@ p["TRIAL_MS"]= 1000.0
 #p["HIDDEN_HIDDEN_STD"]= 0.02
 #p["HIDDEN_OUTPUT_MEAN"]= 0.0
 #p["HIDDEN_OUTPUT_STD"]= 0.03
-
+p["N_HID_LAYER"]= 2
+p["HIDDEN_HIDDENFWD_MEAN"]= 0.02 # only used when > 1 hidden layer
+p["HIDDEN_HIDDENFWD_STD"]= 0.01 # only used when > 1 hidden layer
 
 #p["LBD_UPPER"]= 0 #4e-9
 #p["LBD_LOWER"]= 0 #4e-9
