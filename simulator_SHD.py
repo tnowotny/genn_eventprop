@@ -126,6 +126,7 @@ p["RESCALE_X"]= 1.0
 
 # whether to train neuron timescales
 p["TRAIN_TAUM"]= False
+p["MIN_TAU_M"]= 1.0
 p["N_HID_LAYER"]= 1
 
 # learning rate schedule depending on exponential moving average of performance
@@ -929,7 +930,7 @@ class SHD_model:
                     hidden_reset_params["trial_t"]= p["TRIAL_MS"]
                     hidden_reset_var_refs["fImV_roff"]= genn_model.create_var_ref(self.hidden[l], "fImV_roff")
                     hidden_reset_var_refs["fImV_woff"]= genn_model.create_var_ref(self.hidden[l], "fImV_woff")
-                    hidden_reset_var_refs["dktaum"]= genn_model.create_var_ref(self.hidden[l], "dktaum")
+                    hidden_reset_var_refs["dtaum"]= genn_model.create_var_ref(self.hidden[l], "dtaum")
                     print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_taum")
                     self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_taum, hidden_reset_params, {}, hidden_reset_var_refs))
                 else:
@@ -1289,6 +1290,12 @@ class SHD_model:
             "m": 0.0,
             "v": 0.0,
         }
+        adam_taum_params= {
+            "beta1": p["ADAM_BETA1"],
+            "beta2": p["ADAM_BETA2"],
+            "epsilon": p["ADAM_EPS"],
+            "min_tau_m": p["MIN_TAU_M"],
+        }
 
 
         # ----------------------------------------------------------------------------
@@ -1398,7 +1405,7 @@ class SHD_model:
                             "variable": genn_model.create_var_ref(self.hidden[l], "tau_m")}
                 print(f"Hidden taum {l} learn: adam_optimizer_model_taum")
                 self.hidden_taum_learn.append(self.model.add_custom_update(
-                    "hidden_taum_learn"+str(l),"EVPLearn", adam_optimizer_model_taum, adam_params, self.adam_init_vars, var_refs))
+                    "hidden_taum_learn"+str(l),"EVPLearn", adam_optimizer_model_taum, adam_taum_params, self.adam_init_vars, var_refs))
                 self.optimisers.append(self.hidden_taum_learn[l])
            
         # DEBUG hidden layer spike numbers
