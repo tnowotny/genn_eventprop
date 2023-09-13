@@ -410,7 +410,7 @@ class SHD_model:
             self.tdatarng= np.random.default_rng()        
         dataset = tonic.datasets.SHD(save_to='./data', train=True, transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SHD.sensor_size, p["DT_MS"] * 1000.0)]))
         sensor_size = dataset.sensor_size
-        self.data_max_length= len(dataset)+2*p["N_BATCH"]
+        self.data_max_length= max(len(dataset),p["N_TRAIN"])+2*p["N_BATCH"]
         self.N_class= len(dataset.classes)
         self.num_input= int(np.product(sensor_size))
         self.num_output= self.N_class

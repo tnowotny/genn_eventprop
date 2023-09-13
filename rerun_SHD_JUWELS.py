@@ -20,11 +20,11 @@ p["TRAIN_TAUM"]= True
 #p["LOSS_TYPE"]= "sum"
 #p["TAU_MEM"]= 10.0
 #p["TAU_SYN"]*= 1.5
-#p["AUGMENTATION"]["blend"]= [0.5, 0.5]  # blend two examples 50:50
+p["AUGMENTATION"]["blend"]= [0.5, 0.5]  # blend two examples 50:50
 #p["AUGMENTATION"]["random_dilate"]= [ 0.95, 1.2 ]
 #p["AUGMENTATION"]["ID_jitter"]= 4
 #p["AUGMENTATION"]["random_shift"]= 20
-#p["N_TRAIN"]*= 3  # do half of training examples as blended in addition to normal
+p["N_TRAIN"]*= 3  # do half of training examples as blended in addition to normal
 #print(p["AUGMENTATION"])
 
 ##p["SPEAKER_LEFT"]= 11
