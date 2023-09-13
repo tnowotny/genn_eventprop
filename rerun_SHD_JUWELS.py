@@ -32,7 +32,7 @@ p["TRAIN_TAUM"]= True
 #p["COLLECT_CONFUSION"]= True
 p["WRITE_TO_DISK"]= True
 
-p["N_EPOCH"] = 11
+p["N_EPOCH"] = 300
 
 #p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= True
 p["BALANCE_TRAIN_CLASSES"]= False
@@ -75,7 +75,7 @@ p["EMA_ALPHA1"]= 0.9
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 
 
-p["REC_NEURONS"] = [("hidden0","ktau_m"),("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
+p["REC_NEURONS"] = [("hidden0","tau_m"),("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
 #p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4], [0,5], [0,6] ]
 p["REC_NEURONS_EPOCH_TRIAL"] = [ [10,1], [10,2], [10,3], [10,4], [10,5], [10,6] ]
 #p["REC_SPIKES"]= ["hidden0"]
@@ -120,7 +120,7 @@ sid= res[1]["hidden0"]
 plt.scatter(st, sid,s=0.1)
 """
 
-ktau_m= res[2]["ktau_mhidden0"]
+tau_m= res[2]["tau_mhidden0"]
 lambda_V= res[2]["lambda_Vhidden0"]
 lambda_I= res[2]["lambda_Ihidden0"]
 lambda_V_o= res[2]["lambda_Voutput"]
@@ -131,7 +131,7 @@ for k in range(5):
     for i in range(8):
         for j in range(4):
             n= i*4+j
-            axes[i,j].plot(ktau_m[1000*k:1000*(k+1),n])
+            axes[i,j].plot(tau_m[1000*k:1000*(k+1),n])
 
     fig, axes= plt.subplots(8,4)
     for i in range(8):
