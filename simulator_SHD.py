@@ -889,8 +889,8 @@ class SHD_model:
             else:
                 if p["TRAIN_TAUM"]:
                     hidden_params["trial_t"]= p["TRIAL_MS"]
-                    self.hidden_init_vars["ktau_m"]= np.log(p["TAU_MEM"])
-                    self.hidden_init_vars["dktaum"]= 0.0
+                    self.hidden_init_vars["tau_m"]= p["TAU_MEM"]
+                    self.hidden_init_vars["dtaum"]= 0.0
                     self.hidden_init_vars["fImV_roff"]= int(p["TRIAL_MS"]/p["DT_MS"])
                     self.hidden_init_vars["fImV_woff"]= 0
                     for l in range(p["N_HID_LAYER"]):
@@ -1390,12 +1390,12 @@ class SHD_model:
         # learning updates for taum
         if p["TRAIN_TAUM"]:
             for l in range(p["N_HID_LAYER"]):            
-                var_refs = {"dw": genn_model.create_var_ref(self.hidden[l], "dktaum")}
+                var_refs = {"dw": genn_model.create_var_ref(self.hidden[l], "dtaum")}
                 print(f"Hidden taum {l} reduce: EVP_grad_reduce")
                 self.hidden_taum_reduce.append(self.model.add_custom_update(
                     "hidden_taum_reduce"+str(l),"EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs))
                 var_refs = {"gradient": genn_model.create_var_ref(self.hidden_taum_reduce[l], "reduced_dw"),
-                            "variable": genn_model.create_var_ref(self.hidden[l], "ktau_m")}
+                            "variable": genn_model.create_var_ref(self.hidden[l], "tau_m")}
                 print(f"Hidden taum {l} learn: adam_optimizer_model_taum")
                 self.hidden_taum_learn.append(self.model.add_custom_update(
                     "hidden_taum_learn"+str(l),"EVPLearn", adam_optimizer_model_taum, adam_params, self.adam_init_vars, var_refs))
@@ -1706,7 +1706,7 @@ class SHD_model:
             self.input.extra_global_params["pDrop"].view[:]= p["PDROP_INPUT"]
             for l in range(p["N_HID_LAYER"]):
                 for var, val in self.hidden_init_vars.items():
-                    if var != "ktau_m":               # do not reset tau_m at beginning of epoch
+                    if var != "tau_m":               # do not reset tau_m at beginning of epoch
                         self.hidden[l].vars[var].view[:]= val
                     else:
                         self.hidden[l].pull_var_from_device(var)
@@ -1960,8 +1960,8 @@ class SHD_model:
                 if p["TRAIN_TAUM"]:
                     if ([epoch,trial] in p["TAUM_OUTPUT_EPOCH_TRIAL"]):
                         for l in range(p["N_HID_LAYER"]):
-                            self.hidden[l].pull_var_from_device("ktau_m")
-                            np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_kaum_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hidden[l].vars["ktau_m"].view.copy())
+                            self.hidden[l].pull_var_from_device("tau_m")
+                            np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_tau_m_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hidden[l].vars["tau_m"].view.copy())
 
             if N_trial_train > 0:
                 correct= good["train"]/len(lX)
