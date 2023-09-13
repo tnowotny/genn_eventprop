@@ -32,7 +32,7 @@ p["TRAIN_TAUM"]= True
 #p["COLLECT_CONFUSION"]= True
 p["WRITE_TO_DISK"]= True
 
-p["N_EPOCH"] = 1
+p["N_EPOCH"] = 11
 
 #p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= True
 p["BALANCE_TRAIN_CLASSES"]= False
@@ -52,7 +52,7 @@ p["TRIAL_MS"]= 1000.0
 #p["HIDDEN_HIDDEN_STD"]= 0.02
 #p["HIDDEN_OUTPUT_MEAN"]= 0.0
 #p["HIDDEN_OUTPUT_STD"]= 0.03
-p["N_HID_LAYER"]= 2
+p["N_HID_LAYER"]= 1
 p["HIDDEN_HIDDENFWD_MEAN"]= 0.02 # only used when > 1 hidden layer
 p["HIDDEN_HIDDENFWD_STD"]= 0.01 # only used when > 1 hidden layer
 
@@ -76,7 +76,8 @@ p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 
 
 p["REC_NEURONS"] = [("hidden0","ktau_m"),("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
-p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4], [0,5], [0,6] ]
+#p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4], [0,5], [0,6] ]
+p["REC_NEURONS_EPOCH_TRIAL"] = [ [10,1], [10,2], [10,3], [10,4], [10,5], [10,6] ]
 #p["REC_SPIKES"]= ["hidden0"]
 #p["REC_SPIKES_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4] ]
 
@@ -118,13 +119,20 @@ st= res[0]["hidden0"]
 sid= res[1]["hidden0"]
 plt.scatter(st, sid,s=0.1)
 """
-"""
+
+ktau_m= res[2]["ktau_mhidden0"]
 lambda_V= res[2]["lambda_Vhidden0"]
 lambda_I= res[2]["lambda_Ihidden0"]
 lambda_V_o= res[2]["lambda_Voutput"]
 lambda_I_o= res[2]["lambda_Ioutput"]
 
-for k in range(1):
+for k in range(5):
+    fig, axes= plt.subplots(8,4)
+    for i in range(8):
+        for j in range(4):
+            n= i*4+j
+            axes[i,j].plot(ktau_m[1000*k:1000*(k+1),n])
+
     fig, axes= plt.subplots(8,4)
     for i in range(8):
         for j in range(4):
@@ -146,8 +154,7 @@ for k in range(1):
             axes[i,j].plot(np.log(np.abs(lambda_V_o[1000*k:1000*(k+1),n]-lambda_I_o[1000*k:1000*(k+1),n])))
 
 plt.show()
-"""
-with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_summary.json'),'w') as f:
-    json.dump(res, f)
+#with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_summary.json'),'w') as f:
+#    json.dump(res, f)
 
 

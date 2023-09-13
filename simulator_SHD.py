@@ -929,6 +929,7 @@ class SHD_model:
                     hidden_reset_params["trial_t"]= p["TRIAL_MS"]
                     hidden_reset_var_refs["fImV_roff"]= genn_model.create_var_ref(self.hidden[l], "fImV_roff")
                     hidden_reset_var_refs["fImV_woff"]= genn_model.create_var_ref(self.hidden[l], "fImV_woff")
+                    hidden_reset_var_refs["dktaum"]= genn_model.create_var_ref(self.hidden[l], "dktaum")
                     print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_taum")
                     self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_taum, hidden_reset_params, {}, hidden_reset_var_refs))
                 else:
