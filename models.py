@@ -183,7 +183,7 @@ EVP_neuron_reset_reg_taum= genn_model.create_custom_custom_update_class(
             $(fImV_woff)= 0;
             $(fImV_roff)= ((int) ($(trial_t)/DT));
         }
-        $(dktaum)= 0.0;
+        $(dtaum)= 0.0;
     """
 )
 
@@ -782,9 +782,9 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
 EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_taum",
     param_names=["V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower","trial_t"],
-    var_name_types=[("V", "scalar"),("ktau_m", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+    var_name_types=[("V", "scalar"),("tau_m", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),
-                    ("dktaum", "scalar"), ("fImV_roff","int"), ("fImV_woff","int")],
+                    ("dtaum", "scalar"), ("fImV_roff","int"), ("fImV_woff","int")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("fImV","scalar*"),("pDrop","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -794,11 +794,11 @@ EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    //$(lambda_V) -= $(lambda_V)/exp($(ktau_m))*DT;
-    $(lambda_I)= exp($(ktau_m))/(exp($(ktau_m))-$(tau_syn))*$(lambda_V)*(exp(-DT/exp($(ktau_m))-exp(-DT/$(tau_syn))))+$(lambda_I)*exp(-DT/$(tau_syn));
-    $(lambda_V)= $(lambda_V)*exp(-DT/exp($(ktau_m)));
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn))))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     // calculate gradient component for taum training
-    $(dktaum)-= $(fImV)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_V)*exp($(ktau_m))*0.0;
+    $(dtaum)-= $(fImV)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_V);
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         // decrease read pointer (on ring buffer)
@@ -819,9 +819,9 @@ EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
         $(back_spike)= 1;
     }
     // forward pass
-    $(fImV)[buf2_idx+$(fImV_woff)+((int) (($(t)-$(rev_t))/DT))]= ($(Isyn)-$(V))/exp($(ktau_m));
-    //$(V) += ($(Isyn)-$(V))/exp($(ktau_m))*DT;  // simple Euler
-    $(V)= $(tau_syn)/(exp($(ktau_m))-$(tau_syn))*$(Isyn)*(exp(-DT/exp($(ktau_m)))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/exp($(ktau_m)));   // exact solution
+    $(fImV)[buf2_idx+$(fImV_woff)+((int) (($(t)-$(rev_t))/DT))]= ($(Isyn)-$(V))/$(tau_m);
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
     """,
     threshold_condition_code="""
     ($(V) >= $(V_thresh)) && ($(gennrand_uniform) > $(pDrop))
