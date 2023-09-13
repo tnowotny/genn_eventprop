@@ -162,7 +162,7 @@ EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_reg_taum= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_reg_taum",
     param_names=["V_reset","N_max_spike","N_neurons","trial_t"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("fImV_roff","int"),("fImV_woff","int")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("fImV_roff","int"),("fImV_woff","int"),("dktaum","scalar")],
     update_code= """
         $(sNSum)= $(new_sNSum);
         $(new_sNSum)= 0.0;
@@ -183,6 +183,7 @@ EVP_neuron_reset_reg_taum= genn_model.create_custom_custom_update_class(
             $(fImV_woff)= 0;
             $(fImV_roff)= ((int) ($(trial_t)/DT));
         }
+        $(dktaum)= 0.0;
     """
 )
 
@@ -797,7 +798,7 @@ EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
     $(lambda_I)= exp($(ktau_m))/(exp($(ktau_m))-$(tau_syn))*$(lambda_V)*(exp(-DT/exp($(ktau_m))-exp(-DT/$(tau_syn))))+$(lambda_I)*exp(-DT/$(tau_syn));
     $(lambda_V)= $(lambda_V)*exp(-DT/exp($(ktau_m)));
     // calculate gradient component for taum training
-    $(dktaum)-= $(fImV)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_V)*exp($(ktau_m));
+    $(dktaum)-= $(fImV)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_V)*exp($(ktau_m))*0.0;
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         // decrease read pointer (on ring buffer)
