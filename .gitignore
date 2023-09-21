@@ -1,0 +1,5 @@
+slurm*.out
+scan_JUWELS*/
+scan*.tgz
+scan_SSC*/
+test*.json
