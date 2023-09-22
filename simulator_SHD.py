@@ -212,7 +212,8 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
 
 class SHD_model:
 
-    def __init__(self, p):
+    def __init__(self, p, manual_GPU= None):
+        self.GPU= manual_GPU
         if p["TRAIN_DATA_SEED"] is not None:
             self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
         else:
@@ -741,10 +742,12 @@ class SHD_model:
         # Model description
         # ----------------------------------------------------------------------------
         kwargs = {}
-        if p["CUDA_VISIBLE_DEVICES"]:
+        if p["CUDA_VISIBLE_DEVICES"] or (self.GPU is not None):
             from pygenn.genn_wrapper.CUDABackend import DeviceSelect_MANUAL
             kwargs["selectGPUByDeviceID"] = True
             kwargs["deviceSelectMethod"] = DeviceSelect_MANUAL
+            if self.GPU is not None:
+                kwargs["manualDeviceID"] = self.GPU
         self.model = genn_model.GeNNModel("float", p["NAME"], generateLineInfo=True, time_precision="double", **kwargs)
         self.model.dT = p["DT_MS"]
         self.model.timing_enabled = p["TIMING"]
