@@ -16,7 +16,7 @@ if len(sys.argv) > 2:
     p["NAME"]+= sys.argv[2]
 
 p["TRAIN_TAUM"]= True
-
+p["NUM_HIDDEN"]= 256
 #p["LOSS_TYPE"]= "sum"
 #p["TAU_MEM"]= 10.0
 #p["TAU_SYN"]*= 1.5
@@ -32,7 +32,7 @@ p["N_TRAIN"]*= 3  # do half of training examples as blended in addition to norma
 #p["COLLECT_CONFUSION"]= True
 p["WRITE_TO_DISK"]= True
 
-p["N_EPOCH"] = 300
+p["N_EPOCH"] = 500
 
 #p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= True
 p["BALANCE_TRAIN_CLASSES"]= False
