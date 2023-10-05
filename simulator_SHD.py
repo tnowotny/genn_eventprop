@@ -53,6 +53,27 @@ p["TAU_MEM"] = 20.0
 p["TAU_MEM_OUTPUT"] = 20.0
 p["V_THRESH"] = 1.0
 p["V_RESET"] = 0.0
+p["PDROP_INPUT"] = 0.1
+p["PDROP_HIDDEN"] = 0.0
+
+# Regularisation related parameters
+p["REG_TYPE"]= "none"
+p["LBD_UPPER"]= 2e-9
+p["LBD_LOWER"]= 2e-9
+p["NU_UPPER"]= 14
+p["NU_LOWER"]= 5
+p["RHO_UPPER"]= 10000.0
+p["GLB_UPPER"]= 1e-8
+p["REWIRE_SILENT"]= False
+p["REWIRE_LIFT"]= 0.0
+
+# ALIF related parameters
+p["HIDDEN_NEURON_TYPE"]= "LIF"
+p["TAU_B"] = 100.0
+p["B_INCR"]= 0.1
+p["B_INIT"]= 0.0
+
+# synapse related parameters
 p["INPUT_HIDDEN_MEAN"]= 0.02
 p["INPUT_HIDDEN_STD"]= 0.01
 p["HIDDEN_OUTPUT_MEAN"]= 0.0
@@ -61,18 +82,6 @@ p["HIDDEN_HIDDEN_MEAN"]= 0.0   # only used when recurrent
 p["HIDDEN_HIDDEN_STD"]= 0.02   # only used when recurrent
 p["HIDDEN_HIDDENFWD_MEAN"]= 0.02 # only used when > 1 hidden layer
 p["HIDDEN_HIDDENFWD_STD"]= 0.01 # only used when > 1 hidden layer
-p["PDROP_INPUT"] = 0.1
-p["PDROP_HIDDEN"] = 0.0
-p["REG_TYPE"]= "none"
-p["LBD_UPPER"]= 2e-9
-p["LBD_LOWER"]= 2e-9
-p["NU_UPPER"]= 14
-p["NU_LOWER"]= 5
-p["RHO_UPPER"]= 10000.0
-p["GLB_UPPER"]= 1e-8
-
-p["REWIRE_SILENT"]= False
-p["REWIRE_LIFT"]= 0.0
 
 # Learning parameters
 p["ETA"]= 1e-3
@@ -902,10 +911,21 @@ class SHD_model:
                         self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_taum, hidden_params, self.hidden_init_vars))
                         self.hidden[l].set_extra_global_param("fImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*int(p["TRIAL_MS"]/p["DT_MS"])*2))
                 else:
-                    hidden_params["tau_m"]= p["TAU_MEM"]
-                    for l in range(p["N_HID_LAYER"]):
-                        print(f"Hidden layer {l} neurons: EVP_LIF_reg")
-                        self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars))
+                    if p["HIDDEN_NEURON_TYPE"] == "LIF":
+                        hidden_params["tau_m"]= p["TAU_MEM"]
+                        for l in range(p["N_HID_LAYER"]):
+                            print(f"Hidden layer {l} neurons: EVP_LIF_reg")
+                            self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars))
+                    else:
+                        hidden_params["tau_m"]= p["TAU_MEM"]
+                        hidden_params["tau_B"]= p["TAU_B"]
+                        hidden_params["B_incr"]= p["B_INCR"]
+                        self.hidden_init_vars["B"]= p["B_INIT"]
+                        self.hidden_init_vars["lambda_B"]= 0.0
+                        for l in range(p["N_HID_LAYER"]):
+                            print(f"Hidden layer {l} neurons: EVP_ALIF_reg")
+                            self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_ALIF_reg, hidden_params, self.hidden_init_vars))
+                        
             for l in range(p["N_HID_LAYER"]):
                 self.hidden[l].set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
                 self.hidden[l].set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
@@ -937,9 +957,17 @@ class SHD_model:
                     print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_taum")
                     self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_taum, hidden_reset_params, {}, hidden_reset_var_refs))
                 else:
-                    print(f"Hidden layer {l} reset: EVP_neuron_reset_reg")
-                    self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg, hidden_reset_params, {}, hidden_reset_var_refs))
-
+                    if p["HIDDEN_NEURON_TYPE"] == "LIF":
+                        print(f"Hidden layer {l} reset: EVP_neuron_reset_reg")
+                        self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg, hidden_reset_params, {}, hidden_reset_var_refs))
+                    else:
+                        print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_ALIF")
+                        hidden_reset_params["B_init"]= p["B_INIT"]
+                        hidden_reset_var_refs["B"]= genn_model.create_var_ref(self.hidden[l], "B")
+                        hidden_reset_var_refs["lambda_B"]= genn_model.create_var_ref(self.hidden[l], "lambda_B")
+                        self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_ALIF, hidden_reset_params, {}, hidden_reset_var_refs))
+                        
+                        
             if p["AVG_SNSUM"]:
                 params= {"reduced_sNSum": 0.0}
                 for l in range(p["N_HID_LAYER"]):
