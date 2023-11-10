@@ -153,6 +153,9 @@ p["DATA_SET"]= "SHD"
 
 p["DATA_BUFFER_NAME"]= "./data/SSC/mySSC"
 
+p["N_INPUT_DELAY"]= 0
+p["INPUT_DELAY"]= 50.0 # in ms
+
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -770,7 +773,7 @@ class SHD_model:
         # ----------------------------------------------------------------------------
 
         input_params= {
-            "N_neurons": self.num_input,
+            "N_neurons": self.num_input*(p["N_INPUT_DELAY"]+1),
             "N_max_spike": p["N_MAX_SPIKE"],
         }
         self.input_init_vars= {
@@ -783,9 +786,19 @@ class SHD_model:
             "new_fwd_start": p["N_MAX_SPIKE"]-1,
             "rev_t": 0.0,
         }
-        print("Input neurons: EVP_SSA_MNIST_SHUFFLE")
-        self.input= self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, input_params, self.input_init_vars)
-        self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*p["N_MAX_SPIKE"], dtype=np.float32))
+        if p["N_INPUT_DELAY"] == 0:
+            print("Input neurons: EVP_SSA_MNIST_SHUFFLE")
+            self.input= self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, input_params, self.input_init_vars)
+        else:
+            print("Input neurons: EVP_SSA_MNIST_SHUFFLE_DELAY")
+            delay= np.zeros((p["N_INPUT_DELAY"]+1,self.num_input))
+            for i in range(p["N_INPUT_DELAY"]):
+                delay[i+1,:]= np.ones((1,self.num_input))*(i+1)*p["INPUT_DELAY"]
+            delay= delay.flatten()
+            self.input_init_vars["delay"]= delay
+            self.input= self.model.add_neuron_population("input", self.num_input*(p["N_INPUT_DELAY"]+1), EVP_SSA_MNIST_SHUFFLE_DELAY, input_params, self.input_init_vars)
+            
+        self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*(p["N_INPUT_DELAY"]+1)*p["N_MAX_SPIKE"], dtype=np.float32))
         # reserve enough space for any set of input spikes that is likely
         self.input.set_extra_global_param("spikeTimes", np.zeros(802000000, dtype=np.float32))
 
@@ -2027,9 +2040,9 @@ class SHD_model:
                     if p["REWIRE_LIFT"] != 0.0:
                         ith_w+= p["REWIRE_LIFT"]
                     else:
-                        ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
-                        n_new= self.num_input*n_silent[l]
-                        ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent[l]))
+                        ith_w.shape= (self.num_input*(p["N_INPUT_DELAY"]+1),p["NUM_HIDDEN"])
+                        n_new= self.num_input*(p["N_INPUT_DELAY"]+1)*n_silent[l]
+                        ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input*(p["N_INPUT_DELAY"]+1), n_silent[l]))
                     pop.push_var_to_device("w")
                         
             if p["DEBUG_HIDDEN_N"]:

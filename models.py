@@ -110,7 +110,7 @@ EVP_input_set_MNIST_shuffle= genn_model.create_custom_custom_update_class(
     var_refs=[("startSpike", "int"),("endSpike", "int")],
     update_code= """
         int myinid= $(allInputID)[$(trial)*((int) $(N_batch))+$(batch)];
-        int myiid= myinid*((int) $(num_input))+$(id); 
+        int myiid= myinid*((int) $(num_input))+($(id)%((int)$(num_input))); 
         $(startSpike)= $(allStartSpike)[myiid];
         $(endSpike)= $(allEndSpike)[myiid];
         //printf("trial: %d, batch: %d, id: %d, myinid: %d, myiid: %d, start: %d, end: %d \\n", $(trial), $(batch), $(id), myinid, myiid, $(startSpike), $(endSpike));
@@ -651,6 +651,52 @@ EVP_SSA_MNIST_SHUFFLE = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+"""
+Like EVP_SSA_MNIST_SHUFFLE but with a delay setting, so that spikes can be emitted with a fixed delay individual to each neuron
+"""
+
+EVP_SSA_MNIST_SHUFFLE_DELAY = genn_model.create_custom_neuron_class(
+    "EVP_spikeSourceArray_MNIST_Shuffle_Delay",
+    param_names=["N_neurons","N_max_spike"],
+    var_name_types=[("startSpike", "int"), ("endSpike", "int", VarAccess_READ_ONLY_DUPLICATE), ("back_spike","uint8_t"), ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("rev_t","scalar"),("delay","scalar")],
+    sim_code= """
+        int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+        // backward pass
+        const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+        if ($(back_spike)) {
+            // decrease read pointer (on ring buffer)
+            $(rp_ImV)--;
+            if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+            $(back_spike) = 0;
+        }
+        // YUCK - need to trigger the back_spike the time step before 
+        if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+            $(back_spike)= 1;
+        }
+        // forward spikes
+        if ($(startSpike) != $(endSpike) && ($(t) >= $(t_offset)+$(delay)+$(spikeTimes)[$(startSpike)]+DT))
+             $(startSpike)++;
+    """,
+    threshold_condition_code= """
+        $(startSpike) != $(endSpike) && 
+        $(t) >= $(t_offset)+$(delay)+$(spikeTimes)[$(startSpike)] &&
+        $(gennrand_uniform) > $(pDrop)
+    """,
+    reset_code= """
+        // this is after a forward spike
+        if ($(wp_ImV) != $(fwd_start)) {
+            $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+            $(wp_ImV)++;
+            if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+        }
+        else {
+            //printf("%f: input: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+            // assert(0);
+        }
+    """,
+    extra_global_params= [("spikeTimes", "scalar*"), ("t_offset","scalar"), ("t_k", "scalar*"),("pDrop", "scalar")],
+    is_auto_refractory_required=False
+)
 
 """
 The neuron model contains the variables and code for both, the forward and 
