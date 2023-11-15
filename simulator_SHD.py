@@ -1512,17 +1512,21 @@ class SHD_model:
             print("train:")
             sn= []
             for s in speakers:
-                sn.append([ np.sum(np.logical_and(Y_t == d, Z_t == s)) for d in range(20) ])
+                sn.append([ np.sum(np.logical_and(Y_t == d, Z_t == s)) for d in range(self.N_class) ])
                 print(f"Speaker {s}: {sn[-1]}")
             sn= np.array(sn)
             snm= np.sum(sn, axis=0)
             print(f"Sum across speakers: {snm}")
             print("eval:")
-            sne= [ np.sum(Y_e == d) for d in range(20) ]
+            sne= [ np.sum(Y_e == d) for d in range(self.N_class) ]
             print(sne)
         else:
-            snm= []
-            sne= []
+            snm= [ np.sum(Y_t == d) for d in range(self.N_class) ]
+            snm= np.asarray(snm)
+            print(f"train: {snm}")
+            sne= [ np.sum(Y_e == d) for d in range(self.N_class) ]
+            sne= np.asarray(sne)
+            print(f"eval: {sne}")
         return (snm, sne)
 
 
