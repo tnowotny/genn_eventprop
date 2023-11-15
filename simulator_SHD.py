@@ -1569,18 +1569,24 @@ class SHD_model:
                 which= Y == c
                 cX= X[which]
                 cY= Y[which]
-                cZ= Z[which]
+                if Z is not None:
+                    cZ= Z[which]
                 ids= np.arange(len(cX),dtype= int)
                 self.datarng.shuffle(ids)
                 cX= cX[ids]
                 cY= cY[ids]
-                cZ= cZ[ids]
+                if Z is not None:
+                    cZ= cZ[ids]
                 newX.append(cX[:ncl])
                 newY.append(cY[:ncl])
-                newZ.append(cZ[:ncl])
+                if Z is not None:
+                    newZ.append(cZ[:ncl])
             newX= np.hstack(newX)
             newY= np.hstack(newY)
-            newZ= np.hstack(newZ)
+            if Z is not None:
+                newZ= np.hstack(newZ)
+            else:
+                newZ= None
         else:
             newX= X
             newY= Y

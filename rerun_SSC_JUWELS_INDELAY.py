@@ -16,18 +16,27 @@ if len(sys.argv) > 2:
     p["NAME"]+= sys.argv[2]
 
 p["WRITE_TO_DISK"]= True
-p["N_EPOCH"] = 1 #80
+p["N_EPOCH"] = 2 #80
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["N_INPUT_DELAY"]= 20
 p["NUM_HIDDEN"]= 128
 p["INPUT_DELAY"]= 50.0
 p["RECURRENT"]= False
-p["N_BATCH"]= 4
+p["N_BATCH"]= 32
+p["INPUT_HIDDEN_MEAN"]= 0.001
+p["INPUT_HIDDEN_STD"]= 0.01
+p["ETA"]= 1e-3
+p["LBD_UPPER"]= 1e-11
+p["LBD_LOWER"] = 1e-11
+p["REWIRE_SILENT"]= True
+p["REWIRE_LIFT"]= 0.001
 
 #p["REC_NEURONS"] = [("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
 #p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4] ]
-p["REC_SPIKES"]= ["input","hidden0"]
-p["REC_SPIKES_EPOCH_TRIAL"] = [ [0,0], [0,1], [0,2] ]
+p["REC_SPIKES"]= ["hidden0"]
+p["REC_SPIKES_EPOCH_TRIAL"] = [ [0,0], [0,1], [0,2], [0,3], [0,4],
+                                [1,0], [1,1], [1,2], [1,3], [1,4]
+]
 
 p["COLLECT_CONFUSION"]= True
 print(p)
@@ -98,13 +107,29 @@ for k in range(1):
 plt.show()
 """
 
-plt.figure()
-plt.scatter(res[0]['hidden0'],res[1]['hidden0'],s=0.1)
-plt.figure()
-plt.scatter(res[0]['input'],res[1]['input'],s=0.1)
+np.save("spikes_t",res[0]['hidden0'])
+np.save("spikes_id",res[1]['hidden0'])
+
+"""
+epoch_chng= np.where(res[0]['hidden0'][1:]-res[0]['hidden0'][:-1] < 0)
+for i in range(len(epoch_chng)+1):
+    if i == 0:
+        left= 0
+    else:
+        left= epoch_chng[i-1]
+    if i == len(epoch_chng):
+        right= -1
+    else:
+        right= epoch_chng[i]
+        
+    plt.figure()
+    plt.scatter(res[0]['hidden0'][left:right],res[1]['hidden0'][left:right],s=0.1)
+    #plt.figure()
+    #plt.scatter(res[0]['input'],res[1]['input'],s=0.1)
 plt.show()
 
 with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_summary.json'),'w') as f:
     json.dump(res, f)
+"""
 
 
