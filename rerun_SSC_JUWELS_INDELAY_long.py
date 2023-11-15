@@ -16,13 +16,21 @@ if len(sys.argv) > 2:
     p["NAME"]+= sys.argv[2]
 
 p["WRITE_TO_DISK"]= True
-p["N_EPOCH"] = 80
+p["N_EPOCH"] = 50
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
-p["N_INPUT_DELAY"]= 20
-p["NUM_HIDDEN"]= 128
-p["INPUT_DELAY"]= 25.0
+p["N_INPUT_DELAY"]= 10
+p["NUM_HIDDEN"]= 256
+p["INPUT_DELAY"]= 40.0
 p["RECURRENT"]= False
-p["N_BATCH"]= 8
+p["N_BATCH"]= 32
+p["INPUT_HIDDEN_MEAN"]= 0.002
+p["INPUT_HIDDEN_STD"]= 0.02
+p["ETA"]= 1e-3
+p["LBD_UPPER"]= p0["LBD_UPPER"]*0.1
+p["LBD_LOWER"]= p0["LBD_LOWER"]*0.1
+p["BALANCE_TRAIN_CLASSES"]= True
+p["REWIRE_SILENT"]= True
+p["REWIRE_LIFT"]= 0.002
 
 #p["REC_NEURONS"] = [("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
 #p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4] ]
@@ -31,6 +39,9 @@ p["N_BATCH"]= 8
 
 p["COLLECT_CONFUSION"]= True
 print(p)
+with open(os.path.join(p["OUT_DIR"], p["NAME"]+'.json'),'w') as f:
+    json.dump(p, f)
+
 #exit(1)
 
 mn= SHD_model(p)

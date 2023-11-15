@@ -29,7 +29,7 @@ if len(sys.argv) > 2:
 ##p["EVALUATION"]= "speaker"
 #p["COLLECT_CONFUSION"]= True
 p["WRITE_TO_DISK"]= True
-p["N_EPOCH"] = 1
+p["N_EPOCH"] = 3
 #p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= True
 p["BALANCE_TRAIN_CLASSES"]= False
 p["BALANCE_EVAL_CLASSES"]= False
@@ -67,16 +67,16 @@ p["EMA_ALPHA2"]= 0.9
 p["EMA_ALPHA1"]= 0.8
 
 p["N_HID_LAYER"]= 1
-p["HIDDEN_NEURON_TYPE"]= "ALIF"
-p["B_INCR"]= 0.01
+p["HIDDEN_NEURON_TYPE"]= "LIF"
+p["B_INCR"]= 0.1
 
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 
 
 p["REC_NEURONS"] = [("hidden0","B"),("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
-p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,0], [0,20] ]
+p["REC_NEURONS_EPOCH_TRIAL"] = [ [1,0], [2,0] ]
 p["REC_SPIKES"]= ["input","hidden0"]
-p["REC_SPIKES_EPOCH_TRIAL"] = [ [0,0], [0,2], [0,20] ]
+p["REC_SPIKES_EPOCH_TRIAL"] = [ [1,0], [2,0] ]
 
 print(p)
 #exit(1)
