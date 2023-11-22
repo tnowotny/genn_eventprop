@@ -2050,9 +2050,14 @@ class SHD_model:
                     if p["REWIRE_LIFT"] != 0.0:
                         ith_w+= p["REWIRE_LIFT"]
                     else:
-                        ith_w.shape= (self.num_input*(p["N_INPUT_DELAY"]+1),p["NUM_HIDDEN"])
-                        n_new= self.num_input*(p["N_INPUT_DELAY"]+1)*n_silent[l]
-                        ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input*(p["N_INPUT_DELAY"]+1), n_silent[l]))
+                        if l == 0:
+                            n1= self.num_input*(p["N_INPUT_DELAY"]+1)
+                        else:
+                            n1= p["NUM_HIDDEN"]
+                        n2= p["NUM_HIDDEN"]
+                        ith_w.shape= (n1,n2)
+                        n_new= n1*n_silent[l]
+                        ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], n1, n_silent[l]))
                     pop.push_var_to_device("w")
                         
             if p["DEBUG_HIDDEN_N"]:
