@@ -5,7 +5,8 @@ import sys
 res= np.loadtxt(sys.argv[1]+"_results.txt", dtype= np.float32)
 print(res.shape)
 
-plt.figure(figsize=(20,15))
+fig= plt.figure(figsize=(20,15))
+fig.canvas.manager.set_window_title(sys.argv[1])
 plt.subplot(2,2,1)
 plt.plot(1-res[:,1])
 plt.plot(1-res[:,3])
