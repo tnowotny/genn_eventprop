@@ -1714,20 +1714,22 @@ my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
 )
 """
 
-"""
 my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
     "my_Exp_Curr",
-    decay_code="$(inSyn) *= exp(-DT/$(tau_syn_post));",
+    decay_code="$(inSyn) *= exp(-DT/$(tau_syn));",
     apply_input_code="$(Isyn) += $(inSyn);",
 )
-"""
 
+
+"""
 my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
     "my_Exp_Curr",
     var_name_types=[("tau_syn","scalar")],
     decay_code="$(inSyn) *= exp(-DT/$(tau_syn));",
     apply_input_code="$(Isyn) += $(inSyn);",
 )
+"""
+
 
 
 
