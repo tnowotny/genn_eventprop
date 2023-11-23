@@ -835,12 +835,6 @@ class SHD_model:
         # hidden neuron initialisation
         # ----------------------------------------------------------------------------
 
-        self.in_to_hid_post_init_vars= {"tau_syn": p["TAU_SYN"]}
-        self.hid_to_hid_post_init_vars= []
-        for l in range(p["N_HID_LAYER"]-1):
-            self.hid_to_hid_post_init_vars.append({"tau_syn": p["TAU_SYN"]})
-        self.hid_to_out_post_init_vars= {"tau_syn": p["TAU_SYN"]}
-            
         if p["REG_TYPE"] == "none":
             hidden_params= {
                 "tau_m": p["TAU_MEM"],
@@ -940,10 +934,6 @@ class SHD_model:
                             for l in range(p["N_HID_LAYER"]):
                                 self.hidden_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
                                 self.hidden_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
-                                if l == 0:
-                                    self.in_to_hid_post_init_vars= {"tau_syn": self.hidden_init_vars["tau_syn"].copy()}
-                                else:
-                                    self.hid_to_hid_post_init_vars[l-1]= {"tau_syn": self.hidden_init_vars["tau_syn"].copy()}
                                 self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_hetLIF_reg, hidden_params, self.hidden_init_vars))
 
                         else: 
@@ -1385,29 +1375,25 @@ class SHD_model:
         print("in_to_hid synapses: EVP_input_synapse")
         self.in_to_hid= self.model.add_synapse_population(
             "in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden[0], EVP_input_synapse,
-            {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, self.in_to_hid_post_init_vars)
+            {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, {})
 
         print("hid_to_out synapses: EVP_synapse")
         self.hid_to_out= self.model.add_synapse_population(
             "hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[-1], self.output, EVP_synapse,
-            {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {}, self.hid_to_out_post_init_vars)
+            {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {}, {})
 
         for l in range(p["N_HID_LAYER"]-1):
             print(f"hid_to_hidfwd synapses {l} to {l+1}: EVP_synapse")
             self.hid_to_hidfwd.append(self.model.add_synapse_population(
                 "hid_to_hidfwd"+str(l), "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[l], self.hidden[l+1], EVP_synapse,
-                {}, self.hid_to_hidfwd_init_vars, {}, {}, my_Exp_Curr, {}, self.hid_to_hid_post_init_vars[l]))
+                {}, self.hid_to_hidfwd_init_vars, {}, {}, my_Exp_Curr, {}, {}))
         
         if p["RECURRENT"]:
             for l in range(p["N_HID_LAYER"]):
                 print(f"hid_to_hid synapses {l} to {l}: EVP_synapse")
-                if l == 0:
-                    post_init_vars= self.in_to_hid_post_init_vars
-                else:
-                    post_init_vars= self.hid_to_hid_post_init_vars[l-1]
                 self.hid_to_hid.append(self.model.add_synapse_population(
                     "hid_to_hid"+str(l), "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[l], self.hidden[l], EVP_synapse,
-                    {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, post_init_vars))
+                    {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, {}))
 
         self.optimisers= []
         # learning updates for synapses
