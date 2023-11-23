@@ -835,6 +835,12 @@ class SHD_model:
         # hidden neuron initialisation
         # ----------------------------------------------------------------------------
 
+        self.in_to_hid_post_init_vars= {"tau_syn": p["TAU_SYN"]}
+        self.hid_to_hid_post_init_vars= []
+        for l in range(p["N_HID_LAYER"]-1):
+            self.hid_to_hid_post_init_vars.append({"tau_syn": p["TAU_SYN"]})
+        self.hid_to_out_post_init_vars= {"tau_syn": p["TAU_SYN"]}
+            
         if p["REG_TYPE"] == "none":
             hidden_params= {
                 "tau_m": p["TAU_MEM"],
@@ -842,7 +848,6 @@ class SHD_model:
                 "V_reset": p["V_RESET"],
                 "N_neurons": p["NUM_HIDDEN"],
                 "N_max_spike": p["N_MAX_SPIKE"],
-                "tau_syn": p["TAU_SYN"],
             }
             self.hidden_init_vars= {
                 "V": p["V_RESET"],
@@ -854,6 +859,7 @@ class SHD_model:
                 "fwd_start": p["N_MAX_SPIKE"]-1,
                 "new_fwd_start": p["N_MAX_SPIKE"]-1,
                 "back_spike": 0,
+                "tau_syn": p["TAU_SYN"],
             }
             for l in range(p["N_HID_LAYER"]):
                 print(f"Hidden layer {l} neurons: EVP_LIF")
@@ -887,7 +893,6 @@ class SHD_model:
                 "V_reset": p["V_RESET"],
                 "N_neurons": p["NUM_HIDDEN"],
                 "N_max_spike": p["N_MAX_SPIKE"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "lbd_upper": p["LBD_UPPER"],
                 "lbd_lower": p["LBD_LOWER"],
@@ -905,6 +910,7 @@ class SHD_model:
                 "back_spike": 0,
                 "sNSum": 0.0,
                 "new_sNSum": 0.0,
+                "tau_syn": p["TAU_SYN"],
             }
             if p["HIDDEN_NOISE"] > 0.0:
                 hidden_params["tau_m"]= p["TAU_MEM"]
@@ -930,14 +936,26 @@ class SHD_model:
                             print(f"Hidden layer {l} neurons: EVP_LIF_reg")
                             self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars))
                     else:
-                        hidden_params["tau_m"]= p["TAU_MEM"]
-                        hidden_params["tau_B"]= p["TAU_B"]
-                        hidden_params["B_incr"]= p["B_INCR"]
-                        self.hidden_init_vars["B"]= p["B_INIT"]
-                        self.hidden_init_vars["lambda_B"]= 0.0
-                        for l in range(p["N_HID_LAYER"]):
-                            print(f"Hidden layer {l} neurons: EVP_ALIF_reg")
-                            self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_ALIF_reg, hidden_params, self.hidden_init_vars))
+                        if p["HIDDEN_NEURON_TYPE"] == "hetLIF":
+                            for l in range(p["N_HID_LAYER"]):
+                                self.hidden_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
+                                self.hidden_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
+                                if l == 0:
+                                    self.in_to_hid_post_init_vars= {"tau_syn": self.hidden_init_vars["tau_syn"].copy()}
+                                else:
+                                    self.hid_to_hid_post_init_vars[l-1]= {"tau_syn": self.hidden_init_vars["tau_syn"].copy()}
+                                self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_hetLIF_reg, hidden_params, self.hidden_init_vars))
+
+                        else: 
+                            if p["HIDDEN_NEURON_TYPE"] == "ALIF":
+                                hidden_params["tau_m"]= p["TAU_MEM"]
+                                hidden_params["tau_B"]= p["TAU_B"]
+                                hidden_params["B_incr"]= p["B_INCR"]
+                                self.hidden_init_vars["B"]= p["B_INIT"]
+                                self.hidden_init_vars["lambda_B"]= 0.0
+                                for l in range(p["N_HID_LAYER"]):
+                                    print(f"Hidden layer {l} neurons: EVP_ALIF_reg")
+                                    self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_ALIF_reg, hidden_params, self.hidden_init_vars))
                         
             for l in range(p["N_HID_LAYER"]):
                 self.hidden[l].set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
@@ -970,15 +988,16 @@ class SHD_model:
                     print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_taum")
                     self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_taum, hidden_reset_params, {}, hidden_reset_var_refs))
                 else:
-                    if p["HIDDEN_NEURON_TYPE"] == "LIF":
+                    if p["HIDDEN_NEURON_TYPE"] in ["LIF","hetLIF"]:
                         print(f"Hidden layer {l} reset: EVP_neuron_reset_reg")
                         self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg, hidden_reset_params, {}, hidden_reset_var_refs))
                     else:
-                        print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_ALIF")
-                        hidden_reset_params["B_init"]= p["B_INIT"]
-                        hidden_reset_var_refs["B"]= genn_model.create_var_ref(self.hidden[l], "B")
-                        hidden_reset_var_refs["lambda_B"]= genn_model.create_var_ref(self.hidden[l], "lambda_B")
-                        self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_ALIF, hidden_reset_params, {}, hidden_reset_var_refs))
+                        if p["HIDDEN_NEURON_TYPE"] == "ALIF":
+                            print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_ALIF")
+                            hidden_reset_params["B_init"]= p["B_INIT"]
+                            hidden_reset_var_refs["B"]= genn_model.create_var_ref(self.hidden[l], "B")
+                            hidden_reset_var_refs["lambda_B"]= genn_model.create_var_ref(self.hidden[l], "lambda_B")
+                            self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_ALIF, hidden_reset_params, {}, hidden_reset_var_refs))
                         
                         
             if p["AVG_SNSUM"]:
@@ -1005,7 +1024,6 @@ class SHD_model:
                 "V_reset": p["V_RESET"],
                 "N_neurons": p["NUM_HIDDEN"],
                 "N_max_spike": p["N_MAX_SPIKE"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "lbd_lower": p["LBD_LOWER"],
                 "nu_lower": p["NU_LOWER"],
@@ -1027,6 +1045,7 @@ class SHD_model:
                 "back_spike": 0,
                 "sNSum": 0.0,
                 "new_sNSum": 0.0,
+                "tau_syn": p["TAU_SYN"],
             }
             for l in range(p["N_HID_LAYER"]):
                 print(f"Hidden layer {l} neurons: EVP_LIF_reg_Thomas1")
@@ -1082,7 +1101,6 @@ class SHD_model:
         if p["LOSS_TYPE"][:-4] == "first_spike":
             output_params= {
                 "tau_m": p["TAU_MEM_OUTPUT"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
                 "V_thresh": p["V_THRESH"],
@@ -1106,6 +1124,7 @@ class SHD_model:
                 "new_first_spike_t": -1e5,
                 "exp_st": 0.0,
                 "expsum": 1.0,
+                "tau_syn": p["TAU_SYN"],
             }
             if p["LOSS_TYPE"] == "first_spike":
                 print("Output neurons: EVP_LIF_output_first_spike")
@@ -1146,7 +1165,6 @@ class SHD_model:
         if p["LOSS_TYPE"] == "max":
             output_params= {
                 "tau_m": p["TAU_MEM_OUTPUT"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
             }
@@ -1162,6 +1180,7 @@ class SHD_model:
                 "rev_t": 0.0,
                 "expsum": 1.0,
                 "exp_V": 1.0,
+                "tau_syn": p["TAU_SYN"],
             }
             print("Output neurons: EVP_LIF_output_max")
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_max, output_params, self.output_init_vars)
@@ -1192,7 +1211,6 @@ class SHD_model:
                
             output_params= {
                 "tau_m": p["TAU_MEM_OUTPUT"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
             }
@@ -1204,6 +1222,7 @@ class SHD_model:
                 "sum_V": 0.0,
                 "SoftmaxVal": 0.0,
                 "rev_t": 0.0,
+                "tau_syn": p["TAU_SYN"],
             }
             if p["LOSS_TYPE"] == "sum":
                 print("Output neurons: EVP_LIF_output_sum")
@@ -1279,7 +1298,6 @@ class SHD_model:
         if p["LOSS_TYPE"] == "avg_xentropy":
             output_params= {
                 "tau_m": p["TAU_MEM_OUTPUT"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
                 "N_neurons": self.num_output,
@@ -1295,6 +1313,7 @@ class SHD_model:
                 "rp_V": 0,
                 "wp_V": 0,
                 "loss": 0,
+                "tau_syn": p["TAU_SYN"],
             }
             print("Output neurons: EVP_LIF_output_SHD_avg_xentropy")
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_SHD_avg_xentropy, output_params, self.output_init_vars)
@@ -1328,7 +1347,6 @@ class SHD_model:
             "beta1": p["ADAM_BETA1"],
             "beta2": p["ADAM_BETA2"],
             "epsilon": p["ADAM_EPS"],
-            "tau_syn": p["TAU_SYN"],
         }
         self.adam_init_vars= {
             "m": 0.0,
@@ -1367,25 +1385,29 @@ class SHD_model:
         print("in_to_hid synapses: EVP_input_synapse")
         self.in_to_hid= self.model.add_synapse_population(
             "in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden[0], EVP_input_synapse,
-            {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+            {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, self.in_to_hid_post_init_vars)
 
         print("hid_to_out synapses: EVP_synapse")
         self.hid_to_out= self.model.add_synapse_population(
             "hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[-1], self.output, EVP_synapse,
-            {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+            {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {}, self.hid_to_out_post_init_vars)
 
         for l in range(p["N_HID_LAYER"]-1):
             print(f"hid_to_hidfwd synapses {l} to {l+1}: EVP_synapse")
             self.hid_to_hidfwd.append(self.model.add_synapse_population(
                 "hid_to_hidfwd"+str(l), "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[l], self.hidden[l+1], EVP_synapse,
-                {}, self.hid_to_hidfwd_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}))
+                {}, self.hid_to_hidfwd_init_vars, {}, {}, my_Exp_Curr, {}, self.hid_to_hid_post_init_vars[l]))
         
         if p["RECURRENT"]:
             for l in range(p["N_HID_LAYER"]):
                 print(f"hid_to_hid synapses {l} to {l}: EVP_synapse")
+                if l == 0:
+                    post_init_vars= self.in_to_hid_post_init_vars
+                else:
+                    post_init_vars= self.hid_to_hid_post_init_vars[l-1]
                 self.hid_to_hid.append(self.model.add_synapse_population(
                     "hid_to_hid"+str(l), "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[l], self.hidden[l], EVP_synapse,
-                    {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}))
+                    {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, post_init_vars))
 
         self.optimisers= []
         # learning updates for synapses
@@ -2057,7 +2079,7 @@ class SHD_model:
                         n2= p["NUM_HIDDEN"]
                         ith_w.shape= (n1,n2)
                         n_new= n1*n_silent[l]
-                        ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], n1, n_silent[l]))
+                        ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (n1, n_silent[l]))
                     pop.push_var_to_device("w")
                         
             if p["DEBUG_HIDDEN_N"]:

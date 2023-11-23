@@ -26,11 +26,12 @@ p["N_BATCH"]= 32
 p["INPUT_HIDDEN_MEAN"]= 0.002
 p["INPUT_HIDDEN_STD"]= 0.02
 p["ETA"]= 1e-3
-p["LBD_UPPER"]= p0["LBD_UPPER"]*0.1
-p["LBD_LOWER"]= p0["LBD_LOWER"]*0.1
+p["LBD_UPPER"]= p0["LBD_UPPER"]*0.05
+p["LBD_LOWER"]= p0["LBD_LOWER"]*0.05
 p["BALANCE_TRAIN_CLASSES"]= True
 p["REWIRE_SILENT"]= True
-p["REWIRE_LIFT"]= 0.002
+p["REWIRE_LIFT"]= 0.003
+p["HIDDEN_NEURON_TYPE"]= "hetLIF"
 
 #p["REC_NEURONS"] = [("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
 #p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4] ]

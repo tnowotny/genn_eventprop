@@ -29,13 +29,13 @@ EVP_grad_reduce= genn_model.create_custom_custom_update_class(
 # custom update to apply synapse weight gradients using the Adam optimizer
 adam_optimizer_model = genn_model.create_custom_custom_update_class(
     "adam_optimizer",
-    param_names=["beta1", "beta2", "epsilon", "tau_syn"],
+    param_names=["beta1", "beta2", "epsilon"],
     var_name_types=[("m", "scalar"), ("v", "scalar")],
     extra_global_params=[("alpha", "scalar"), ("firstMomentScale", "scalar"),
                          ("secondMomentScale", "scalar")],
     var_refs=[("gradient", "scalar", VarAccessMode_READ_ONLY), ("variable", "scalar")],
     update_code="""
-    scalar grad= -$(tau_syn)*$(gradient);
+    scalar grad= $(gradient);
     // Update biased first moment estimate
     $(m) = ($(beta1) * $(m)) + ((1.0 - $(beta1)) * grad);
     // Update biased second moment estimate
@@ -734,9 +734,9 @@ revIsyn - gets the reverse input from postsynaptic neurons
 # LIF neuron model for internal neurons for both YinYang and MNIST tasks (no dl_p/dt_k cost function term or jumps on max voltage)
 EVP_LIF = genn_model.create_custom_neuron_class(
     "EVP_LIF",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("tau_syn","scalar")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
@@ -787,8 +787,69 @@ EVP_LIF = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("tau_syn","scalar")],
+    # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar")],
+    additional_input_vars=[("revIsyn", "scalar", 0.0)],
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
+    if ($(back_spike)) {
+        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+        // decrease read pointer (on ring buffer)
+        $(rp_ImV)--;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        // contributions from regularisation
+        if ($(sNSum) > $(nu_upper)) {
+            $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
+        }
+        else {
+            $(lambda_V) -= $(lbd_lower)*($(sNSum) - $(nu_upper))/$(N_batch);
+        }
+        
+        $(back_spike)= 0;
+    }   
+    // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+        $(back_spike)= 1;
+    }
+    // forward pass
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    """,
+    threshold_condition_code="""
+    ($(V) >= $(V_thresh)) && ($(gennrand_uniform) > $(pDrop))
+    """,
+    reset_code="""
+    // this is after a forward spike
+    if ($(wp_ImV) != $(fwd_start)) {
+        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+        $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+        $(wp_ImV)++;
+        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    } 
+    else {
+        //printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        // assert(0);
+    }
+    $(V)= $(V_reset);
+    $(new_sNSum)+= 1.0;
+    """,
+    is_auto_refractory_required=False
+)
+
+# Like EVP_LIF_reg but with tau_m and tau_syn as variables that can be initialised heterogeneously
+EVP_hetLIF_reg = genn_model.create_custom_neuron_class(
+    "EVP_hetLIF_reg",
+    param_names=["V_thresh","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("tau_m","scalar"), ("tau_syn","scalar"), ("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar")],
@@ -845,13 +906,12 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
-
 # same as above but for adaptive threshold "ALIF" neurons
 EVP_ALIF_reg = genn_model.create_custom_neuron_class(
     "EVP_ALIF_reg",
-    param_names=["tau_m","tau_B","V_thresh","B_incr","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower"],
+    param_names=["tau_m","tau_B","V_thresh","B_incr","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower"],
     var_name_types=[("V","scalar"),("B","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("lambda_B","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("tau_syn","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -918,10 +978,10 @@ EVP_ALIF_reg = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_taum",
-    param_names=["V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower","trial_t"],
+    param_names=["V_thresh","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower","trial_t"],
     var_name_types=[("V", "scalar"),("tau_m", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),
-                    ("dtaum", "scalar"), ("fImV_roff","int"), ("fImV_woff","int")],
+                    ("dtaum", "scalar"), ("fImV_roff","int"), ("fImV_woff","int"),("tau_syn","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("fImV","scalar*"),("pDrop","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -987,9 +1047,9 @@ EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_noise",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("tau_syn","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar"),("A_noise","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -1051,9 +1111,9 @@ EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_Thomas1",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","tau_syn","lbd_lower","nu_lower","lbd_upper","nu_upper","rho_upper","glb_upper"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","lbd_lower","nu_lower","lbd_upper","nu_upper","rho_upper","glb_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("tau_syn","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("sNSum_all","scalar*")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -1115,12 +1175,12 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_first_spike",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","trial_t","tau0","tau1","alpha","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
                     ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),
                     ("trial","int")],
-    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*"),("tau_syn","scalar")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));    
@@ -1182,11 +1242,11 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_first_spike_exp",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","trial_t","tau0","tau1","alpha","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
                     ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),
-                    ("trial","int")],
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
@@ -1252,11 +1312,11 @@ EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_max = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_max",
-    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    param_names=["tau_m","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("max_V","scalar"),("new_max_V","scalar"),
                     ("max_t","scalar"),("new_max_t","scalar"),("expsum","scalar"),("exp_V","scalar"),
-                    ("trial","int")],
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1293,10 +1353,10 @@ EVP_LIF_output_max = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum",
-    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    param_names=["tau_m","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("sum_V","scalar"),("SoftmaxVal","scalar"),
-                    ("trial","int")],
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1334,10 +1394,10 @@ EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_linear",
-    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    param_names=["tau_m","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("sum_V","scalar"),("SoftmaxVal","scalar"),
-                    ("trial","int")],
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1372,10 +1432,10 @@ EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_exp",
-    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    param_names=["tau_m","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("sum_V","scalar"),("SoftmaxVal","scalar"),
-                    ("trial","int")],
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1411,10 +1471,10 @@ EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_sigmoid",
-    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    param_names=["tau_m","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("sum_V","scalar"),("SoftmaxVal","scalar"),
-                    ("trial","int")],
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1452,10 +1512,10 @@ EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_input",
-    param_names=["tau_m","tau_syn","N_neurons","trial_t","N_batch","trial_steps"],
+    param_names=["tau_m","N_neurons","trial_t","N_batch","trial_steps"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("sum_V","scalar"),("SoftmaxVal","scalar"),
-                    ("trial","int"),("rp_V","int"),("wp_V","int"),("avgInback","scalar")],
+                    ("trial","int"),("rp_V","int"),("wp_V","int"),("avgInback","scalar"),("tau_syn","scalar")],
     extra_global_params=[("label","int*"),("aIbuf","scalar*")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
@@ -1497,10 +1557,10 @@ EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_MNIST_avg_xentropy",
-    param_names=["tau_m","tau_syn","N_neurons","N_batch","trial_steps","trial_t","N_class"],
+    param_names=["tau_m","N_neurons","N_batch","trial_steps","trial_t","N_class"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
                     ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
-    extra_global_params=[("label","int*"), ("Vbuf","scalar*")], 
+    extra_global_params=[("label","int*"), ("Vbuf","scalar*"),("tau_syn","scalar")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
     // forward pass
@@ -1550,10 +1610,10 @@ EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_SHD_avg_xentropy",
-    param_names=["tau_m","tau_syn","N_neurons","N_batch","trial_steps","trial_t","N_class"],
+    param_names=["tau_m","N_neurons","N_batch","trial_steps","trial_t","N_class"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
                     ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
-    extra_global_params=[("label","int*"), ("Vbuf","scalar*")], 
+    extra_global_params=[("label","int*"), ("Vbuf","scalar*"),("tau_syn","scalar")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
     // forward pass
@@ -1624,7 +1684,7 @@ EVP_synapse= genn_model.create_custom_weight_update_class(
     event_code="""
         $(addToPre, $(w)*($(lambda_V_post)-$(lambda_I_post)));
         //$(addToPre, $(w)*($(lambda_V_post)));
-        $(dw)+= $(lambda_I_post);
+        $(dw)-= $(tau_syn_post)*$(lambda_I_post);
     """,
 )
 
@@ -1638,10 +1698,13 @@ EVP_input_synapse= genn_model.create_custom_weight_update_class(
        $(back_spike_pre)
     """,
     event_code="""
-        $(dw)+= $(lambda_I_post);
+        $(dw)-= $(tau_syn_post)*$(lambda_I_post);
     """,
 )
 
+"""
+# this was efficient for cases where tau_syn is homogeneous but doesn't work for heterogeneous
+# for now, just take the hit and use the one that works in both cases
 my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
     "my_Exp_Curr",
     param_names=["tau"],
@@ -1649,6 +1712,24 @@ my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
     apply_input_code="$(Isyn) += $(inSyn);",
     derived_params=[("expDecay", genn_model.create_dpf_class(lambda pars, dt: np.exp(-dt / pars[0]))())]
 )
+"""
+
+"""
+my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
+    "my_Exp_Curr",
+    decay_code="$(inSyn) *= exp(-DT/$(tau_syn_post));",
+    apply_input_code="$(Isyn) += $(inSyn);",
+)
+"""
+
+my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
+    "my_Exp_Curr",
+    var_name_types=[("tau_syn","scalar")],
+    decay_code="$(inSyn) *= exp(-DT/$(tau_syn));",
+    apply_input_code="$(Isyn) += $(inSyn);",
+)
+
+
 
 # synapses for giant input accumulator
 
