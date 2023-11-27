@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Tuple
 import sys
 from tqdm import tqdm
+import time
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -133,9 +134,10 @@ p["RESCALE_T"]= 1.0
 # rescaling factor for the channels, 1.0 means no rescaling
 p["RESCALE_X"]= 1.0
 
-# whether to train neuron timescales
-p["TRAIN_TAUM"]= False
-p["MIN_TAU_M"]= 1.0
+# whether to train timescales
+p["TRAIN_TAU"]= False
+p["MIN_TAU_M"]= 3.0
+p["MIN_TAU_SYN"]= 1.0
 p["N_HID_LAYER"]= 1
 
 # learning rate schedule depending on exponential moving average of performance
@@ -144,7 +146,7 @@ p["EMA_ALPHA2"]= 0.95
 p["ETA_FAC"]= 0.5
 p["MIN_EPOCH_ETA_FIXED"]= 300
 
-p["TAUM_OUTPUT_EPOCH_TRIAL"]= []
+p["TAU_OUTPUT_EPOCH_TRIAL"]= []
 p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= False
 p["BALANCE_TRAIN_CLASSES"]= False
 p["BALANCE_EVAL_CLASSES"]= False
@@ -712,7 +714,6 @@ class SHD_model:
         all_input_end= []
         all_input_start= []
         stidx_offset= 0
-        self.max_stim_time= 0.0
         for i in range(N):
             events= X[i]
             spike_event_ids = events["x"]
@@ -720,8 +721,6 @@ class SHD_model:
                                           minlength=self.num_input))+stidx_offset    
             assert len(i_end) == self.num_input
             tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
-            if len(tx) > 0:
-                self.max_stim_time= max(self.max_stim_time, np.amax(tx))
             all_sts.append(tx)
             i_start= np.empty(i_end.shape)
             i_start[0]= stidx_offset
@@ -745,8 +744,6 @@ class SHD_model:
         self.hid_to_hid= []
         self.hid_to_hid_reduce= [] 
         self.hid_to_hid_learn= []
-        self.hidden_taum_reduce= []
-        self.hidden_taum_learn= []
         self.trial_steps= int(round(p["TRIAL_MS"]/p["DT_MS"]))
 
         print("starting model definition ...")
@@ -913,16 +910,21 @@ class SHD_model:
                     self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_noise, hidden_params, self.hidden_init_vars))
                     self.hidden[l].set_extra_global_param("A_noise", p["HIDDEN_NOISE"])
             else:
-                if p["TRAIN_TAUM"]:
+                if p["TRAIN_TAU"]:
                     hidden_params["trial_t"]= p["TRIAL_MS"]
                     self.hidden_init_vars["tau_m"]= p["TAU_MEM"]
                     self.hidden_init_vars["dtaum"]= 0.0
+                    self.hidden_init_vars["dtausyn"]= 0.0
                     self.hidden_init_vars["fImV_roff"]= int(p["TRIAL_MS"]/p["DT_MS"])
                     self.hidden_init_vars["fImV_woff"]= 0
                     for l in range(p["N_HID_LAYER"]):
-                        print(f"Hidden layer {l} neurons: EVP_LIF_reg_taum")
-                        self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_taum, hidden_params, self.hidden_init_vars))
+                        if p["HIDDEN_NEURON_TYPE"] == "hetLIF":
+                            self.hidden_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
+                            self.hidden_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
+                        print(f"Hidden layer {l} neurons: EVP_LIF_reg_tau_learn")
+                        self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_tau_learn, hidden_params, self.hidden_init_vars))
                         self.hidden[l].set_extra_global_param("fImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*int(p["TRIAL_MS"]/p["DT_MS"])*2))
+                        self.hidden[l].set_extra_global_param("fIdot", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*int(p["TRIAL_MS"]/p["DT_MS"])*2))
                 else:
                     if p["HIDDEN_NEURON_TYPE"] == "LIF":
                         hidden_params["tau_m"]= p["TAU_MEM"]
@@ -970,13 +972,14 @@ class SHD_model:
                     "sNSum": genn_model.create_var_ref(self.hidden[l], "sNSum"),
                     "new_sNSum": genn_model.create_var_ref(self.hidden[l], "new_sNSum"),
                 }
-                if p["TRAIN_TAUM"]:
+                if p["TRAIN_TAU"]:
                     hidden_reset_params["trial_t"]= p["TRIAL_MS"]
                     hidden_reset_var_refs["fImV_roff"]= genn_model.create_var_ref(self.hidden[l], "fImV_roff")
                     hidden_reset_var_refs["fImV_woff"]= genn_model.create_var_ref(self.hidden[l], "fImV_woff")
                     hidden_reset_var_refs["dtaum"]= genn_model.create_var_ref(self.hidden[l], "dtaum")
-                    print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_taum")
-                    self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_taum, hidden_reset_params, {}, hidden_reset_var_refs))
+                    hidden_reset_var_refs["dtausyn"]= genn_model.create_var_ref(self.hidden[l], "dtausyn")
+                    print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_tau_learn")
+                    self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_tau_learn, hidden_reset_params, {}, hidden_reset_var_refs))
                 else:
                     if p["HIDDEN_NEURON_TYPE"] in ["LIF","hetLIF"]:
                         print(f"Hidden layer {l} reset: EVP_neuron_reset_reg")
@@ -1346,9 +1349,14 @@ class SHD_model:
             "beta1": p["ADAM_BETA1"],
             "beta2": p["ADAM_BETA2"],
             "epsilon": p["ADAM_EPS"],
-            "min_tau_m": p["MIN_TAU_M"],
+            "min_tau": p["MIN_TAU_M"],
         }
-
+        adam_tausyn_params= {
+            "beta1": p["ADAM_BETA1"],
+            "beta2": p["ADAM_BETA2"],
+            "epsilon": p["ADAM_EPS"],
+            "min_tau": p["MIN_TAU_SYN"],
+        }
 
         # ----------------------------------------------------------------------------
         # Synapse initialisation
@@ -1446,19 +1454,31 @@ class SHD_model:
                     "hid_to_hid_learn"+str(l),"EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs))
                 self.hid_to_hid[l].pre_target_var= "revIsyn"
                 self.optimisers.append(self.hid_to_hid_learn[l])
-        # learning updates for taum
-        if p["TRAIN_TAUM"]:
+        # learning updates for taus
+        if p["TRAIN_TAU"]:
             for l in range(p["N_HID_LAYER"]):            
+                # learning for taum
                 var_refs = {"dw": genn_model.create_var_ref(self.hidden[l], "dtaum")}
                 print(f"Hidden taum {l} reduce: EVP_grad_reduce")
-                self.hidden_taum_reduce.append(self.model.add_custom_update(
-                    "hidden_taum_reduce"+str(l),"EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs))
-                var_refs = {"gradient": genn_model.create_var_ref(self.hidden_taum_reduce[l], "reduced_dw"),
+                hidden_taum_reduce= self.model.add_custom_update(
+                    "hidden_taum_reduce"+str(l),"EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
+                var_refs = {"gradient": genn_model.create_var_ref(hidden_taum_reduce, "reduced_dw"),
                             "variable": genn_model.create_var_ref(self.hidden[l], "tau_m")}
-                print(f"Hidden taum {l} learn: adam_optimizer_model_taum")
-                self.hidden_taum_learn.append(self.model.add_custom_update(
-                    "hidden_taum_learn"+str(l),"EVPLearn", adam_optimizer_model_taum, adam_taum_params, self.adam_init_vars, var_refs))
-                self.optimisers.append(self.hidden_taum_learn[l])
+                print(f"Hidden taum {l} learn: adam_optimizer_model_tau")
+                hidden_taum_learn= self.model.add_custom_update(
+                    "hidden_taum_learn"+str(l),"EVPLearn", adam_optimizer_model_tau, adam_taum_params, self.adam_init_vars, var_refs)
+                self.optimisers.append(hidden_taum_learn)
+                # learning for tausyn
+                var_refs = {"dw": genn_model.create_var_ref(self.hidden[l], "dtausyn")}
+                print(f"Hidden tausyn {l} reduce: EVP_grad_reduce")
+                hidden_tausyn_reduce= self.model.add_custom_update(
+                    "hidden_tausyn_reduce"+str(l),"EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
+                var_refs = {"gradient": genn_model.create_var_ref(hidden_tausyn_reduce, "reduced_dw"),
+                            "variable": genn_model.create_var_ref(self.hidden[l], "tau_syn")}
+                print(f"Hidden tausyn {l} learn: adam_optimizer_model_tau")
+                hidden_tausyn_learn= self.model.add_custom_update(
+                    "hidden_tausyn_learn"+str(l),"EVPLearn", adam_optimizer_model_tau, adam_tausyn_params, self.adam_init_vars, var_refs)
+                self.optimisers.append(hidden_tausyn_learn)
            
         # DEBUG hidden layer spike numbers
         if p["DEBUG_HIDDEN_N"]:
@@ -1708,7 +1728,10 @@ class SHD_model:
         correctEMA= 0       # exponential moving average of evaluation correct (fast)
         correctEMAslow= 0   # exponential moving average of evaluation correct (slow)
         red_lr_last= 0      # epoch when LR was last reduced
+        #the_time= time.time()
         for epoch in range(number_epochs):
+            #print(f"start epoch ... {time.time()-the_time} s for last epoch mainloop")
+            #the_time= time.time()
             # if we are doing augmentation, the entire spike time array needs to be set up anew.
             lX= copy.deepcopy(X_train)
             lY= copy.deepcopy(Y_train)
@@ -1717,26 +1740,43 @@ class SHD_model:
             lY_eval= copy.deepcopy(Y_eval)
             if p["BALANCE_TRAIN_CLASSES"] or p["BALANCE_EVAL_CLASSES"]:
                 lX, lY, lZ, lX_eval, lY_eval= self.balance_classes(lX, lY, lZ, lX_eval, lY_eval, snm, sne, p)
+                #print(f"balance_classes done ... {time.time()-the_time} s")
+                #the_time= time.time()
             if ("NORMALISE_SPIKE_NUMBER" in p["AUGMENTATION"]) and (p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]):
                 lX, lX_eval= self.normalise_spike_number(lX, lX_eval)
+                #print(f"normalise spike number done ... {time.time()-the_time} s")
+                #the_time= time.time()
+                
             if N_trial_train > 0 and len(p["AUGMENTATION"]) > 0:
                 for aug in p["AUGMENTATION"]:
                     if aug == "blend":
                         lX, lY, lZ= blend_dataset(lX,lY,lZ,self.datarng, p["AUGMENTATION"][aug],p)
+                        #print(f"blending done ... {time.time()-the_time} s")
+                        #the_time= time.time()
                     if aug == "random_shift":
                         lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug],p)
+                        #print(f"random_shift done ... {time.time()-the_time} s")
+                        #the_time= time.time()
                     if aug == "random_dilate":
                         lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1],p)
+                        #print(f"random_dilate done ... {time.time()-the_time} s")
+                        #the_time= time.time()
                     if aug == "ID_jitter":
                         lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug],p)
+                        #print(f"ID_jitter done ... {time.time()-the_time} s")
+                        #the_time= time.time()
                 X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, lY, lX_eval, lY_eval)
+                #print(f"generate input spike times done ... {time.time()-the_time} s")
+                #the_time= time.time()
                 self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
                 self.input.push_extra_global_param_to_device("spikeTimes")
                 self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
                 self.input_set.push_extra_global_param_to_device("allStartSpike")
                 self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
                 self.input_set.push_extra_global_param_to_device("allEndSpike")
-
+                #print(f"spike times copied to device ... {time.time()-the_time} s")
+                #the_time= time.time()
+                
             if N_trial_train > 0 and shuffle:
                 # by virtue of input_id being the right length we do not shuffle
                 # padding inputs
@@ -1747,6 +1787,8 @@ class SHD_model:
                 self.output.push_extra_global_param_to_device("label")
                 self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
                 self.input_set.push_extra_global_param_to_device("allInputID")
+                #print(f"shuffling done ... {time.time()-the_time} s")
+                #the_time= time.time()
 
             if p["REC_PREDICTIONS"]:
                 predict= {
@@ -1775,7 +1817,7 @@ class SHD_model:
             self.input.extra_global_params["pDrop"].view[:]= p["PDROP_INPUT"]
             for l in range(p["N_HID_LAYER"]):
                 for var, val in self.hidden_init_vars.items():
-                    if var != "tau_m":               # do not reset tau_m at beginning of epoch
+                    if var != "tau_m" and var != "tau_syn":               # do not reset tau_m at beginning of epoch
                         self.hidden[l].vars[var].view[:]= val
                     else:
                         self.hidden[l].pull_var_from_device(var)
@@ -1787,6 +1829,8 @@ class SHD_model:
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
             self.model.custom_update("EVPReduce")  # this zeros dw (so as to ignore eval gradients from last epoch!)
+            #print(f"Resetting variables done ... {time.time()-the_time} s")
+            #the_time= time.time()
 
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= [[] for _ in range(p["N_HID_LAYER"])]
@@ -2026,11 +2070,13 @@ class SHD_model:
                         for l in range(p["N_HID_LAYER"]):
                             self.hid_to_hid[l].pull_var_from_device("w")
                             np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hid_to_hid[l].vars["w"].view.copy())
-                if p["TRAIN_TAUM"]:
-                    if ([epoch,trial] in p["TAUM_OUTPUT_EPOCH_TRIAL"]):
+                if p["TRAIN_TAU"]:
+                    if ([epoch,trial] in p["TAU_OUTPUT_EPOCH_TRIAL"]):
                         for l in range(p["N_HID_LAYER"]):
                             self.hidden[l].pull_var_from_device("tau_m")
                             np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_tau_m_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hidden[l].vars["tau_m"].view.copy())
+                            self.hidden[l].pull_var_from_device("tau_syn")
+                            np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_tau_syn_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hidden[l].vars["tau_syn"].view.copy())
 
             if N_trial_train > 0:
                 correct= good["train"]/len(lX)
