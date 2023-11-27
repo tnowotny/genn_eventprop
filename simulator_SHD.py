@@ -935,7 +935,7 @@ class SHD_model:
                         if p["HIDDEN_NEURON_TYPE"] == "hetLIF":
                             for l in range(p["N_HID_LAYER"]):
                                 self.hidden_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
-                                self.hidden_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
+                                self.hidden_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, p["NUM_HIDDEN"])
                                 self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_hetLIF_reg, hidden_params, self.hidden_init_vars))
 
                         else: 
