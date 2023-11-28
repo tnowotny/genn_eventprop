@@ -1667,7 +1667,8 @@ class SHD_model:
         
         adam_step= 1
         learning_rate= p["ETA"]
-
+        the_lr= learning_rate/1000.0
+        
         # set up recording if required
         spike_t= {}
         spike_ID= {}
@@ -1694,9 +1695,14 @@ class SHD_model:
         if len(p["AUGMENTATION"]) == 0:
             # build and assign the input spike train and corresponding labels
             # these are padded to multiple of batch size for both train and eval portions
+            lX= copy.deepcopy(X_train)
+            lY= copy.deepcopy(Y_train)
+            lZ= copy.deepcopy(Z_train)
+            lX_eval= copy.deepcopy(X_eval)
+            lY_eval= copy.deepcopy(Y_eval)
             if p["BALANCE_TRAIN_CLASSES"] or p["BALANCE_EVAL_CLASSES"]:
-                X_train, Y_train, Z_train, X_eval, Y_eval= self.balance_classes(X_train, Y_train, Z_train, X_eval, Y_eval, snm, sne, p)
-            X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_train, Y_train, X_eval, Y_eval)
+                lX, lY, lZ, lX_eval, lY_eval= self.balance_classes(lX, lY, lZ, lX_eval, lY_eval, snm, sne, p)
+            X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, lY, lX_eval, lY_eval)
             self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
             self.input.push_extra_global_param_to_device("spikeTimes")
             self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
@@ -1738,12 +1744,15 @@ class SHD_model:
             lZ= copy.deepcopy(Z_train)
             lX_eval= copy.deepcopy(X_eval)
             lY_eval= copy.deepcopy(Y_eval)
+            generate_ST= False
             if p["BALANCE_TRAIN_CLASSES"] or p["BALANCE_EVAL_CLASSES"]:
                 lX, lY, lZ, lX_eval, lY_eval= self.balance_classes(lX, lY, lZ, lX_eval, lY_eval, snm, sne, p)
+                generate_ST= True
                 #print(f"balance_classes done ... {time.time()-the_time} s")
                 #the_time= time.time()
             if ("NORMALISE_SPIKE_NUMBER" in p["AUGMENTATION"]) and (p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]):
                 lX, lX_eval= self.normalise_spike_number(lX, lX_eval)
+                generate_ST= True
                 #print(f"normalise spike number done ... {time.time()-the_time} s")
                 #the_time= time.time()
                 
@@ -1765,6 +1774,9 @@ class SHD_model:
                         lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug],p)
                         #print(f"ID_jitter done ... {time.time()-the_time} s")
                         #the_time= time.time()
+
+                generate_ST= True
+            if generate_ST:
                 X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, lY, lX_eval, lY_eval)
                 #print(f"generate input spike times done ... {time.time()-the_time} s")
                 #the_time= time.time()
@@ -1934,11 +1946,14 @@ class SHD_model:
 
                 # do not learn after the 0th trial where lambdas are meaningless
                 if (phase == "train") and trial > 0:
-                    update_adam(learning_rate, adam_step, self.optimisers)
+                    update_adam(the_lr, adam_step, self.optimisers)
                     adam_step += 1
                     self.model.custom_update("EVPReduce")
                     #if trial%2 == 1:
                     self.model.custom_update("EVPLearn")
+
+                if the_lr < learning_rate:
+                    the_lr = np.minimum(the_lr*1.05,learning_rate)
 
                 self.zero_insyn(p)
                 
@@ -2139,9 +2154,9 @@ class SHD_model:
             correctEMAslow= p["EMA_ALPHA2"]*correctEMAslow+(1.0-p["EMA_ALPHA2"])*correct_eval
             if (epoch-red_lr_last > p["MIN_EPOCH_ETA_FIXED"]) and (correctEMA <= correctEMAslow):
                 learning_rate*= p["ETA_FAC"]
+                the_lr= learning_rate
                 red_lr_last= epoch
                 print("EMA {}, EMAslow {}, Reduced LR to {}".format(correctEMA, correctEMAslow, learning_rate))
-                print(learning_rate)
             print(f"EMA: {correctEMA}, EMA_slow: {correctEMAslow}")
             if p["REC_PREDICTIONS"]:
                 predict[phase]= np.hstack(predict[phase])
