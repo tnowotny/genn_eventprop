@@ -2138,7 +2138,7 @@ class SHD_model:
 
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}, Silent: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]), n_silent))
             print(f"Training examples: {len(lX)}, Evaluation examples: {len(lX_eval)}")
-            
+            print(f"Learning rate: {the_lr}, target learning rate: {learning_rate}")
             
             if resfile is not None:
                 resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
