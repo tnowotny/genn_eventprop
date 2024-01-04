@@ -627,8 +627,8 @@ EVP_SSA_MNIST_SHUFFLE = genn_model.create_custom_neuron_class(
         if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
             $(back_spike)= 1;
         }
-        // forward spikes
-        if ($(startSpike) != $(endSpike) && ($(t) >= $(t_offset)+$(spikeTimes)[$(startSpike)]+DT))
+        // forward spikes - use while loop to avoid repeating spikes if more than one in a time step
+        while ($(startSpike) != $(endSpike) && ($(t) >= $(t_offset)+$(spikeTimes)[$(startSpike)]+DT))
              $(startSpike)++;
     """,
     threshold_condition_code= """
@@ -674,8 +674,8 @@ EVP_SSA_MNIST_SHUFFLE_DELAY = genn_model.create_custom_neuron_class(
         if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
             $(back_spike)= 1;
         }
-        // forward spikes
-        if ($(startSpike) != $(endSpike) && ($(t) >= $(t_offset)+$(delay)+$(spikeTimes)[$(startSpike)]+DT))
+        // forward spikes - use while loop to avoid repeating spikes if more than one in a time step
+        while ($(startSpike) != $(endSpike) && ($(t) >= $(t_offset)+$(delay)+$(spikeTimes)[$(startSpike)]+DT))
              $(startSpike)++;
     """,
     threshold_condition_code= """

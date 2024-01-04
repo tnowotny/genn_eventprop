@@ -434,10 +434,7 @@ class SHD_model:
         for i in range(len(dataset)):
             events, label = dataset[i]
             self.Y_train_orig[i]= label
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(events["x"], events["t"]/1000.0, p)
-            else:
-                sample= {"x": events["x"], "t": events["t"]/1000.0}
+            sample= rescale(events["x"], events["t"]/1000.0, p) # always apply rescale to have at most one spike per timestep
             self.X_train_orig.append(sample)
         self.X_train_orig= np.array(self.X_train_orig)
         self.Z_train_orig= dataset.speaker
@@ -448,10 +445,7 @@ class SHD_model:
         for i in range(len(dataset)):
             events, label = dataset[i]
             self.Y_test_orig[i]= label
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(events["x"], events["t"]/1000.0, p)
-            else:
-                sample= {"x": events["x"], "t": events["t"]/1000.0}
+            sample= rescale(events["x"], events["t"]/1000.0, p) # always apply rescale to have at most one spike per timestep
             self.X_test_orig.append(sample)
         self.X_test_orig= np.array(self.X_test_orig)
         self.Z_test_orig= dataset.speaker
@@ -465,77 +459,78 @@ class SHD_model:
             self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
         else:
             self.tdatarng= np.random.default_rng()        
-           
-        dataset = tonic.datasets.SSC(save_to='./data', split="train", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
-        sensor_size = dataset.sensor_size
-        self.data_max_length= len(dataset)+2*p["N_BATCH"]
-        self.N_class= len(dataset.classes)
-        self.num_input= int(np.product(sensor_size))
-        self.num_output= self.N_class
+        sensor_size = tonic.datasets.SSC.sensor_size
         self.Z_train_orig= None
-        self.Y_train_orig= np.empty(len(dataset), dtype= int)
-        self.X_train_orig= []
-        if os.path.exists(p["DATA_BUFFER_NAME"]+"_X_train_orig.npy"):
-            self.X_train_orig= np.load(p["DATA_BUFFER_NAME"]+"_X_train_orig.npy",allow_pickle= True)
-            self.Y_train_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_train_orig.npy",allow_pickle= True)
-            print(f"data loaded from buffered file {p['DATA_BUFFER_NAME']+'_*_train_orig.npy'}")
+        fname = p["DATA_BUFFER_NAME"]+"_X_train_orig"
+        fname += "RST_"+str(p["RESCALE_T"])+"_RSX_"+str(p["RESCALE_X"])+"_DT_"+str(p["DT_MS"])+".npy"
+        if os.path.exists(fname):
+            self.X_train_orig= np.load(fname, allow_pickle= True)
+            self.Y_train_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_train_orig.npy", allow_pickle= True)
+            self.N_class= len(np.unique(self.Y_train_orig))
+            self.data_max_length= len(self.X_train_orig)+2*p["N_BATCH"]
+            print(f"data loaded from buffered file {fname}, N_class= {self.N_class}")
         else:
+            dataset = tonic.datasets.SSC(save_to='./data', split="train", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+            self.N_class= len(dataset.classes)
+            self.data_max_length= len(dataset)+2*p["N_BATCH"]
+            self.Y_train_orig= np.empty(len(dataset), dtype= int)
+            self.X_train_orig= []
             for i in tqdm(range(len(dataset))):
                 events, label = dataset[i]
                 self.Y_train_orig[i]= label
-                if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                    sample= rescale(events["x"], events["t"]/1000.0, p)
-                else:
-                    sample= {"x": events["x"], "t": events["t"]/1000.0}
+                sample= rescale(events["x"], events["t"]/1000.0, p)
                 self.X_train_orig.append(sample)
             self.X_train_orig= np.array(self.X_train_orig)
-            np.save(p["DATA_BUFFER_NAME"]+"_X_train_orig", self.X_train_orig, allow_pickle= True)
+            np.save(fname, self.X_train_orig, allow_pickle= True)
             np.save(p["DATA_BUFFER_NAME"]+"_Y_train_orig", self.Y_train_orig, allow_pickle= True)
-            print(f"data saved to buffer file {p['DATA_BUFFER_NAME']+'_*_train_orig.npy'}")
-        dataset = tonic.datasets.SSC(save_to='./data', split="valid", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
-        self.data_max_length+= len(dataset)
+            print(f"data saved to buffer file {fname}")
+        self.num_input= int(np.product(sensor_size))
+        self.num_output= self.N_class
         self.Z_eval_orig= None
-        self.Y_eval_orig= np.empty(len(dataset), dtype= int)
-        self.X_eval_orig= []
-        if os.path.exists(p["DATA_BUFFER_NAME"]+"_X_eval_orig.npy"):
-            self.X_eval_orig= np.load(p["DATA_BUFFER_NAME"]+"_X_eval_orig.npy",allow_pickle= True)
-            self.Y_eval_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_eval_orig.npy",allow_pickle= True)
-            print(f"data loaded from buffered file {p['DATA_BUFFER_NAME']+'_*_eval_orig.npy'}")
+        fname = p["DATA_BUFFER_NAME"]+"_X_eval_orig"
+        fname += "RST_"+str(p["RESCALE_T"])+"_RSX_"+str(p["RESCALE_X"])+"_DT_"+str(p["DT_MS"])+".npy"
+        if os.path.exists(fname):
+            self.X_eval_orig= np.load(fname, allow_pickle= True)
+            self.Y_eval_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_eval_orig.npy", allow_pickle= True)
+            self.data_max_length+= len(self.X_eval_orig)
+            print(f"data loaded from buffered file {fname}")
         else:
+            dataset = tonic.datasets.SSC(save_to='./data', split="valid", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+            self.data_max_length+= len(dataset)
+            self.Y_eval_orig= np.empty(len(dataset), dtype= int)
+            self.X_eval_orig= []
             for i in tqdm(range(len(dataset))):
                 events, label = dataset[i]
                 self.Y_eval_orig[i]= label
-                if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                    sample= rescale(events["x"], events["t"]/1000.0, p)
-                else:
-                    sample= {"x": events["x"], "t": events["t"]/1000.0}
+                sample= rescale(events["x"], events["t"]/1000.0, p)
                 self.X_eval_orig.append(sample)
             self.X_eval_orig= np.array(self.X_eval_orig)
-            np.save(p["DATA_BUFFER_NAME"]+"_X_eval_orig", self.X_eval_orig, allow_pickle= True)
+            np.save(fname, self.X_eval_orig, allow_pickle= True)
             np.save(p["DATA_BUFFER_NAME"]+"_Y_eval_orig", self.Y_eval_orig, allow_pickle= True)
-            print(f"data saved to buffer file {p['DATA_BUFFER_NAME']+'_*_eval_orig.npy'}")
-        dataset = tonic.datasets.SSC(save_to='./data', split="test", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
-        self.data_max_length+= len(dataset)
+            print(f"data saved to buffer file {fname}")
         self.Z_test_orig= None
-        self.Y_test_orig= np.empty(len(dataset), dtype= int)
-        self.X_test_orig= []
-        if os.path.exists(p["DATA_BUFFER_NAME"]+"_X_test_orig.npy"):
-            self.X_test_orig= np.load(p["DATA_BUFFER_NAME"]+"_X_test_orig.npy",allow_pickle= True)
-            self.Y_test_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_test_orig.npy",allow_pickle= True)
-            print(f"data loaded from buffered file {p['DATA_BUFFER_NAME']+'_*_test_orig.npy'}")
+        fname = p["DATA_BUFFER_NAME"]+"_X_test_orig"
+        fname += "RST_"+str(p["RESCALE_T"])+"_RSX_"+str(p["RESCALE_X"])+"_DT_"+str(p["DT_MS"])+".npy"
+        if os.path.exists(fname):
+            self.X_test_orig= np.load(fname, allow_pickle= True)
+            self.Y_test_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_test_orig.npy", allow_pickle= True)
+            self.data_max_length+= len(self.X_test_orig)
+            print(f"data loaded from buffered file {fname}")
         else:
+            dataset = tonic.datasets.SSC(save_to='./data', split="test", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+            self.data_max_length+= len(dataset)
+            self.Y_test_orig= np.empty(len(dataset), dtype= int)
+            self.X_test_orig= []
             for i in tqdm(range(len(dataset))):
                 events, label = dataset[i]
                 self.Y_test_orig[i]= label
-                if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                    sample= rescale(events["x"], events["t"]/1000.0, p)
-                else:
-                    sample= {"x": events["x"], "t": events["t"]/1000.0}
+                sample= rescale(events["x"], events["t"]/1000.0, p)
                 self.X_test_orig.append(sample)
             self.X_test_orig= np.array(self.X_test_orig)
-            np.save(p["DATA_BUFFER_NAME"]+"_X_test_orig", self.X_test_orig, allow_pickle= True)
+            np.save(fname, self.X_test_orig, allow_pickle= True)
             np.save(p["DATA_BUFFER_NAME"]+"_Y_test_orig", self.Y_test_orig, allow_pickle= True)
-            print(f"data saved to buffer file {p['DATA_BUFFER_NAME']+'_*_test_orig.npy'}")
+            print(f"data saved to buffer file {fname}")
+        exit(1)
 
     def load_data_SHD_Zenke(self, p):
         cache_dir=os.path.expanduser("~/data")
@@ -582,10 +577,7 @@ class SHD_model:
         self.N_class= len(set(self.Y_train_orig))
         self.X_train_orig= []
         for i in range(len(units)):
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(units[i], times[i]*1000.0, p)
-            else:
-                sample= {"x": units[i], "t": times[i]*1000.0}
+            sample= rescale(units[i], times[i]*1000.0, p)
             self.X_train_orig.append(sample)
         self.X_train_orig= np.array(self.X_train_orig)
         # do the test files
@@ -605,10 +597,7 @@ class SHD_model:
         self.data_max_length+= len(units)
         self.X_test_orig= []
         for i in range(len(units)):
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(units[i], times[i]*1000.0, p)
-            else:
-                sample= {"x": units[i], "t": times[i]*1000.0}
+            sample= rescale(units[i], times[i]*1000.0, p)
             self.X_test_orig.append(sample)
         self.X_test_orig= np.array(self.X_test_orig)            
 

@@ -50,6 +50,7 @@ def random_dilate(X,rng,min_factor,max_factor,p):
 
 """
 blend spike patterns
+WARNING: This does not ensure one spike per timestep!
 """
 def blend(X,probs,rng,p):
     new_x= []

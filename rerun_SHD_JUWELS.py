@@ -32,7 +32,7 @@ p["N_TRAIN"]*= 3  # do half of training examples as blended in addition to norma
 #p["COLLECT_CONFUSION"]= True
 p["WRITE_TO_DISK"]= True
 
-p["N_EPOCH"] = 500
+p["N_EPOCH"] = 300
 
 #p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= True
 p["BALANCE_TRAIN_CLASSES"]= False
@@ -75,19 +75,20 @@ p["EMA_ALPHA1"]= 0.9
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 
 
-p["REC_NEURONS"] = [("hidden0","tau_m"),("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
+#p["REC_NEURONS"] = [("hidden0","tau_m"),("hidden0","lambda_V"),("hidden0","lambda_I"), ("output","lambda_V"), ("output","lambda_I")]
 #p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4], [0,5], [0,6] ]
-p["REC_NEURONS_EPOCH_TRIAL"] = [ [10,1], [10,2], [10,3], [10,4], [10,5], [10,6] ]
+#p["REC_NEURONS_EPOCH_TRIAL"] = [ [10,1], [10,2], [10,3], [10,4], [10,5], [10,6] ]
 #p["REC_SPIKES"]= ["hidden0"]
 #p["REC_SPIKES_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4] ]
 
 print(p)
-#exit(1)
+fname= p["NAME"]+".json"
+with open(os.path.join(p["OUT_DIR"], fname),"w") as f:
+    json.dump(p, f)
 
 mn= SHD_model(p)
 #res= mn.cross_validate_SHD(p)
 res= mn.train_test(p)
-
 
 #print(res)
 
@@ -120,6 +121,7 @@ sid= res[1]["hidden0"]
 plt.scatter(st, sid,s=0.1)
 """
 
+"""
 tau_m= res[2]["tau_mhidden0"]
 lambda_V= res[2]["lambda_Vhidden0"]
 lambda_I= res[2]["lambda_Ihidden0"]
@@ -157,4 +159,4 @@ plt.show()
 #with open(os.path.join(p["OUT_DIR"], p["NAME"]+'_summary.json'),'w') as f:
 #    json.dump(res, f)
 
-
+"""
