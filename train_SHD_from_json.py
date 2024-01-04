@@ -17,5 +17,10 @@ for (name,value) in p0.items():
 p["OUT_DIR"]= sys.argv[2]
 p["NAME"]= sys.argv[3]
 
+print(p)
+fname= p["NAME"]+".json"
+with open(os.path.join(p["OUT_DIR"], fname),"w") as f:
+    json.dump(p, f)
+
 mn= SHD_model(p)
 spike_t, spike_ID, rec_vars_n, rec_vars_s,correct,correct_eval= mn.train(p)
