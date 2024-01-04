@@ -530,7 +530,6 @@ class SHD_model:
             np.save(fname, self.X_test_orig, allow_pickle= True)
             np.save(p["DATA_BUFFER_NAME"]+"_Y_test_orig", self.Y_test_orig, allow_pickle= True)
             print(f"data saved to buffer file {fname}")
-        exit(1)
 
     def load_data_SHD_Zenke(self, p):
         cache_dir=os.path.expanduser("~/data")
