@@ -49,6 +49,9 @@
       {]}{{{\color{delim}{]}}}}{1},
 }
 
+\newcommand{\taum}{\tau_{\text{m}}}
+\newcommand{\taus}{\tau_{\text{syn}}}
+
 \begin{document}
 \section{Preliminaries}
 The authors use a nice consequent notation. Aside from the usual
@@ -341,7 +344,7 @@ gradient of the loss function.
 The differential equations defining the free dynamics in implicit form are
 \begin{align}
   f_V \equiv \tau_{\text{mem}} \dot{V} + V - I = 0, \tag{25a} \\
-  f_I \equiv \tau_{\text{syn}} \dot{I} + I = 0, \tag{25b}
+  f_I \equiv \taus \dot{I} + I = 0, \tag{25b}
 \end{align}
 where $f_V$, $f_I$ are again vectors of size $N$.
 }
@@ -401,7 +404,7 @@ discrete events.
     \frac{d}{dt} \frac{\partial V}{\partial w_{ji}} + \frac{\partial
       V}{\partial w_{ji}} - \frac{\partial I}{\partial
       w_{ji}}, \tag{27a}  \\ 
-    \frac{\partial f_I}{\partial w_{ji}} &= \tau_{\text{syn}}
+    \frac{\partial f_I}{\partial w_{ji}} &= \taus
     \frac{d}{dt} \frac{\partial I}{\partial w_{ji}} +\frac{\partial
       I}{\partial w_{ji}}, \tag{27b}
   \end{align}
@@ -426,7 +429,7 @@ derivatives nothing special is happening here.
         \tau_{\text{mem}} \frac{d}{dt} \frac{\partial V}{\partial
           w_{ji}} +\frac{\partial V}{\partial w_{ji}} - \frac{\partial
           I}{\partial w_{ji}}\right) + \lambda_I \cdot
-        \left(\tau_{\text{syn}} \frac{d}{dt} \frac{\partial
+        \left(\taus \frac{d}{dt} \frac{\partial
           I}{\partial w_{ji}} + \frac{\partial I}{\partial w_{ji}}
         \right)\right] dt \right. \nonumber  \\
       & \left. + \frac{\partial l_p}{\partial t_k^{\text{post}}} \frac{d
@@ -499,7 +502,7 @@ the $\lambda$'s or derivatives are $0$.
       \int_{t_k^{\text{post}}}^{t_{k+1}^{\text{post}}} \left[\left(
         \frac{\partial l_V}{\partial V} - \tau_{\text{mem}}
         \dot{\lambda}_V + \lambda_V \right) \cdot \frac{\partial
-          V}{\partial w_{ji}} + \left( - \tau_{\text{syn}}
+          V}{\partial w_{ji}} + \left( - \taus
         \dot{\lambda}_I + \lambda_I - \lambda_V \right) \cdot
         \frac{\partial I}{\partial w_{ji}} \right] dt
       \right. \nonumber \\
@@ -508,7 +511,7 @@ the $\lambda$'s or derivatives are $0$.
       +\tau_{\text{mem}} \left[ \lambda_V \cdot \frac{\partial
           V}{\partial w_{ji}}
         \right]_{t_k^{\text{post}}}^{t_{k+1}^{\text{post}}}
-      +\tau_{\text{syn}} \left[\lambda_I \cdot \frac{\partial
+      +\taus \left[\lambda_I \cdot \frac{\partial
           I}{\partial w_{ji}} \right]_{t_k^{\text{post}}}^{t_{k+1}^{\text{post}}}
       + l^-_{V,k+1}
       \frac{dt_{k+1}^{\text{post}}}{d w_{ji}} - l^+_{V,k} \frac{d
@@ -527,7 +530,7 @@ transform the time derivative as $\frac{d}{dt} \rightarrow
 \begin{align}
   \tau_{\text{mem}} \lambda'_V = -\lambda_V - \frac{\partial
     l_V}{\partial V}, \tag{32a} \\
-  \tau_{\text{syn}} \lambda'_I = -\lambda_I + \lambda_V. \tag{32b}
+  \taus \lambda'_I = -\lambda_I + \lambda_V. \tag{32b}
 \end{align}
 The integrand in Eq. (31) therefore vanishes along the trajectory and
 we are left with a sum over the transitions.
@@ -557,7 +560,7 @@ flipped to do the backward derivatives.
       &+ \left[\tau_{\text{mem}} \left( \lambda^-_V \cdot
         \frac{\partial V^-}{\partial w_{ji}} - \lambda_V^+ \cdot
         \frac{\partial V^+}{\partial w_{ji}} \right)
-      + \tau_{\text{syn}} \left(\lambda^-_I \cdot \frac{\partial
+      + \taus \left(\lambda^-_I \cdot \frac{\partial
         I^-}{\partial w_{ji}} - \lambda_I^+ \cdot \frac{\partial
         I^+}{\partial w_{ji}} \right)
       \right]\bigg|_{t_k^{\text{post}}} . \tag{34}
@@ -777,7 +780,7 @@ other cases.
 \blue{
   Because
   \begin{align}
-    \tau_{\text{syn}} \big(\dot{I}^+\big)_m =
+    \taus \big(\dot{I}^+\big)_m =
     \tau_{syn}\big(\dot{I}^-\big)_m - w_{mn}, \tag{47}
   \end{align}
 }
@@ -785,7 +788,7 @@ other cases.
 This comes from combining \blue{(45)} and the original current
 dynamics \blue{(25b)}:
 \begin{align}
-  \tau_{\text{syn}} \dot{I}^+ - \tau_{\text{syn}} \dot{I}^- = -(I^+ -
+  \taus \dot{I}^+ - \taus \dot{I}^- = -(I^+ -
   I^-)
 \end{align}
 by \blue{(25b)} and
@@ -851,9 +854,9 @@ have
   \xi_k = &\Bigg[ \sum_{m \neq n(k)} \left[ \tau_{\text{mem}}
       (\lambda^-_V - \lambda^+_V)_m \left(\frac{\partial V^-}{\partial
         w_{ji}}\right)_m
-      +\tau_{\text{syn}} (\lambda^-_I - \lambda^+_I )_m
+      +\taus (\lambda^-_I - \lambda^+_I )_m
       \left(\frac{\partial I^-}{\partial w_{ji}}\right)_m
-      - \tau_{\text{syn}} \delta_{in(k)} \delta_{jm} (\lambda^+_I)_m
+      - \taus \delta_{in(k)} \delta_{jm} (\lambda^+_I)_m
       \right] \nonumber \\
     &+\left(\frac{\partial V^-}{\partial w_{ji}}\right)_{n(k)} \left[
       \tau_{\text{mem}} \left( \lambda^-_V -
@@ -862,7 +865,7 @@ have
       +\frac{1}{(\dot{V}^-)_{n(k)}} \left(\sum_{m \neq n(k)} w_{mn(k)}
       (\lambda_I^+- \lambda_V^+)_m - \frac{\partial l_p}{\partial
         t_k^{\text{post}}} + l_V^+ - l_V^- \right)\right] \nonumber \\
-    &+ \tau_{\text{syn}} (\lambda^-_I - \lambda^+_I)_{n(k)}
+    &+ \taus (\lambda^-_I - \lambda^+_I)_{n(k)}
     \left(\frac{\partial I^-}{\partial w_{ji}}\right)_{n(k)} \Bigg]
   \Bigg|_{t_k^{\text{post}}} . \tag{51}
 \end{align} 
@@ -896,10 +899,10 @@ It's $w_{mn(k)}$, not $w_{n(k)m}$.
   \end{align}
   With these jumps, the gradient reduces to
   \begin{align}
-    \frac{d \cal L}{d w_{ji}} &= -\tau_{\text{syn}}
+    \frac{d \cal L}{d w_{ji}} &= -\taus
     \sum_{k=1}^{N_{\text{post}}} \delta_{in(k)} (\lambda_I)_j \tag{53}
     \\
-    &= -\tau_{\text{syn}} \sum_{t \in \text{spikes from i}}
+    &= -\taus \sum_{t \in \text{spikes from i}}
       (\lambda_I)_j(t) . \tag{54}
   \end{align}
 }
@@ -930,7 +933,7 @@ weight $w_{j,\text{input}}$, the transition times are fixed and the adjoint
 variables do not experience jumps. The gradient 
 simply samples the neuron’s $\lambda_I$ at the times of spike arrival,
 \begin{align}
-  \frac{d \cal L}{d w_{j,\text{input}}} = - \tau_{\text{syn}}
+  \frac{d \cal L}{d w_{j,\text{input}}} = - \taus
   \sum_{t \in \text{input spikes}} (\lambda_I^+)_j(t) . \tag{56}
 \end{align}
 }
@@ -979,7 +982,7 @@ Table 1: \\[0.2cm]
 $\tau_{\text{mem}} \frac{d}{dt} V = -V + I$ & $(V)_n - \vartheta = 0$,
   $\big(\dot{V}\big)_n \neq 0$ &
   $(V^+)_n = 0$ \\
-  $\tau_{\text{syn}} \frac{d}{dt} I= -I$ & for any $n$ & $I^+= I^- + W
+  $\taus \frac{d}{dt} I= -I$ & for any $n$ & $I^+= I^- + W
   e_n$ \\
   \hline
   \end{tabular}\\[0.5cm]
@@ -996,7 +999,7 @@ Table 2: \\[0.2cm]
   $(\lambda_V^-)_{n(k)} = (\lambda_V^+)_{n(k)} +
   \frac{1}{\tau_{\text{mem}} (\dot{V}^-)_{n(k)}} \Big[
       \vartheta (\lambda_V^+)_{n(k)}$ \\
-      $\tau_{\text{syn}} \lambda_I' = -\lambda_I + \lambda_V$ & for
+      $\taus \lambda_I' = -\lambda_I + \lambda_V$ & for
       any $k$ & $\hphantom{(\lambda_V^-)_{n(k)} = } + \left(W^T
       (\lambda_V^+ - \lambda_I^+)\right)_{n(k)} + \frac{\partial
         l_p}{\partial t_k^{\text{post}}} + l_V^- - l_V^+ \Big]$ \\
@@ -1004,7 +1007,7 @@ Table 2: \\[0.2cm]
 \end{tabular} \\[0.5cm]
 The gradient is then calculated as
 \begin{align}
-  \frac{d \cal L}{d w_{ji}} = - \tau_{\text{syn}} \sum_{t \in
+  \frac{d \cal L}{d w_{ji}} = - \taus \sum_{t \in
     \text{spikes of neuron }
     i} (\lambda_I^+)_j (t) 
 \end{align}
@@ -1108,12 +1111,12 @@ So, in essence, in the MNIST example with non-spiking output neurons, there are 
 The same technology can be applied to the spiking Heidelberg digits dataset. Though (as of 2022-02-15) not with much success.
 
 \section{Exact integration of forward and backward dynamics}
-Because of the simplicity of the dynamic equations (at least in the absence of the $\frac{\partial l_V}{\partial V}$ term) one can calculate the exact solution for teh $\lambda$ dynamics over a timestep from $t_0$ to $t$.
+Because of the simplicity of the dynamic equations (at least in the absence of the $\frac{\partial l_V}{\partial V}$ term) one can calculate the exact solution for the $\lambda$ dynamics over a timestep from $t_0$ to $t$.
 
 We have
 \begin{align}
   \tau_{\text{mem}} \lambda'_V &= - \lambda_V \\
-  \tau_{\text{syn}} \lambda'_I &= \lambda_V - \lambda_I .
+  \taus \lambda'_I &= \lambda_V - \lambda_I .
 \end{align}
 For the $\lambda_V$ eqaution we know by heart that this is simply exponential decay (or otherwise there is the usual derivation with $\frac{f'}{f}$ integrating to $\log f$):
 \begin{align}
@@ -1130,25 +1133,25 @@ and
 \end{align}
 as it should be. Then, the homogeneous equation for $\lambda_I$ is also simple exponential decay, so that
 \begin{align}
-\lambda_I(t) = c(t) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}} \right)
+\lambda_I(t) = c(t) \exp\left(-\frac{t-t_0}{\taus} \right)
 \end{align}
 Therefore,
 \begin{align}
-  \tau_{\text{syn}} \lambda'_I (t) &= \tau_{\text{syn}} c'(t) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}} \right) - c(t) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}} \right) \stackrel{=}{!} \lambda_V(t) - \lambda_I(t) \\
-  \Rightarrow  \quad \tau_{\text{syn}} c'(t) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}} \right) &= \lambda_V(t) =  \lambda_V(t_0) \exp\left(-\frac{t-t_0}{\tau_{\text{mem}}}\right) \\
-  \Rightarrow \quad c'(t) &= \frac{\lambda_V(t_0)}{\tau_{\text{syn}}} \exp \left(-\left(\frac{1}{\tau_{\text{mem}}} - \frac{1}{\tau_{\text{syn}}} \right) (t-t_0)\right) \\
-  \Rightarrow \quad c(t) &= - \frac{\lambda_V(t_0)}{\tau_{\text{syn}}} \frac{1}{\frac{1}{\tau_{\text{mem}}} - \frac{1}{\tau_{\text{syn}}}} \exp \left(-\left(\frac{1}{\tau_{\text{mem}}} - \frac{1}{\tau_{\text{syn}}} \right) (t-t_0)\right) +c \\
-  \Rightarrow \quad \lambda_I(t) &= -\frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1} \exp \left( -\frac{1}{\tau_{\text{mem}}} (t-t_0)\right) + c \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}} \right) 
+  \taus \lambda'_I (t) &= \taus c'(t) \exp\left(-\frac{t-t_0}{\taus} \right) - c(t) \exp\left(-\frac{t-t_0}{\taus} \right) \stackrel{=}{!} \lambda_V(t) - \lambda_I(t) \\
+  \Rightarrow  \quad \taus c'(t) \exp\left(-\frac{t-t_0}{\taus} \right) &= \lambda_V(t) =  \lambda_V(t_0) \exp\left(-\frac{t-t_0}{\tau_{\text{mem}}}\right) \\
+  \Rightarrow \quad c'(t) &= \frac{\lambda_V(t_0)}{\taus} \exp \left(-\left(\frac{1}{\tau_{\text{mem}}} - \frac{1}{\taus} \right) (t-t_0)\right) \\
+  \Rightarrow \quad c(t) &= - \frac{\lambda_V(t_0)}{\taus} \frac{1}{\frac{1}{\tau_{\text{mem}}} - \frac{1}{\taus}} \exp \left(-\left(\frac{1}{\tau_{\text{mem}}} - \frac{1}{\taus} \right) (t-t_0)\right) +c \\
+  \Rightarrow \quad \lambda_I(t) &= -\frac{\lambda_V(t_0)}{\frac{\taus}{\tau_{\text{mem}}} -1} \exp \left( -\frac{1}{\tau_{\text{mem}}} (t-t_0)\right) + c \exp\left(-\frac{t-t_0}{\taus} \right) 
 \end{align}
 Taking the initial condition into account, we have
 \begin{align}
-  \lambda_I(t_0) &= -\frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1} + c \\
-  \Rightarrow \quad c &= \lambda_I(t_0) + \frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1}
+  \lambda_I(t_0) &= -\frac{\lambda_V(t_0)}{\frac{\taus}{\tau_{\text{mem}}} -1} + c \\
+  \Rightarrow \quad c &= \lambda_I(t_0) + \frac{\lambda_V(t_0)}{\frac{\taus}{\tau_{\text{mem}}} -1}
 \end{align}
 Hence we get altogether
 \begin{align}
-  \lambda_I(t) &= -\frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1} \exp\left(-\frac{t-t_0}{\tau_{\text{mem}}} \right) + \lambda_I(t_0) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}}\right) + \frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1} \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}}\right) \\
-  &= \frac{\lambda_V(t_0)}{\frac{\tau_{\text{syn}}}{\tau_{\text{mem}}} -1} \left(\exp\left(-\frac{t-t_0}{\tau_{\text{syn}}}\right) - \exp\left(-\frac{t-t_0}{\tau_{\text{mem}}} \right) \right) + \lambda_I(t_0) \exp\left(-\frac{t-t_0}{\tau_{\text{syn}}}\right)
+  \lambda_I(t) &= -\frac{\lambda_V(t_0)}{\frac{\taus}{\tau_{\text{mem}}} -1} \exp\left(-\frac{t-t_0}{\tau_{\text{mem}}} \right) + \lambda_I(t_0) \exp\left(-\frac{t-t_0}{\taus}\right) + \frac{\lambda_V(t_0)}{\frac{\taus}{\tau_{\text{mem}}} -1} \exp\left(-\frac{t-t_0}{\taus}\right) \\
+  &= \frac{\lambda_V(t_0)}{\frac{\taus}{\tau_{\text{mem}}} -1} \left(\exp\left(-\frac{t-t_0}{\taus}\right) - \exp\left(-\frac{t-t_0}{\tau_{\text{mem}}} \right) \right) + \lambda_I(t_0) \exp\left(-\frac{t-t_0}{\taus}\right)
 \end{align}
 
 As the forward equations are identical for $V$ (i.e. like the $\lambda_I$ equation), the equivalent equation can be used for $V$ in the forward pass.
@@ -1162,70 +1165,114 @@ As the forward equations are identical for $V$ (i.e. like the $\lambda_I$ equati
   within a timestep}
 
 \begin{align}
-  \tau_m \lambda'_V = -\lambda_V \label{eqn:lv1} \\
-  \tau_{\text{syn}} \lambda'_I = - \lambda_I + \lambda_V
+  \taum \lambda'_V = -\lambda_V \label{eqn:lv1} \\
+  \taus \lambda'_I = - \lambda_I + \lambda_V
 \end{align}
 From equation (\ref{eqn:lv1}) we easily get
 \begin{align}
-  \lambda_V(t+ \Delta t - t') = \lambda_V(t+\Delta t) \exp\left(-\frac{t'}{\tau_m}\right).
+  \lambda_V(t+ \Delta t - t') = \lambda_V(t+\Delta t) \exp\left(-\frac{t'}{\taum}\right).
 \end{align}
 Then we have
 \begin{align}
-  \lambda'_I = \frac{1}{\tau_{\text{syn}}} \left(-\lambda_I +
-  \lambda_V(t+\Delta t) \exp\left(-\frac{t'}{\tau_m}\right)\right)
+  \lambda'_I = \frac{1}{\taus} \left(-\lambda_I +
+  \lambda_V(t+\Delta t) \exp\left(-\frac{t'}{\taum}\right)\right)
 \end{align}
 The solution to the autonomous equation is
 \begin{align}
-  \lambda_I = \tilde{\lambda}_I \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right)
+  \lambda_I = \tilde{\lambda}_I \exp\left(-\frac{t'}{\taus}\right)
 \end{align}
 and with the usual trick $\tilde{\lambda}_I \rightarrow
 \tilde{\lambda}_I(t)$ we get
 \begin{align}
-  \lambda'_{I} &= \tilde{\lambda}'_I \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) - \frac{1}{\tau_{\text{syn}}} \tilde{\lambda}_I \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) = - \frac{1}{\tau_{\text{syn}}}
-  \lambda_I + \tilde{\lambda}'_I \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right)
+  \lambda'_{I} &= \tilde{\lambda}'_I \exp\left(-\frac{t'}{\taus}\right) - \frac{1}{\taus} \tilde{\lambda}_I \exp\left(-\frac{t'}{\taus}\right) = - \frac{1}{\taus}
+  \lambda_I + \tilde{\lambda}'_I \exp\left(-\frac{t'}{\taus}\right)
 \end{align}
 Hence, we can identify
 \begin{align}
-  \tilde{\lambda}'_I \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) &= \frac{1}{\tau_{\text{syn}}}
+  \tilde{\lambda}'_I \exp\left(-\frac{t'}{\taus}\right) &= \frac{1}{\taus}
   \lambda_V =
-  \frac{1}{\tau_{\text{syn}}} \lambda_V(t+\Delta t) \exp\left(-\frac{t'}{\tau_m}\right) \\
- \Rightarrow \quad  \tilde{\lambda}'_I &= \frac{1}{\tau_{\text{syn}}}
+  \frac{1}{\taus} \lambda_V(t+\Delta t) \exp\left(-\frac{t'}{\taum}\right) \\
+ \Rightarrow \quad  \tilde{\lambda}'_I &= \frac{1}{\taus}
   \lambda_V(t+\Delta t)
-  \exp\left(-\left(\frac{1}{\tau_m}-\frac{1}{\tau_{\text{syn}}}\right)
-  t' \right) \\
-\Rightarrow \quad  \tilde{\lambda}_I &= - \frac{1}{\frac{1}{\tau_m} -
-  \frac{1}{\tau_{\text{syn}}}} \frac{1}{\tau_{\text{syn}}} \lambda_V(t+\Delta t) \exp\left(-\left(\frac{1}{\tau_m}-\frac{1}{\tau_{\text{syn}}}\right)t' \right) +C \\
-  \Rightarrow \quad  \lambda_I &= - \frac{\tau_m}{\tau_{\text{syn}}-\tau_m} \lambda_V(t+\Delta t) \exp\left(-\left(\frac{1}{\tau_m}-\frac{1}{\tau_{\text{syn}}}\right)
-  t' - \frac{t'}{\tau_{\text{syn}}}\right) + C
-  \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) \\
-  &= - \frac{\tau_m}{\tau_{\text{syn}}-\tau_m} \lambda_V(t+\Delta t)
-  \exp\left(-\frac{t'}{\tau_m}\right) + C
-  \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) 
+  \exp\left(-\left(\frac{1}{\taum}-\frac{1}{\taus}\right)
+  t' \right) \label{eqninter1} \\
+\Rightarrow \quad  \tilde{\lambda}_I &= - \frac{1}{\frac{1}{\taum} -
+  \frac{1}{\taus}} \frac{1}{\taus} \lambda_V(t+\Delta t) \exp\left(-\left(\frac{1}{\taum}-\frac{1}{\taus}\right)t' \right) +C \\
+  \Rightarrow \quad  \lambda_I &= - \frac{\taum}{\taus-\taum} \lambda_V(t+\Delta t) \exp\left(-\left(\frac{1}{\taum}-\frac{1}{\taus}\right)
+  t' - \frac{t'}{\taus}\right) + C
+  \exp\left(-\frac{t'}{\taus}\right) \\
+  &= - \frac{\taum}{\taus-\taum} \lambda_V(t+\Delta t)
+  \exp\left(-\frac{t'}{\taum}\right) + C
+  \exp\left(-\frac{t'}{\taus}\right) 
 \end{align}
 At $t' = 0$,
 \begin{align}
-  - \frac{\tau_m}{\tau_{\text{syn}}-\tau_m} \lambda_V(t+\Delta t) + C
+  - \frac{\taum}{\taus-\taum} \lambda_V(t+\Delta t) + C
   &= \lambda_I(t+\Delta t) \\
   \Rightarrow \quad  C &= \lambda_I(t+\Delta t)  +
-  \frac{\tau_m}{\tau_{\text{syn}}-\tau_m} \lambda_V(t+\Delta t)
+  \frac{\taum}{\taus-\taum} \lambda_V(t+\Delta t)
 \end{align}
 and hence
 \begin{align}
-  \lambda_I = \frac{\tau_m}{\tau_{\text{syn}}-\tau_m}
-  \lambda_V(t+\Delta t)  \left(\exp\left(-\frac{t'}{\tau_{\text{syn}}}\right) - \exp\left(-\frac{t'}{\tau_m}\right)\right) + \lambda_I(t+\Delta t) \exp\left(-\frac{t'}{\tau_{\text{syn}}}\right)
+  \lambda_I = \frac{\taum}{\taus-\taum}
+  \lambda_V(t+\Delta t)  \left(\exp\left(-\frac{t'}{\taus}\right) - \exp\left(-\frac{t'}{\taum}\right)\right) + \lambda_I(t+\Delta t) \exp\left(-\frac{t'}{\taus}\right)
 \end{align}
 And accordingly for $t' = \Delta t$,
 \begin{align}
   \lambda_V (t) &= \lambda_V(t+\Delta t) \exp\left(-\frac{\Delta
-    t}{\tau_m}\right) \\
-  \lambda_I (t) &= \frac{\tau_m}{\tau_{\text{syn}}-\tau_m}
+    t}{\taum}\right) \\
+  \lambda_I (t) &= \frac{\taum}{\taus-\taum}
   \lambda_V(t+\Delta t)  \left(\exp\left(-\frac{\Delta
-    t}{\tau_{\text{syn}}}\right) - \exp\left(-\frac{\Delta
-    t}{\tau_m}\right)\right) + \lambda_I(t+\Delta t)
-  \exp\left(-\frac{\Delta t}{\tau_{\text{syn}}}\right)
+    t}{\taus}\right) - \exp\left(-\frac{\Delta
+    t}{\taum}\right)\right) + \lambda_I(t+\Delta t)
+  \exp\left(-\frac{\Delta t}{\taus}\right) \label{eqnupdate}
 \end{align}
 
- As the forward equations are identical for $V$ (i.e. like the $\lambda_I$ equation), the equivalent equation can be used for $V$ in the forward pass.
+As the forward equations are identical for $V$ (i.e. like the $\lambda_I$ equation), the equivalent equation can be used for $V$ in the forward pass.
+
+\subsection{Solution for $\taum = \taus$}
+If $\taum = \taus$, the update (\ref{eqnupdate}) is not defined as both the difference of exponentials and the denominator $\taus-\taum$ are $0$. We can derive the correct update in this case in two ways:
+
+The first option is to start from equation (\ref{eqninter1}) to find
+\begin{align}
+  \tilde{\lambda}'_I &= \frac{1}{\taus}
+  \lambda_V(t+\Delta t) \\
+  \Rightarrow  \tilde{\lambda}_I &= \frac{1}{\taus}
+  \lambda_V(t+\Delta t)t' + C \\
+  \Rightarrow  \lambda_I &= \frac{1}{\taus}
+  \lambda_V(t+\Delta t)t' \exp\left(-\frac{t'}{\taus}\right) +C \exp\left(-\frac{t'}{\taus}\right) 
+\end{align}
+Hence, at $t'=0$:
+\begin{align}
+  C = \lambda_I(t+\Delta t)
+\end{align}
+and
+\begin{align}
+   \lambda_I &= \frac{1}{\taus}
+  \lambda_V(t+\Delta t)t' \exp\left(-\frac{t'}{\taus}\right) +  \lambda_I(t+\Delta t)\exp\left(-\frac{t'}{\taus}\right) 
+\end{align}
+so that at $t' = \Delta t$:
+\begin{align}
+  \lambda_I (t) &= \frac{\Delta t}{\taus}
+  \lambda_V(t+\Delta t)  \exp\left(-\frac{\Delta t}{\taus}\right) +  \lambda_I(t+\Delta t)\exp\left(-\frac{\Delta t}{\taus}\right) \\
+ \Rightarrow  \lambda_I &= \left(\frac{\Delta t}{\taus}
+  \lambda_V(t+\Delta t) + \lambda_I(t+\Delta t)\right) \exp\left(-\frac{\Delta t}{\taus}\right)  \label{eqnvers1}
+\end{align}
+
+The second option is to calculate the limit $\lim_{\taum \to \taus}$ of (\ref{eqnupdate}). The second term is unproblematic but in teh first term we need to use l'H\^{o}pital's rule:
+\begin{align}
+  & \lim_{\taum \to \taus} \frac{\exp\left(-\frac{\Delta t}{\taus}\right) - \exp\left(-\frac{\Delta t}{\taum}\right)}{\taus-\taum} \\
+  &= \lim_{\taum \to \taus} \frac{- \exp\left(-\frac{\Delta t}{\taum}\right) \frac{\Delta t}{\taum^2}}{-1} = \exp\left(-\frac{\Delta t}{\taus}\right) \frac{\Delta t}{\taus^2}
+\end{align}
+and hence
+\begin{align}
+ \lambda_I (t) &= \taus 
+  \lambda_V(t+\Delta t) \exp\left(-\frac{\Delta t}{\taus}\right) \frac{\Delta t}{\taus^2} + \lambda_I(t+\Delta t)\exp\left(-\frac{\Delta t}{\taus}\right) 
+  \exp\left(-\frac{\Delta t}{\taus}\right) \\
+  &= \frac{\Delta t}{\taus} \lambda_V(t+\Delta t) \exp\left(-\frac{\Delta t}{\taus}\right) + \lambda_I(t+\Delta t)\exp\left(-\frac{\Delta t}{\taus}\right) \\
+\Rightarrow  \lambda_I &= \left(\frac{\Delta t}{\taus}
+  \lambda_V(t+\Delta t) + \lambda_I(t+\Delta t)\right) \exp\left(-\frac{\Delta t}{\taus}\right)  \end{align}
+which is exactly the same as (\ref{eqnvers1}).
 
 \section{GeNN Implementation Notes (Outdated?)}
 \begin{itemize}
@@ -1258,7 +1305,7 @@ And accordingly for $t' = \Delta t$,
     spiking neurons get the jumps applied. This will access the
     $-V+I$ buffer and step back the counter on it.
   \item All synapses execute their ``backward\_sim\_code'' which
-    adds the $-\tau_{\text{syn}} \lambda_{I,\text{post}}$ value to
+    adds the $-\taus \lambda_{I,\text{post}}$ value to
     their ``gradient'' variable that respresents $\frac{d \cal
       L}{d w_{ji}}$.
   \end{itemize}
@@ -1334,20 +1381,20 @@ which it is not. I am not sure this is mathematically correct ... though the MNI
   \end{align}
   Now, $\int_0^T V_m^n(t) dt = \int_0^T l_V(t) dt$ with the definition $l_V(t)= V_m^n(t)$, which is of the form of an acceptible loss function for eventprop, so we can use the eventprop algorithm to calculate
   \begin{align}
-    \frac{d}{d w_{ji}} (\int V_m^n dt) = -\tau_{\text{syn}} \sum_{\{t_{\text{spike}}(i)\}} \lambda_{I,j}^{m,n}(t_{\text{spike}})
+    \frac{d}{d w_{ji}} (\int V_m^n dt) = -\taus \sum_{\{t_{\text{spike}}(i)\}} \lambda_{I,j}^{m,n}(t_{\text{spike}})
   \end{align}
   where
   \begin{align}
-    \tau_{\text{syn}} {\lambda_{I,j}^{m,n}}' = -\lambda_{I,j}^{m,n} + \lambda_{V,j}^{m,n} \\
+    \taus {\lambda_{I,j}^{m,n}}' = -\lambda_{I,j}^{m,n} + \lambda_{V,j}^{m,n} \\
     \tau_{\text{mem}} {\lambda_{V,j}^{m,n}}' = -\lambda_{V,j}^{m,n} - \delta_{jm}
   \end{align}
   i.e. there is a contribution of $\frac{\partial l_V}{\partial V}$ of $1$ to the $\lambda_V$ dynamics if the neuron index $m$ of the voltage integral under consideration matches the index $j$ of the post-synaptic neuron of the synaptic weight under consideration.
 
   With this in mind, we can then calculate the gradient of the loss function (\ref{eqn:loss_gen}):
   \begin{align}
-    \frac{d {\cal L}}{d w_{ji}} &= -\tau_{\text{syn}} \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)} \sum_{\{t_{\text{spike}}(i)\}} \lambda_{I,j}^{m,n}(t_{\text{spike}}) \\
-      &= -\tau_{\text{syn}} \sum_{\{t_{\text{spike}}(i)\}} \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)}  \lambda_{I,j}^{m,n}(t_{\text{spike}}) \\
-        &= -\tau_{\text{syn}} \sum_{\{t_{\text{spike}}(i)\}} \tilde{\lambda}_{I,j} (t_{\text{spike}}) \label{eqn:deriv}
+    \frac{d {\cal L}}{d w_{ji}} &= -\taus \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)} \sum_{\{t_{\text{spike}}(i)\}} \lambda_{I,j}^{m,n}(t_{\text{spike}}) \\
+      &= -\taus \sum_{\{t_{\text{spike}}(i)\}} \sum_{m,n} \frac{\partial F}{\partial (\int V_m^n dt)}  \lambda_{I,j}^{m,n}(t_{\text{spike}}) \\
+        &= -\taus \sum_{\{t_{\text{spike}}(i)\}} \tilde{\lambda}_{I,j} (t_{\text{spike}}) \label{eqn:deriv}
   \end{align}
   where we have defined
   \begin{align}
@@ -1379,8 +1426,8 @@ which it is not. I am not sure this is mathematically correct ... though the MNI
   \end{align}
   and therefore the eventprop scheme
   \begin{align}
-    \frac{d{\cal L}}{d w_{ji}} &= -\tau_{\text{syn}} \sum_{\{t_{\text{spike}}(i)\}} \tilde{\lambda}_{I,j}(t_{\text{spike}}) \\
-    \tau_{\text{syn}} \tilde{\lambda}_{I,j}' &= -\tilde{\lambda}_{I,j} + \tilde{\lambda}_{V,j} \\
+    \frac{d{\cal L}}{d w_{ji}} &= -\taus \sum_{\{t_{\text{spike}}(i)\}} \tilde{\lambda}_{I,j}(t_{\text{spike}}) \\
+    \taus \tilde{\lambda}_{I,j}' &= -\tilde{\lambda}_{I,j} + \tilde{\lambda}_{V,j} \\
     \tau_{\text{mem}} \tilde{\lambda}_{V,j}' &= - \tilde{\lambda}_{V,j} + \frac{1}{N_{\text{batch}}} \sum_n \left(\delta_{jl(n)} -\frac{\exp(\int V_j^n dt)}{\sum_{k=1}^{N_{\text{class}}} \exp(V_k^n dt)} \right) . \\
   \end{align}
   This uses that the partial derivative is $1-\frac{exp}{\sum \exp}$ for $j=l(n)$ and $-\frac{exp}{\sum \exp}$ otherwise.
@@ -1463,7 +1510,7 @@ counter-act with unequal weighting of voltage across the trial, e.g.
   i.e. we need to apply jumps of $\frac{1}{\vartheta}$ at all spike
   times of the neuron and we get
   \begin{align}
-    \frac{d N_{\text{spike}}}{d w_{ji}} = -\tau_{\text{syn}}
+    \frac{d N_{\text{spike}}}{d w_{ji}} = -\taus
     \sum_{\text{spikes in } i} \lambda_{I,j}.
   \end{align}
   With the same approach as above, we can then deduce the gradient of
@@ -1472,9 +1519,9 @@ counter-act with unequal weighting of voltage across the trial, e.g.
     \frac{d {\cal L}_{\text{reg}}}{d w_{ji}} &= \frac{\partial {\cal
         L}_{\text{reg}}}{\partial N_{\text{spike}}}\frac{d N_{\text{spike}}}{d w_{ji}} \\
     &= 2 c_{\text{reg}} \left(N_{\text{spike}}^{\text{hidden}} -
-    \nu\right) (-\tau_{\text{syn}}
+    \nu\right) (-\taus
     \sum_{\text{spikes in } i} \lambda_{I,j}) \\
-    &= -\tau_{\text{syn}}
+    &= -\taus
     \sum_{\text{spikes in } i} 2 c_{\text{reg}} \left(N_{\text{spike}}^{\text{hidden}} -
     \nu\right) \lambda_{I,j}
   \end{align}
