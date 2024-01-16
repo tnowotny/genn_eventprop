@@ -8,7 +8,7 @@ We use "EVP" in naming to indicate "eventprop".
 """
 import numpy as np
 from pygenn import genn_model 
-from pygenn.genn_wrapper.Models import VarAccessDuplication_SHARED, VarAccess_REDUCE_BATCH_SUM, VarAccessMode_READ_ONLY, VarAccess_READ_ONLY, VarAccess_READ_ONLY_DUPLICATE, VarAccess_REDUCE_NEURON_MAX, VarAccess_REDUCE_NEURON_SUM
+from pygenn.genn_wrapper.Models import VarAccessDuplication_SHARED, VarAccess_REDUCE_BATCH_SUM, VarAccessMode_READ_ONLY, VarAccess_READ_ONLY, VarAccess_READ_ONLY_DUPLICATE, VarAccess_REDUCE_NEURON_MAX, VarAccess_REDUCE_NEURON_SUM, VarAccess_READ_ONLY_SHARED_NEURON
 
 # ----------------------------------------------------------------------------
 # Custom models
@@ -1020,9 +1020,9 @@ EVP_ALIF_reg = genn_model.create_custom_neuron_class(
 EVP_LIF_reg_tau_learn = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_tau_learn",
     param_names=["V_thresh","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower","trial_t"],
-    var_name_types=[("V", "scalar"),("tau_m", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+    var_name_types=[("V", "scalar"),("tau_m", "scalar", VarAccess_READ_ONLY),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),
-                    ("dtaum", "scalar"), ("fImV_roff","int"), ("fImV_woff","int"),("tau_syn","scalar"),("dtausyn","scalar")],
+                    ("dtaum", "scalar"), ("fImV_roff","int"), ("fImV_woff","int"),("tau_syn","scalar", VarAccess_READ_ONLY),("dtausyn","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("fImV","scalar*"),("fIdot","scalar*"),("pDrop","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],

@@ -924,6 +924,7 @@ class SHD_model:
                             for l in range(p["N_HID_LAYER"]):
                                 self.hidden_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
                                 self.hidden_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, p["NUM_HIDDEN"])
+                                print(f"Hidden layer {l} neurons: EVP_hetLIF_reg")
                                 self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_hetLIF_reg, hidden_params, self.hidden_init_vars))
 
                         else: 
@@ -1656,6 +1657,7 @@ class SHD_model:
         adam_step= 1
         learning_rate= p["ETA"]
         the_lr= learning_rate/1000.0
+        print(f"initial: the_lr: {the_lr}, learning_rate: {learning_rate}")
         
         # set up recording if required
         spike_t= {}
@@ -1939,9 +1941,9 @@ class SHD_model:
                     self.model.custom_update("EVPReduce")
                     #if trial%2 == 1:
                     self.model.custom_update("EVPLearn")
-
                 if the_lr < learning_rate:
                     the_lr = np.minimum(the_lr*1.05,learning_rate)
+                    print(f"the_lr: {the_lr}, learning_rate: {learning_rate}")
 
                 self.zero_insyn(p)
                 
