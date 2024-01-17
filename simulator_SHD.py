@@ -467,12 +467,12 @@ class SHD_model:
             self.X_train_orig= np.load(fname, allow_pickle= True)
             self.Y_train_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_train_orig.npy", allow_pickle= True)
             self.N_class= len(np.unique(self.Y_train_orig))
-            self.data_max_length= len(self.X_train_orig)+2*p["N_BATCH"]
+            self.data_max_length= max(len(self.X_train_orig),p["N_TRAIN"])+2*p["N_BATCH"]
             print(f"data loaded from buffered file {fname}, N_class= {self.N_class}")
         else:
             dataset = tonic.datasets.SSC(save_to='./data', split="train", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
             self.N_class= len(dataset.classes)
-            self.data_max_length= len(dataset)+2*p["N_BATCH"]
+            self.data_max_length= max(len(dataset),p["N_TRAIN"])+2*p["N_BATCH"]
             self.Y_train_orig= np.empty(len(dataset), dtype= int)
             self.X_train_orig= []
             for i in tqdm(range(len(dataset))):
@@ -785,7 +785,7 @@ class SHD_model:
             
         self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*(p["N_INPUT_DELAY"]+1)*p["N_MAX_SPIKE"], dtype=np.float32))
         # reserve enough space for any set of input spikes that is likely
-        self.input.set_extra_global_param("spikeTimes", np.zeros(802000000, dtype=np.float32))
+        self.input.set_extra_global_param("spikeTimes", np.zeros(1500000000, dtype=np.float32))
 
         input_reset_params= {"N_max_spike": p["N_MAX_SPIKE"]}
         input_reset_var_refs= {

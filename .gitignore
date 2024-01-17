@@ -3,3 +3,6 @@ scan_JUWELS*/
 scan*.tgz
 scan_SSC*/
 test*.json
+*_CODE
+prepscan_*
+runscan_*
