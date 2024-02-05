@@ -103,6 +103,8 @@ EVP_input_reset_MNIST= genn_model.create_custom_custom_update_class(
 )
 
 # custom update class for setting input neurons for fast shuffling to a new input
+# note: %((int)$(num_input)) in myiid is to handle delay line input where there are multiples
+# of the stated number of input neurons ...
 EVP_input_set_MNIST_shuffle= genn_model.create_custom_custom_update_class(
     "EVP_input_set_MNIST_shuffle",
     param_names=["N_batch", "num_input"],

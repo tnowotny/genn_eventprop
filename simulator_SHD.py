@@ -158,6 +158,7 @@ p["DATA_BUFFER_NAME"]= "./data/SSC/mySSC"
 p["N_INPUT_DELAY"]= 0
 p["INPUT_DELAY"]= 50.0 # in ms
 
+p["TEST_ST_INTEGRITY"]= False
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -720,7 +721,24 @@ class SHD_model:
         input_end= np.hstack(all_input_end)
         input_start= np.hstack(all_input_start)
         return (X, Y, input_start, input_end) 
-                
+    def test_st_integrity(self,X,Y,input_start,input_end,p):
+        sNo= input_end[self.num_input-1::self.num_input]-input_start[:-(self.num_input-1):self.num_input]
+        print(f"mean spikes per input: {np.mean(sNo)}, std: {np.std(sNo)}")
+        print(f"min spikes per input: {np.amin(sNo)}, max: {np.amax(sNo)}")
+        plt.figure()
+        plt.plot(sNo)
+        self.input.pull_extra_global_param_from_device("spikeTimes")
+        self.input_set.pull_extra_global_param_from_device("allStartSpike")
+        self.input_set.pull_extra_global_param_from_device("allEndSpike")
+        ST_device= self.input.extra_global_params["spikeTimes"].view
+        in_start_device= self.input_set.extra_global_params["allStartSpike"].view
+        in_end_device= self.input_set.extra_global_params["allEndSpike"].view
+        sNo_device= in_end_device[self.num_input-1::self.num_input]-in_start_device[:-(self.num_input-1):self.num_input]
+        plt.plot(sNo_device,'.')
+        plt.figure()
+        plt.plot(X[:len(ST_device):100]-ST_device[:len(X):100])
+        plt.show()
+        
     def define_model(self, p, shuffle):
         self.hidden= []
         self.hidden_reset= []
@@ -785,7 +803,7 @@ class SHD_model:
             
         self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*(p["N_INPUT_DELAY"]+1)*p["N_MAX_SPIKE"], dtype=np.float32))
         # reserve enough space for any set of input spikes that is likely
-        self.input.set_extra_global_param("spikeTimes", np.zeros(500000000, dtype=np.float32))
+        self.input.set_extra_global_param("spikeTimes", np.zeros(700000000, dtype=np.float32))
 
         input_reset_params= {"N_max_spike": p["N_MAX_SPIKE"]}
         input_reset_var_refs= {
@@ -1700,7 +1718,7 @@ class SHD_model:
             self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
             self.input_set.push_extra_global_param_to_device("allEndSpike")
             if p["TEST_ST_INTEGRITY"]:
-                self.test_st_integrity()
+                self.test_st_integrity(X,Y,input_start,input_end,p)
         if X_train is not None:
             input_id= np.arange(N_train)
         else:
@@ -1781,7 +1799,7 @@ class SHD_model:
                 #print(f"spike times copied to device ... {time.time()-the_time} s")
                 #the_time= time.time()
                 if p["TEST_ST_INTEGRITY"]:
-                    self.test_st_integrity()
+                    self.test_st_integrity(X,Y,input_start,input_end,p)
                 
             if N_trial_train > 0 and shuffle:
                 # by virtue of input_id being the right length we do not shuffle
