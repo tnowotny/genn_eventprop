@@ -50,6 +50,7 @@ def random_dilate(X,rng,min_factor,max_factor,p):
 
 """
 blend spike patterns
+WARNING: This does not ensure one spike per timestep!
 """
 def blend(X,probs,rng,p):
     new_x= []
@@ -89,7 +90,8 @@ def blend_dataset(X, Y, Z, rng, probs, p):
     nblend= p["N_TRAIN"]-len(X)    # number of blended examples to generate
     new_X= []
     new_Y= []
-    new_Z= []
+    if Z is not None:
+        new_Z= []
     for i in range(nblend):
         idx= rng.integers(0,len(X))
         #td= X[np.logical_and(Y == Y[idx], Z == Z[idx])]
@@ -97,10 +99,12 @@ def blend_dataset(X, Y, Z, rng, probs, p):
         td= td[rng.integers(0,len(td),len(probs))]
         new_X.append(blend(td,probs,rng,p))
         new_Y.append(Y[idx])
-        new_Z.append(Z[idx])
+        if Z is not None:
+            new_Z.append(Z[idx])
     X= np.hstack([X,new_X])
     Y= np.hstack([Y,new_Y])
-    Z= np.hstack([Z,new_Z])
+    if Z is not None:
+        Z= np.hstack([Z,new_Z])
     return X, Y, Z
                
 """

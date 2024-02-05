@@ -8,7 +8,7 @@ We use "EVP" in naming to indicate "eventprop".
 """
 import numpy as np
 from pygenn import genn_model 
-from pygenn.genn_wrapper.Models import VarAccessDuplication_SHARED, VarAccess_REDUCE_BATCH_SUM, VarAccessMode_READ_ONLY, VarAccess_READ_ONLY, VarAccess_READ_ONLY_DUPLICATE
+from pygenn.genn_wrapper.Models import VarAccessDuplication_SHARED, VarAccess_REDUCE_BATCH_SUM, VarAccessMode_READ_ONLY, VarAccess_READ_ONLY, VarAccess_READ_ONLY_DUPLICATE, VarAccess_REDUCE_NEURON_MAX, VarAccess_REDUCE_NEURON_SUM, VarAccess_READ_ONLY_SHARED_NEURON
 
 # ----------------------------------------------------------------------------
 # Custom models
@@ -26,30 +26,10 @@ EVP_grad_reduce= genn_model.create_custom_custom_update_class(
     """
 )
 
-# custom update to apply gradients using the Adam optimizer
+# custom update to apply synapse weight gradients using the Adam optimizer
 adam_optimizer_model = genn_model.create_custom_custom_update_class(
     "adam_optimizer",
-    param_names=["beta1", "beta2", "epsilon", "tau_syn"],
-    var_name_types=[("m", "scalar"), ("v", "scalar")],
-    extra_global_params=[("alpha", "scalar"), ("firstMomentScale", "scalar"),
-                         ("secondMomentScale", "scalar")],
-    var_refs=[("gradient", "scalar", VarAccessMode_READ_ONLY), ("variable", "scalar")],
-    update_code="""
-    scalar grad= -$(tau_syn)*$(gradient);
-    // Update biased first moment estimate
-    $(m) = ($(beta1) * $(m)) + ((1.0 - $(beta1)) * grad);
-    // Update biased second moment estimate
-    $(v) = ($(beta2) * $(v)) + ((1.0 - $(beta2)) * grad * grad);
-    // Add gradient to variable, scaled by learning rate
-    $(variable) -= ($(alpha) * $(m) * $(firstMomentScale)) / (sqrt($(v) * $(secondMomentScale)) + $(epsilon));
-    //$(variable) -= $(alpha)*grad;
-    """
-)
-
-# custom update to apply gradients using the Adam optimizer
-adam_optimizer_model_taum = genn_model.create_custom_custom_update_class(
-    "adam_optimizer_taum",
-    param_names=["beta1", "beta2", "epsilon","tau_syn"],
+    param_names=["beta1", "beta2", "epsilon"],
     var_name_types=[("m", "scalar"), ("v", "scalar")],
     extra_global_params=[("alpha", "scalar"), ("firstMomentScale", "scalar"),
                          ("secondMomentScale", "scalar")],
@@ -63,6 +43,28 @@ adam_optimizer_model_taum = genn_model.create_custom_custom_update_class(
     // Add gradient to variable, scaled by learning rate
     $(variable) -= ($(alpha) * $(m) * $(firstMomentScale)) / (sqrt($(v) * $(secondMomentScale)) + $(epsilon));
     //$(variable) -= $(alpha)*grad;
+    """
+)
+
+# custom update to apply tau gradients using the Adam optimizer
+adam_optimizer_model_tau = genn_model.create_custom_custom_update_class(
+    "adam_optimizer_tau",
+    param_names=["beta1", "beta2", "epsilon","min_tau"],
+    var_name_types=[("m", "scalar"), ("v", "scalar")],
+    extra_global_params=[("alpha", "scalar"), ("firstMomentScale", "scalar"),
+                         ("secondMomentScale", "scalar")],
+    var_refs=[("gradient", "scalar", VarAccessMode_READ_ONLY), ("variable", "scalar")],
+    update_code="""
+    scalar grad= $(gradient);
+    // Update biased first moment estimate
+    $(m) = ($(beta1) * $(m)) + ((1.0 - $(beta1)) * grad);
+    // Update biased second moment estimate
+    $(v) = ($(beta2) * $(v)) + ((1.0 - $(beta2)) * grad * grad);
+    // Add gradient to variable, scaled by learning rate
+    $(variable) -= ($(alpha) * $(m) * $(firstMomentScale)) / (sqrt($(v) * $(secondMomentScale)) + $(epsilon));
+    //$(variable) -= $(alpha)*grad;
+    // For taum limit the range of variable values with a hard lower limit
+    if ($(variable) < $(min_tau)) $(variable)= $(min_tau);
     """
 )
 
@@ -108,7 +110,7 @@ EVP_input_set_MNIST_shuffle= genn_model.create_custom_custom_update_class(
     var_refs=[("startSpike", "int"),("endSpike", "int")],
     update_code= """
         int myinid= $(allInputID)[$(trial)*((int) $(N_batch))+$(batch)];
-        int myiid= myinid*((int) $(num_input))+$(id); 
+        int myiid= myinid*((int) $(num_input))+($(id)%((int)$(num_input))); 
         $(startSpike)= $(allStartSpike)[myiid];
         $(endSpike)= $(allEndSpike)[myiid];
         //printf("trial: %d, batch: %d, id: %d, myinid: %d, myiid: %d, start: %d, end: %d \\n", $(trial), $(batch), $(id), myinid, myiid, $(startSpike), $(endSpike));
@@ -158,11 +160,33 @@ EVP_neuron_reset_reg= genn_model.create_custom_custom_update_class(
     """
 )
 
+# custom update class for resetting neurons at trial end with hidden layer rate normalisation terms
+EVP_neuron_reset_reg_ALIF= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_reg_ALIF",
+    param_names=["V_reset","B_init","N_max_spike","N_neurons"],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("B","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("lambda_B","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+    update_code= """
+        $(sNSum)= $(new_sNSum);
+        $(new_sNSum)= 0.0;
+        $(rp_ImV)= $(wp_ImV)-1;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) ($(N_max_spike)-1);
+        $(fwd_start)= $(new_fwd_start);
+        $(new_fwd_start)= $(rp_ImV);       // this is one to the left of the actual writing start but that avoids trouble for 0 spikes in a trial
+        $(rev_t)= $(t);
+        $(lambda_V)= 0.0;
+        $(lambda_I)= 0.0;
+        $(lambda_B)= 0.0;
+        $(V)= $(V_reset);
+        $(B)= $(B_init);
+        $(back_spike)= 0;
+    """
+)
+
 # custom update class for resetting neurons at trial end with hidden layer rate normalisation terms and taum plasticity
-EVP_neuron_reset_reg_taum= genn_model.create_custom_custom_update_class(
-    "EVP_neuron_reset_reg_taum",
+EVP_neuron_reset_reg_tau_learn= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_reg_tau_learn",
     param_names=["V_reset","N_max_spike","N_neurons","trial_t"],
-    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("fImV_roff","int"),("fImV_woff","int")],
+    var_refs=[("rp_ImV","int"),("wp_ImV","int"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("fImV_roff","int"),("fImV_woff","int"),("dtaum","scalar"),("dtausyn","scalar")],
     update_code= """
         $(sNSum)= $(new_sNSum);
         $(new_sNSum)= 0.0;
@@ -183,6 +207,8 @@ EVP_neuron_reset_reg_taum= genn_model.create_custom_custom_update_class(
             $(fImV_woff)= 0;
             $(fImV_roff)= ((int) ($(trial_t)/DT));
         }
+        $(dtaum)= 0.0;
+        $(dtausyn)= 0.0;
     """
 )
 
@@ -450,27 +476,14 @@ EVP_neuron_reset_output_SHD_max= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_SHD_sum",
     param_names=["V_reset","N_class"],
-    var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int")],
+    var_refs=[("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("trial","int"),("sum_V","scalar"),("rev_t","scalar")],
     update_code= """
-    scalar m= $(new_sum_V);
-    for (int i= 0; i < $(N_class); i++) {
-        m = fmax(m, __shfl_sync(0xFFFFF, m, i));
-    }
-    m= exp($(new_sum_V) - m);
-    $(exp_V)= m;
-    scalar mexp= 0.0; 
-    for (int i= 0; i < $(N_class); i++) {
-        mexp += __shfl_sync(0xFFFFF, m, i);
-    }
-    $(expsum)= mexp;
-    //printf(\"%g, %g\\n\",$(exp_V),$(expsum));
-    $(rev_t)= $(t);
+    $(V)= $(V_reset);
     $(lambda_V)= 0.0;
     $(lambda_I)= 0.0;
-    $(V)= $(V_reset);
-    $(sum_V)= $(new_sum_V);
-    $(new_sum_V)= 0.0;
     $(trial)++;
+    $(sum_V)= 0.0;
+    $(rev_t)= $(t);
     """
 )
 
@@ -480,31 +493,51 @@ EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output_SHD_sum_weigh_input= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_SHD_sum_weigh_input",
     param_names=["V_reset","N_class","trial_steps"],
-    var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("expsum","scalar"),("exp_V","scalar"),("trial","int"),("rp_V","int"),("wp_V","int")],
+    var_refs=[("sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("trial","int"),("rp_V","int"),("wp_V","int")],
     update_code= """
-    scalar m= $(new_sum_V);
-    for (int i= 0; i < $(N_class); i++) {
-        m = fmax(m, __shfl_sync(0xFFFFF, m, i));
-    }
-    m= exp($(new_sum_V) - m);
-    $(exp_V)= m;
-    scalar mexp= 0.0;
-    for (int i= 0; i < $(N_class); i++) {
-        mexp += __shfl_sync(0xFFFFF, m, i);
-    }
-    $(expsum)= mexp;
-    //printf(\"%g\\n\",$(expsum));
     $(rev_t)= $(t);
     $(lambda_V)= 0.0;
     $(lambda_I)= 0.0;
     $(V)= $(V_reset);
-    $(sum_V)= $(new_sum_V);
-    $(new_sum_V)= 0.0;
+    $(sum_V)= 0.0;
     $(trial)++;
     $(rp_V)= $(wp_V);
     $(wp_V)= $(wp_V)%(2* (int) $(trial_steps));
     """
 )
+
+# First pass of softmax - calculate max
+softmax_1_model = genn_model.create_custom_custom_update_class(
+    "sofmax_1_model",
+    var_name_types= [("MaxVal", "scalar", VarAccess_REDUCE_NEURON_MAX)],
+    var_refs= [("Val", "scalar", VarAccessMode_READ_ONLY)],
+    update_code= """
+    $(MaxVal) = $(Val);
+    """
+    )
+
+# Second pass of softmax - calculate scaled sum of exp(value)
+softmax_2_model = genn_model.create_custom_custom_update_class(
+    "softmax_2_model",
+    var_name_types= [("SumExpVal", "scalar", VarAccess_REDUCE_NEURON_SUM)],
+    var_refs= [("Val", "scalar", VarAccessMode_READ_ONLY),
+                 ("MaxVal", "scalar", VarAccessMode_READ_ONLY)],
+    update_code= """
+    $(SumExpVal) = exp($(Val) - $(MaxVal));
+    """
+    )
+
+# Third pass of softmax - calculate softmax value
+softmax_3_model = genn_model.create_custom_custom_update_class(
+    "softmax_3_model",
+    var_refs= [("Val", "scalar", VarAccessMode_READ_ONLY),
+               ("MaxVal", "scalar", VarAccessMode_READ_ONLY),
+               ("SumExpVal", "scalar", VarAccessMode_READ_ONLY),
+               ("SoftmaxVal", "scalar")],
+    update_code= """
+    $(SoftmaxVal) = exp($(Val) - $(MaxVal)) / $(SumExpVal);
+    """
+    )
 
 # This version for "average xentropy loss function"
 EVP_neuron_reset_output_avg_xentropy= genn_model.create_custom_custom_update_class(
@@ -594,8 +627,8 @@ EVP_SSA_MNIST_SHUFFLE = genn_model.create_custom_neuron_class(
         if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
             $(back_spike)= 1;
         }
-        // forward spikes
-        if ($(startSpike) != $(endSpike) && ($(t) >= $(t_offset)+$(spikeTimes)[$(startSpike)]+DT))
+        // forward spikes - use while loop to avoid repeating spikes if more than one in a time step
+        while ($(startSpike) != $(endSpike) && ($(t) >= $(t_offset)+$(spikeTimes)[$(startSpike)]+DT))
              $(startSpike)++;
     """,
     threshold_condition_code= """
@@ -619,6 +652,52 @@ EVP_SSA_MNIST_SHUFFLE = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+"""
+Like EVP_SSA_MNIST_SHUFFLE but with a delay setting, so that spikes can be emitted with a fixed delay individual to each neuron
+"""
+
+EVP_SSA_MNIST_SHUFFLE_DELAY = genn_model.create_custom_neuron_class(
+    "EVP_spikeSourceArray_MNIST_Shuffle_Delay",
+    param_names=["N_neurons","N_max_spike"],
+    var_name_types=[("startSpike", "int"), ("endSpike", "int", VarAccess_READ_ONLY_DUPLICATE), ("back_spike","uint8_t"), ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("rev_t","scalar"),("delay","scalar")],
+    sim_code= """
+        int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+        // backward pass
+        const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+        if ($(back_spike)) {
+            // decrease read pointer (on ring buffer)
+            $(rp_ImV)--;
+            if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+            $(back_spike) = 0;
+        }
+        // YUCK - need to trigger the back_spike the time step before 
+        if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+            $(back_spike)= 1;
+        }
+        // forward spikes - use while loop to avoid repeating spikes if more than one in a time step
+        while ($(startSpike) != $(endSpike) && ($(t) >= $(t_offset)+$(delay)+$(spikeTimes)[$(startSpike)]+DT))
+             $(startSpike)++;
+    """,
+    threshold_condition_code= """
+        $(startSpike) != $(endSpike) && 
+        $(t) >= $(t_offset)+$(delay)+$(spikeTimes)[$(startSpike)] &&
+        $(gennrand_uniform) > $(pDrop)
+    """,
+    reset_code= """
+        // this is after a forward spike
+        if ($(wp_ImV) != $(fwd_start)) {
+            $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+            $(wp_ImV)++;
+            if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+        }
+        else {
+            //printf("%f: input: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+            // assert(0);
+        }
+    """,
+    extra_global_params= [("spikeTimes", "scalar*"), ("t_offset","scalar"), ("t_k", "scalar*"),("pDrop", "scalar")],
+    is_auto_refractory_required=False
+)
 
 """
 The neuron model contains the variables and code for both, the forward and 
@@ -656,9 +735,9 @@ revIsyn - gets the reverse input from postsynaptic neurons
 # LIF neuron model for internal neurons for both YinYang and MNIST tasks (no dl_p/dt_k cost function term or jumps on max voltage)
 EVP_LIF = genn_model.create_custom_neuron_class(
     "EVP_LIF",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("tau_syn","scalar")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
@@ -667,7 +746,12 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= (DT/$(tau_syn)*$(lambda_V)+$(lambda_I))*exp(-DT/$(tau_syn));
+    }
+    else {
+        $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    }
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
@@ -682,7 +766,12 @@ EVP_LIF = genn_model.create_custom_neuron_class(
     }
     // forward pass
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="""
     ($(V) >= $(V_thresh)) && ($(gennrand_uniform) > $(pDrop))
@@ -709,9 +798,9 @@ EVP_LIF = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("tau_syn","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -721,7 +810,12 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= (DT/$(tau_syn)*$(lambda_V)+$(lambda_I))*exp(-DT/$(tau_syn));
+    }
+    else {
+        $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    }
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
@@ -744,7 +838,12 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     }
     // forward pass
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="""
     ($(V) >= $(V_thresh)) && ($(gennrand_uniform) > $(pDrop))
@@ -767,30 +866,28 @@ EVP_LIF_reg = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
-# LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
-# Regularisation: each neuron towards a desired spike number; parameters lbd_upper/ nu_upper; uses sNSum
-# Training taum in this model
-# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
-EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
-    "EVP_LIF_reg_taum",
-    param_names=["V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower","trial_t"],
-    var_name_types=[("V", "scalar"),("ktau_m", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),
-                    ("dktaum", "scalar"), ("fImV_roff","int"), ("fImV_woff","int")],
+# Like EVP_LIF_reg but with tau_m and tau_syn as variables that can be initialised heterogeneously
+EVP_hetLIF_reg = genn_model.create_custom_neuron_class(
+    "EVP_hetLIF_reg",
+    param_names=["V_thresh","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("tau_m","scalar"), ("tau_syn","scalar"), ("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
-    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("fImV","scalar*"),("pDrop","scalar")],
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
-    int buf2_idx= ($(batch)*((int) $(N_neurons))+$(id))*((int) ($(trial_t)/DT));
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    //$(lambda_V) -= $(lambda_V)/exp($(ktau_m))*DT;
-    $(lambda_I)= exp($(ktau_m))/($(ktau_m)-exp($(tau_syn)))*$(lambda_V)*(exp(-DT/exp($(ktau_m))-exp(-DT/$(tau_syn))))+$(lambda_I)*exp(-DT/$(tau_syn));
-    $(lambda_V)= $(lambda_V)*exp(-DT/exp($(ktau_m)));
-    // calculate gradient component for taum training
-    $(dktaum)-= $(fImV)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_V)*exp($(ktau_m));
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= (DT/$(tau_syn)*$(lambda_V)+$(lambda_I))*exp(-DT/$(tau_syn));
+    }
+    else {
+        $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    }
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
         // decrease read pointer (on ring buffer)
@@ -811,9 +908,170 @@ EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
         $(back_spike)= 1;
     }
     // forward pass
-    $(fImV)[buf2_idx+$(fImV_woff)+((int) (($(t)-$(rev_t))/DT))]= ($(Isyn)-$(V))/exp($(ktau_m));
-    //$(V) += ($(Isyn)-$(V))/exp($(ktau_m))*DT;  // simple Euler
-    $(V)= $(tau_syn)/(exp($(ktau_m))-$(tau_syn))*$(Isyn)*(exp(-DT/exp($(ktau_m)))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/exp($(ktau_m)));   // exact solution
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
+    """,
+    threshold_condition_code="""
+    ($(V) >= $(V_thresh)) && ($(gennrand_uniform) > $(pDrop))
+    """,
+    reset_code="""
+    // this is after a forward spike
+    if ($(wp_ImV) != $(fwd_start)) {
+        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+        $(ImV)[buf_idx+$(wp_ImV)]= $(Isyn)-$(V);
+        $(wp_ImV)++;
+        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    } 
+    else {
+        //printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        // assert(0);
+    }
+    $(V)= $(V_reset);
+    $(new_sNSum)+= 1.0;
+    """,
+    is_auto_refractory_required=False
+)
+
+# same as above but for adaptive threshold "ALIF" neurons
+EVP_ALIF_reg = genn_model.create_custom_neuron_class(
+    "EVP_ALIF_reg",
+    param_names=["tau_m","tau_B","V_thresh","B_incr","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower"],
+    var_name_types=[("V","scalar"),("B","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("lambda_B","scalar"),("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("tau_syn","scalar")],
+    # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar")],
+    additional_input_vars=[("revIsyn", "scalar", 0.0)],
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= (DT/$(tau_syn)*$(lambda_V)+$(lambda_I))*exp(-DT/$(tau_syn));
+    }
+    else {
+        $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    }
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
+    $(lambda_B)= $(lambda_B)*exp(-DT/$(tau_B));
+    if ($(back_spike)) {
+        $(lambda_V) += 1.0/($(tau_m)*$(ImV)[buf_idx+$(rp_ImV)])*($(V_thresh)*$(lambda_V) - $(B_incr)*$(lambda_B) + $(revIsyn));
+        $(lambda_B) += 1.0/($(tau_B)*$(ImV)[buf_idx+$(rp_ImV)])*($(V_thresh)*$(lambda_V) - $(B_incr)*$(lambda_B) + $(revIsyn));
+        // decrease read pointer (on ring buffer)
+        $(rp_ImV)--;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        // contributions from regularisation
+        if ($(sNSum) > $(nu_upper)) {
+            $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
+        }
+        else {
+            $(lambda_V) -= $(lbd_lower)*($(sNSum) - $(nu_upper))/$(N_batch);
+        }
+        
+        $(back_spike)= 0;
+    }   
+    // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+        $(back_spike)= 1;
+    }
+    // forward pass
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
+    $(B)= $(B)*exp(-DT/$(tau_B));
+    """,
+    threshold_condition_code="""
+    ($(V) >= $(V_thresh)+$(B)) && ($(gennrand_uniform) > $(pDrop))
+    """,
+    reset_code="""
+    // this is after a forward spike
+    if ($(wp_ImV) != $(fwd_start)) {
+        $(t_k)[buf_idx+$(wp_ImV)]= $(t);
+        $(ImV)[buf_idx+$(wp_ImV)]= ($(Isyn)-$(V))/$(tau_m)-$(B)/$(tau_B);
+        $(wp_ImV)++;
+        if ($(wp_ImV) >= ((int) $(N_max_spike))) $(wp_ImV)= 0;
+    } 
+    else {
+        //printf("%f: hidden: ImV buffer violation in neuron %d, fwd_start: %d, new_fwd_start: %d, rp_ImV: %d, wp_ImV: %d\\n", $(t), $(id), $(fwd_start), $(new_fwd_start), $(rp_ImV), $(wp_ImV));
+        // assert(0);
+    }
+    $(V)= $(V_reset);
+    $(B)+= $(B_incr);
+    $(new_sNSum)+= 1.0;
+    """,
+    is_auto_refractory_required=False
+)
+
+
+# LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
+# Regularisation: each neuron towards a desired spike number; parameters lbd_upper/ nu_upper; uses sNSum
+# Training taum in this model
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
+EVP_LIF_reg_tau_learn = genn_model.create_custom_neuron_class(
+    "EVP_LIF_reg_tau_learn",
+    param_names=["V_thresh","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower","trial_t"],
+    var_name_types=[("V", "scalar"),("tau_m", "scalar", VarAccess_READ_ONLY),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),
+                    ("dtaum", "scalar"), ("fImV_roff","int"), ("fImV_woff","int"),("tau_syn","scalar", VarAccess_READ_ONLY),("dtausyn","scalar")],
+    # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("fImV","scalar*"),("fIdot","scalar*"),("pDrop","scalar")],
+    additional_input_vars=[("revIsyn", "scalar", 0.0)],
+    sim_code="""
+    int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));
+    int buf2_idx= ($(batch)*((int) $(N_neurons))+$(id))*((int) ($(trial_t)/DT));
+    // backward pass
+    const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
+    //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
+    //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= (DT/$(tau_syn)*$(lambda_V)+$(lambda_I))*exp(-DT/$(tau_syn));
+    }
+    else {
+        $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    }
+    $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
+    // calculate gradient component for taum training
+    $(dtaum)+= $(fImV)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_V);
+    $(dtausyn)+= $(fIdot)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_I);
+    if ($(back_spike)) {
+        $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
+        // decrease read pointer (on ring buffer)
+        $(rp_ImV)--;
+        if ($(rp_ImV) < 0) $(rp_ImV)= (int) $(N_max_spike)-1;
+        // contributions from regularisation
+        if ($(sNSum) > $(nu_upper)) {
+            $(lambda_V) -= $(lbd_upper)*($(sNSum) - $(nu_upper))/$(N_batch);
+        }
+        else {
+            $(lambda_V) -= $(lbd_lower)*($(sNSum) - $(nu_upper))/$(N_batch);
+        }
+        
+        $(back_spike)= 0;
+    }   
+    // YUCK - need to trigger the back_spike the time step before to get the correct backward synaptic input
+    if (abs(back_t - $(t_k)[buf_idx+$(rp_ImV)] - DT) < 1e-3*DT) {
+        $(back_spike)= 1;
+    }
+    // forward pass
+    $(fImV)[buf2_idx+$(fImV_woff)+((int) (($(t)-$(rev_t))/DT))]= ($(Isyn)-$(V))/$(tau_m);
+    $(fIdot)[buf2_idx+$(fImV_woff)+((int) (($(t)-$(rev_t))/DT))]= -$(Isyn)/$(tau_syn);
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="""
     ($(V) >= $(V_thresh)) && ($(gennrand_uniform) > $(pDrop))
@@ -842,9 +1100,9 @@ EVP_LIF_reg_taum = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_noise",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","tau_syn","lbd_upper","nu_upper","lbd_lower"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_batch","N_max_spike","lbd_upper","nu_upper","lbd_lower"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("tau_syn","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("pDrop","scalar"),("A_noise","scalar")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -854,7 +1112,12 @@ EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= (DT/$(tau_syn)*$(lambda_V)+$(lambda_I))*exp(-DT/$(tau_syn));
+    }
+    else {
+        $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    }
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
@@ -877,7 +1140,12 @@ EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
     }
     // forward pass
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     $(V)+= $(A_noise)*$(gennrand_normal)*sqrt(DT); // add some Gaussian noise
     """,
     threshold_condition_code="""
@@ -906,9 +1174,9 @@ EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_Thomas1",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","tau_syn","lbd_lower","nu_lower","lbd_upper","nu_upper","rho_upper","glb_upper"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","lbd_lower","nu_lower","lbd_upper","nu_upper","rho_upper","glb_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar")],
+                    ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("tau_syn","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("sNSum_all","scalar*")],
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
@@ -918,7 +1186,12 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= (DT/$(tau_syn)*$(lambda_V)+$(lambda_I))*exp(-DT/$(tau_syn));
+    }
+    else {
+        $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    }
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
         $(lambda_V) += 1.0/$(ImV)[buf_idx+$(rp_ImV)]*($(V_thresh)*$(lambda_V) + $(revIsyn));
@@ -943,7 +1216,12 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     }
     // forward pass
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;  // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));   // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="""
     $(V) >= $(V_thresh)
@@ -970,19 +1248,24 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_first_spike",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","trial_t","tau0","tau1","alpha","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
                     ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),
                     ("trial","int")],
-    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*"),("tau_syn","scalar")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));    
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= (DT/$(tau_syn)*$(lambda_V)+$(lambda_I))*exp(-DT/$(tau_syn));
+    }
+    else {
+        $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    }
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
@@ -1016,7 +1299,12 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     }
     // forward pass
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="""
     ($(V) >= $(V_thresh))
@@ -1037,11 +1325,11 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_first_spike_exp",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","tau_syn","trial_t","tau0","tau1","alpha","N_batch"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","trial_t","tau0","tau1","alpha","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
                     ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),
-                    ("trial","int")],
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
@@ -1049,8 +1337,13 @@ EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;
-    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= (DT/$(tau_syn)*$(lambda_V)+$(lambda_I))*exp(-DT/$(tau_syn));
+    }
+    else {
+        $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    }
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if ($(back_spike)) {
         if ($(first_spike_t) > $(rev_t)) {// we are dealing with a "phantom spike" introduced because the correct neuron did not spike
@@ -1083,7 +1376,12 @@ EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
     }
     // forward pass
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="""
     ($(V) >= $(V_thresh))
@@ -1107,18 +1405,23 @@ EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_max = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_max",
-    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    param_names=["tau_m","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("max_V","scalar"),("new_max_V","scalar"),
                     ("max_t","scalar"),("new_max_t","scalar"),("expsum","scalar"),("exp_V","scalar"),
-                    ("trial","int")],
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
     const scalar back_t= 2.0*$(rev_t)-$(t)-DT;
     //$(lambda_I) += ($(lambda_V) - $(lambda_I))/$(tau_syn)*DT;  // simple Euler
     //$(lambda_V) -= $(lambda_V)/$(tau_m)*DT;  // simple Euler
-    $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= (DT/$(tau_syn)*$(lambda_V)+$(lambda_I))*exp(-DT/$(tau_syn));
+    }
+    else {
+        $(lambda_I)= $(tau_m)/($(tau_m)-$(tau_syn))*$(lambda_V)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(lambda_I)*exp(-DT/$(tau_syn));
+    }
     $(lambda_V)= $(lambda_V)*exp(-DT/$(tau_m));
     if (($(trial) > 0) && (abs(back_t - $(max_t)) < 1e-3*DT)) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
@@ -1135,7 +1438,12 @@ EVP_LIF_output_max = genn_model.create_custom_neuron_class(
         $(new_max_V)= $(V);
     }
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="",
     reset_code="",
@@ -1148,11 +1456,10 @@ EVP_LIF_output_max = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum",
-    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    param_names=["tau_m","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("sum_V","scalar"),("new_sum_V","scalar"),
-                    ("expsum","scalar"),("exp_V","scalar"),
-                    ("trial","int")],
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1165,19 +1472,29 @@ EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
     scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            A= (1.0-$(exp_V)/$(expsum))/$(tau_m)/$(N_batch)/$(trial_t); 
+            A= (1.0-$(SoftmaxVal))/$(tau_m)/$(N_batch)/$(trial_t); 
         }
         else {
-            A= -$(exp_V)/$(expsum)/$(tau_m)/$(N_batch)/$(trial_t);
+            A= -$(SoftmaxVal)/$(tau_m)/$(N_batch)/$(trial_t);
         }
     }
-    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= A + (DT/$(tau_syn)*($(lambda_V)-A)+($(lambda_I)-A))*beta;
+    }
+    else {
+        $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    }
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
-    $(new_sum_V)+= $(V)/$(trial_t)*DT; // simple Euler
+    $(sum_V)+= $(V)/$(trial_t)*DT; // simple Euler
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="",
     reset_code="",
@@ -1190,11 +1507,10 @@ EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_linear",
-    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    param_names=["tau_m","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("sum_V","scalar"),("new_sum_V","scalar"),
-                    ("expsum","scalar"),("exp_V","scalar"),
-                    ("trial","int")],
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1204,19 +1520,29 @@ EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
     scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            A= (($(t)-$(rev_t))/$(trial_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
+            A= (($(t)-$(rev_t))/$(trial_t))*(1.0-$(SoftmaxVal))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            A= -(($(t)-$(rev_t))/$(trial_t))*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
+            A= -(($(t)-$(rev_t))/$(trial_t))*$(SoftmaxVal)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
-    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= A + (DT/$(tau_syn)*($(lambda_V)-A)+($(lambda_I)-A))*beta;
+    }
+    else {
+        $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    }
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
-    $(new_sum_V)+= (1-($(t)-$(rev_t))/$(trial_t))*$(V)/$(trial_t)*DT; // simple Euler
+    $(sum_V)+= (1-($(t)-$(rev_t))/$(trial_t))*$(V)/$(trial_t)*DT; // simple Euler
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="",
     reset_code="",
@@ -1229,11 +1555,10 @@ EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_exp",
-    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    param_names=["tau_m","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("sum_V","scalar"),("new_sum_V","scalar"),
-                    ("expsum","scalar"),("exp_V","scalar"),
-                    ("trial","int")],
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1244,19 +1569,29 @@ EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
     scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            A= exp(-(1.0-local_t))*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
+            A= exp(-(1.0-local_t))*(1.0-$(SoftmaxVal))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            A= -exp(-(1.0-local_t))*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
+            A= -exp(-(1.0-local_t))*$(SoftmaxVal)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
-    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= A + (DT/$(tau_syn)*($(lambda_V)-A)+($(lambda_I)-A))*beta;
+    }
+    else {
+        $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    }
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
-    $(new_sum_V)+= exp(-local_t)*$(V)/$(trial_t)*DT; // simple Euler
+    $(sum_V)+= exp(-local_t)*$(V)/$(trial_t)*DT; // simple Euler
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="",
     reset_code="",
@@ -1269,11 +1604,10 @@ EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_sigmoid",
-    param_names=["tau_m","tau_syn","trial_t","N_batch"],
+    param_names=["tau_m","trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("sum_V","scalar"),("new_sum_V","scalar"),
-                    ("expsum","scalar"),("exp_V","scalar"),
-                    ("trial","int")],
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
+                    ("trial","int"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1285,19 +1619,29 @@ EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
     #define SIGMOID(x) (1/(1+exp((x-0.5)/0.2)))
     if ($(trial) > 0) {        
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            A= SIGMOID(1.0-local_t)*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
+            A= SIGMOID(1.0-local_t)*(1.0-$(SoftmaxVal))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            A= -SIGMOID(1.0-local_t)*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
+            A= -SIGMOID(1.0-local_t)*$(SoftmaxVal)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
-    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= A + (DT/$(tau_syn)*($(lambda_V)-A)+($(lambda_I)-A))*beta;
+    }
+    else {
+        $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    }
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
-    $(new_sum_V)+= SIGMOID(local_t)*$(V)/$(trial_t)*DT; // simple Euler
+    $(sum_V)+= SIGMOID(local_t)*$(V)/$(trial_t)*DT; // simple Euler
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     #undef SIGMOID
     """,
     threshold_condition_code="",
@@ -1311,11 +1655,10 @@ EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_input",
-    param_names=["tau_m","tau_syn","N_neurons","trial_t","N_batch","trial_steps"],
+    param_names=["tau_m","N_neurons","trial_t","N_batch","trial_steps"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
-                    ("sum_V","scalar"),("new_sum_V","scalar"),
-                    ("expsum","scalar"),("exp_V","scalar"),
-                    ("trial","int"),("rp_V","int"),("wp_V","int"),("avgInback","scalar")],
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
+                    ("trial","int"),("rp_V","int"),("wp_V","int"),("avgInback","scalar"),("tau_syn","scalar")],
     extra_global_params=[("label","int*"),("aIbuf","scalar*")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
@@ -1331,19 +1674,29 @@ EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
     scalar A= 0.0;
     if ($(trial) > 0) {
         if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
-            A= $(avgInback)*(1.0-$(exp_V)/$(expsum))/$(tau_m)/$(trial_t)/$(N_batch);
+            A= $(avgInback)*(1.0-$(SoftmaxVal))/$(tau_m)/$(trial_t)/$(N_batch);
         }
         else {
-            A= -$(avgInback)*$(exp_V)/$(expsum)/$(tau_m)/$(trial_t)/$(N_batch);
+            A= -$(avgInback)*$(SoftmaxVal)/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
-    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= A + (DT/$(tau_syn)*($(lambda_V)-A)+($(lambda_I)-A))*beta;
+    }
+    else {
+        $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    }
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
     // forward pass
     // update the summed voltage
-    $(new_sum_V)+= $(avgIn)*$(V)/$(trial_t)*DT; // simple Euler
+    $(sum_V)+= $(avgIn)*$(V)/$(trial_t)*DT; // simple Euler
     //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
     """,
     threshold_condition_code="",
     reset_code="",
@@ -1357,18 +1710,12 @@ EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_MNIST_avg_xentropy",
-    param_names=["tau_m","tau_syn","N_neurons","N_batch","trial_steps","trial_t","N_class"],
+    param_names=["tau_m","N_neurons","N_batch","trial_steps","trial_t","N_class"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
                     ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
-    extra_global_params=[("label","int*"), ("Vbuf","scalar*")], 
+    extra_global_params=[("label","int*"), ("Vbuf","scalar*"),("tau_syn","scalar")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
-    // forward pass
-    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(sum_V)+= $(V)/$(trial_t)*DT;
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
-    $(Vbuf)[buf_idx+$(wp_V)]= $(V);
-    $(wp_V)++;
     // backward pass
     scalar alpha= exp(-DT/$(tau_m));
     scalar beta= exp(-DT/$(tau_syn));
@@ -1396,8 +1743,25 @@ EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
             A= -expV/mexp/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
-    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= A + (DT/$(tau_syn)*($(lambda_V)-A)+($(lambda_I)-A))*beta;
+    }
+    else {
+        $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    }
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
+    // forward pass
+    // update the summed voltage
+    $(sum_V)+= $(V)/$(trial_t)*DT;   // simple Euler
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
+    $(Vbuf)[buf_idx+$(wp_V)]= $(V);
+    $(wp_V)++;
     """,
     threshold_condition_code="",
     reset_code="",
@@ -1410,18 +1774,12 @@ EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_SHD_avg_xentropy",
-    param_names=["tau_m","tau_syn","N_neurons","N_batch","trial_steps","trial_t","N_class"],
+    param_names=["tau_m","N_neurons","N_batch","trial_steps","trial_t","N_class"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
                     ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
-    extra_global_params=[("label","int*"), ("Vbuf","scalar*")], 
+    extra_global_params=[("label","int*"), ("Vbuf","scalar*"),("tau_syn","scalar")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
-    // forward pass
-    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
-    $(sum_V)+= $(V)/$(trial_t)*DT;
-    $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));    // exact solution
-    $(Vbuf)[buf_idx+$(wp_V)]= $(V);
-    $(wp_V)++;
     // backward pass
     scalar alpha= exp(-DT/$(tau_m));
     scalar beta= exp(-DT/$(tau_syn));
@@ -1449,8 +1807,25 @@ EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
             A= -expV/mexp/$(tau_m)/$(trial_t)/$(N_batch);
         }
     }
-    $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= A + (DT/$(tau_syn)*($(lambda_V)-A)+($(lambda_I)-A))*beta;
+    }
+    else {
+        $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    }
     $(lambda_V)= A + ($(lambda_V)-A)*alpha;
+    // forward pass
+    // update the summed voltage
+    $(sum_V)+= $(V)/$(trial_t)*DT;   // simple Euler
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
+    $(Vbuf)[buf_idx+$(wp_V)]= $(V);
+    $(wp_V)++;
     """,
     threshold_condition_code="",
     reset_code="",
@@ -1484,7 +1859,7 @@ EVP_synapse= genn_model.create_custom_weight_update_class(
     event_code="""
         $(addToPre, $(w)*($(lambda_V_post)-$(lambda_I_post)));
         //$(addToPre, $(w)*($(lambda_V_post)));
-        $(dw)+= $(lambda_I_post);
+        $(dw)-= $(tau_syn_post)*$(lambda_I_post);
     """,
 )
 
@@ -1498,10 +1873,13 @@ EVP_input_synapse= genn_model.create_custom_weight_update_class(
        $(back_spike_pre)
     """,
     event_code="""
-        $(dw)+= $(lambda_I_post);
+        $(dw)-= $(tau_syn_post)*$(lambda_I_post);
     """,
 )
 
+"""
+# this was efficient for cases where tau_syn is homogeneous but doesn't work for heterogeneous
+# for now, just take the hit and use the one that works in both cases
 my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
     "my_Exp_Curr",
     param_names=["tau"],
@@ -1509,6 +1887,26 @@ my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
     apply_input_code="$(Isyn) += $(inSyn);",
     derived_params=[("expDecay", genn_model.create_dpf_class(lambda pars, dt: np.exp(-dt / pars[0]))())]
 )
+"""
+
+my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
+    "my_Exp_Curr",
+    decay_code="$(inSyn) *= exp(-DT/$(tau_syn));",
+    apply_input_code="$(Isyn) += $(inSyn);",
+)
+
+
+"""
+my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
+    "my_Exp_Curr",
+    var_name_types=[("tau_syn","scalar")],
+    decay_code="$(inSyn) *= exp(-DT/$(tau_syn));",
+    apply_input_code="$(Isyn) += $(inSyn);",
+)
+"""
+
+
+
 
 # synapses for giant input accumulator
 

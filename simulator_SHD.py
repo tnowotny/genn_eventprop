@@ -15,6 +15,9 @@ import copy
 from time import perf_counter
 from dataclasses import dataclass
 from typing import Tuple
+import sys
+from tqdm import tqdm
+import time
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -51,6 +54,27 @@ p["TAU_MEM"] = 20.0
 p["TAU_MEM_OUTPUT"] = 20.0
 p["V_THRESH"] = 1.0
 p["V_RESET"] = 0.0
+p["PDROP_INPUT"] = 0.1
+p["PDROP_HIDDEN"] = 0.0
+
+# Regularisation related parameters
+p["REG_TYPE"]= "none"
+p["LBD_UPPER"]= 2e-9
+p["LBD_LOWER"]= 2e-9
+p["NU_UPPER"]= 14
+p["NU_LOWER"]= 5
+p["RHO_UPPER"]= 10000.0
+p["GLB_UPPER"]= 1e-8
+p["REWIRE_SILENT"]= False
+p["REWIRE_LIFT"]= 0.0
+
+# ALIF related parameters
+p["HIDDEN_NEURON_TYPE"]= "LIF"
+p["TAU_B"] = 100.0
+p["B_INCR"]= 0.1
+p["B_INIT"]= 0.0
+
+# synapse related parameters
 p["INPUT_HIDDEN_MEAN"]= 0.02
 p["INPUT_HIDDEN_STD"]= 0.01
 p["HIDDEN_OUTPUT_MEAN"]= 0.0
@@ -59,18 +83,6 @@ p["HIDDEN_HIDDEN_MEAN"]= 0.0   # only used when recurrent
 p["HIDDEN_HIDDEN_STD"]= 0.02   # only used when recurrent
 p["HIDDEN_HIDDENFWD_MEAN"]= 0.02 # only used when > 1 hidden layer
 p["HIDDEN_HIDDENFWD_STD"]= 0.01 # only used when > 1 hidden layer
-p["PDROP_INPUT"] = 0.1
-p["PDROP_HIDDEN"] = 0.0
-p["REG_TYPE"]= "none"
-p["LBD_UPPER"]= 2e-9
-p["LBD_LOWER"]= 2e-9
-p["NU_UPPER"]= 14
-p["NU_LOWER"]= 5
-p["RHO_UPPER"]= 10000.0
-p["GLB_UPPER"]= 1e-8
-
-p["REWIRE_SILENT"]= False
-p["REWIRE_LIFT"]= 0.0
 
 # Learning parameters
 p["ETA"]= 1e-3
@@ -115,15 +127,17 @@ p["TAU_ACCUMULATOR"]= 20.0
 # Gaussian noise on hidden neurons' membrane potential
 p["HIDDEN_NOISE"]= 0.0
 
-p["SPEAKER_LEFT"]= 0
+p["SPEAKER_LEFT"]= [0]
 
 # rescaling factor for the time, 1.0 means no rescaling
 p["RESCALE_T"]= 1.0
 # rescaling factor for the channels, 1.0 means no rescaling
 p["RESCALE_X"]= 1.0
 
-# whether to train neuron timescales
-p["TRAIN_TAUM"]= False
+# whether to train timescales
+p["TRAIN_TAU"]= False
+p["MIN_TAU_M"]= 3.0
+p["MIN_TAU_SYN"]= 1.0
 p["N_HID_LAYER"]= 1
 
 # learning rate schedule depending on exponential moving average of performance
@@ -132,10 +146,18 @@ p["EMA_ALPHA2"]= 0.95
 p["ETA_FAC"]= 0.5
 p["MIN_EPOCH_ETA_FIXED"]= 300
 
-p["TAUM_OUTPUT_EPOCH_TRIAL"]= []
+p["TAU_OUTPUT_EPOCH_TRIAL"]= []
 p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= False
 p["BALANCE_TRAIN_CLASSES"]= False
 p["BALANCE_EVAL_CLASSES"]= False
+
+p["DATA_SET"]= "SHD"
+
+p["DATA_BUFFER_NAME"]= "./data/SSC/mySSC"
+
+p["N_INPUT_DELAY"]= 0
+p["INPUT_DELAY"]= 50.0 # in ms
+
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -204,7 +226,8 @@ def update_adam(learning_rate, adam_step, optimiser_custom_updates):
 
 class SHD_model:
 
-    def __init__(self, p):
+    def __init__(self, p, manual_GPU= None):
+        self.GPU= manual_GPU
         if p["TRAIN_DATA_SEED"] is not None:
             self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
         else:
@@ -217,7 +240,10 @@ class SHD_model:
             
         print("loading data ...")
         #self.load_data_SHD_Zenke(p)
-        self.load_data_SHD(p)
+        if p["DATA_SET"] == "SHD":
+            self.load_data_SHD(p)
+        if p["DATA_SET"] == "SSC":
+            self.load_data_SSC(p)
         print("loading data complete ...")
         
         if p["REDUCED_CLASSES"] is not None and len(p["REDUCED_CLASSES"]) > 0:
@@ -239,11 +265,19 @@ class SHD_model:
             X= self.normalise_spike_number(X)
         ydim= len(spkrs)
         xdim= nsample
-        fig, ax= plt.subplots(ydim,xdim,sharex= True, sharey= True)
-        for y in range(ydim):
-            td= X[np.logical_and(Z == spkrs[y], Y == digit)][:nsample]
-            for x in range(len(td)):
-                ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
+        if ydim > 0:
+            fig, ax= plt.subplots(ydim,xdim,sharex= True, sharey= True)
+            for y in range(ydim):
+                td= X[np.logical_and(Z == spkrs[y], Y == digit)][:nsample]
+                for x in range(len(td)):
+                    ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
+        else: # no speaker info
+            fig, ax= plt.subplots(5,xdim,sharex= True, sharey= True)
+            for y in range(5):
+                td= X[Y == digit][:nsample]
+                for x in range(len(td)):
+                    ax[y,x].scatter(td[x]["t"],td[x]["x"],s=0.1)
+ 
         plt.show()
 
     def plot_example_means(self,spkrs,digits,nsample,phase,p):
@@ -352,7 +386,7 @@ class SHD_model:
         loss/= N_batch
         return loss
 
-    def loss_func_max_sum(self, Y, N_batch):
+    def loss_func_max(self, Y, N_batch):
         expsum= self.output.vars["expsum"].view[:N_batch,:self.N_class]
         exp_V= self.output.vars["exp_V"].view[:N_batch,:self.N_class]
         exp_V_correct= np.array([ exp_V[i,y] for i, y in enumerate(Y) ])
@@ -362,6 +396,17 @@ class SHD_model:
             print(exp_V[np.where(exp_V_correct == 0),:])
             exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0
         loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/N_batch
+        return loss
+
+    def loss_func_sum(self, Y, N_batch):
+        SoftmaxVal= self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class]
+        SoftmaxVal_correct= np.array([ SoftmaxVal[i,y] for i, y in enumerate(Y) ])
+        if (np.sum(SoftmaxVal_correct == 0) > 0):
+            print("exp_V flushed to 0 exception!")
+            print(softmaxVal_correct)
+            print(softmaxVal[np.where(softmaxVal_correct == 0),:])
+            softMaxVal_correct[softmaxVal_correct == 0]+= 2e-45 # make sure all exp_V are > 0
+        loss= -np.sum(np.log(SoftmaxVal_correct))/N_batch
         return loss
 
     def loss_func_avg_xentropy(self, N_batch):
@@ -380,7 +425,7 @@ class SHD_model:
             self.tdatarng= np.random.default_rng()        
         dataset = tonic.datasets.SHD(save_to='./data', train=True, transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SHD.sensor_size, p["DT_MS"] * 1000.0)]))
         sensor_size = dataset.sensor_size
-        self.data_max_length= len(dataset)+2*p["N_BATCH"]
+        self.data_max_length= max(len(dataset),p["N_TRAIN"])+2*p["N_BATCH"]
         self.N_class= len(dataset.classes)
         self.num_input= int(np.product(sensor_size))
         self.num_output= self.N_class
@@ -389,10 +434,7 @@ class SHD_model:
         for i in range(len(dataset)):
             events, label = dataset[i]
             self.Y_train_orig[i]= label
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(events["x"], events["t"]/1000.0, p)
-            else:
-                sample= {"x": events["x"], "t": events["t"]/1000.0}
+            sample= rescale(events["x"], events["t"]/1000.0, p) # always apply rescale to have at most one spike per timestep
             self.X_train_orig.append(sample)
         self.X_train_orig= np.array(self.X_train_orig)
         self.Z_train_orig= dataset.speaker
@@ -403,14 +445,92 @@ class SHD_model:
         for i in range(len(dataset)):
             events, label = dataset[i]
             self.Y_test_orig[i]= label
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(events["x"], events["t"]/1000.0, p)
-            else:
-                sample= {"x": events["x"], "t": events["t"]/1000.0}
+            sample= rescale(events["x"], events["t"]/1000.0, p) # always apply rescale to have at most one spike per timestep
             self.X_test_orig.append(sample)
         self.X_test_orig= np.array(self.X_test_orig)
         self.Z_test_orig= dataset.speaker
     
+    def load_data_SSC(self, p):
+        if p["TRAIN_DATA_SEED"] is not None:
+            self.datarng= np.random.default_rng(p["TRAIN_DATA_SEED"])
+        else:
+            self.datarng= np.random.default_rng()        
+        if p["TEST_DATA_SEED"] is not None:
+            self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
+        else:
+            self.tdatarng= np.random.default_rng()        
+        sensor_size = tonic.datasets.SSC.sensor_size
+        self.Z_train_orig= None
+        fname = p["DATA_BUFFER_NAME"]+"_X_train_orig"
+        fname += "RST_"+str(p["RESCALE_T"])+"_RSX_"+str(p["RESCALE_X"])+"_DT_"+str(p["DT_MS"])+".npy"
+        if os.path.exists(fname):
+            self.X_train_orig= np.load(fname, allow_pickle= True)
+            self.Y_train_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_train_orig.npy", allow_pickle= True)
+            self.N_class= len(np.unique(self.Y_train_orig))
+            self.data_max_length= max(len(self.X_train_orig),p["N_TRAIN"])+2*p["N_BATCH"]
+            print(f"data loaded from buffered file {fname}, N_class= {self.N_class}")
+        else:
+            dataset = tonic.datasets.SSC(save_to='./data', split="train", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+            self.N_class= len(dataset.classes)
+            self.data_max_length= max(len(dataset),p["N_TRAIN"])+2*p["N_BATCH"]
+            self.Y_train_orig= np.empty(len(dataset), dtype= int)
+            self.X_train_orig= []
+            for i in tqdm(range(len(dataset))):
+                events, label = dataset[i]
+                self.Y_train_orig[i]= label
+                sample= rescale(events["x"], events["t"]/1000.0, p)
+                self.X_train_orig.append(sample)
+            self.X_train_orig= np.array(self.X_train_orig)
+            np.save(fname, self.X_train_orig, allow_pickle= True)
+            np.save(p["DATA_BUFFER_NAME"]+"_Y_train_orig", self.Y_train_orig, allow_pickle= True)
+            print(f"data saved to buffer file {fname}")
+        self.num_input= int(np.product(sensor_size))
+        self.num_output= self.N_class
+        self.Z_eval_orig= None
+        fname = p["DATA_BUFFER_NAME"]+"_X_eval_orig"
+        fname += "RST_"+str(p["RESCALE_T"])+"_RSX_"+str(p["RESCALE_X"])+"_DT_"+str(p["DT_MS"])+".npy"
+        if os.path.exists(fname):
+            self.X_eval_orig= np.load(fname, allow_pickle= True)
+            self.Y_eval_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_eval_orig.npy", allow_pickle= True)
+            self.data_max_length+= len(self.X_eval_orig)
+            print(f"data loaded from buffered file {fname}")
+        else:
+            dataset = tonic.datasets.SSC(save_to='./data', split="valid", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+            self.data_max_length+= len(dataset)
+            self.Y_eval_orig= np.empty(len(dataset), dtype= int)
+            self.X_eval_orig= []
+            for i in tqdm(range(len(dataset))):
+                events, label = dataset[i]
+                self.Y_eval_orig[i]= label
+                sample= rescale(events["x"], events["t"]/1000.0, p)
+                self.X_eval_orig.append(sample)
+            self.X_eval_orig= np.array(self.X_eval_orig)
+            np.save(fname, self.X_eval_orig, allow_pickle= True)
+            np.save(p["DATA_BUFFER_NAME"]+"_Y_eval_orig", self.Y_eval_orig, allow_pickle= True)
+            print(f"data saved to buffer file {fname}")
+        self.Z_test_orig= None
+        fname = p["DATA_BUFFER_NAME"]+"_X_test_orig"
+        fname += "RST_"+str(p["RESCALE_T"])+"_RSX_"+str(p["RESCALE_X"])+"_DT_"+str(p["DT_MS"])+".npy"
+        if os.path.exists(fname):
+            self.X_test_orig= np.load(fname, allow_pickle= True)
+            self.Y_test_orig= np.load(p["DATA_BUFFER_NAME"]+"_Y_test_orig.npy", allow_pickle= True)
+            self.data_max_length+= len(self.X_test_orig)
+            print(f"data loaded from buffered file {fname}")
+        else:
+            dataset = tonic.datasets.SSC(save_to='./data', split="test", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+            self.data_max_length+= len(dataset)
+            self.Y_test_orig= np.empty(len(dataset), dtype= int)
+            self.X_test_orig= []
+            for i in tqdm(range(len(dataset))):
+                events, label = dataset[i]
+                self.Y_test_orig[i]= label
+                sample= rescale(events["x"], events["t"]/1000.0, p)
+                self.X_test_orig.append(sample)
+            self.X_test_orig= np.array(self.X_test_orig)
+            np.save(fname, self.X_test_orig, allow_pickle= True)
+            np.save(p["DATA_BUFFER_NAME"]+"_Y_test_orig", self.Y_test_orig, allow_pickle= True)
+            print(f"data saved to buffer file {fname}")
+
     def load_data_SHD_Zenke(self, p):
         cache_dir=os.path.expanduser("~/data")
         cache_subdir="SHD"
@@ -456,10 +576,7 @@ class SHD_model:
         self.N_class= len(set(self.Y_train_orig))
         self.X_train_orig= []
         for i in range(len(units)):
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(units[i], times[i]*1000.0, p)
-            else:
-                sample= {"x": units[i], "t": times[i]*1000.0}
+            sample= rescale(units[i], times[i]*1000.0, p)
             self.X_train_orig.append(sample)
         self.X_train_orig= np.array(self.X_train_orig)
         # do the test files
@@ -479,10 +596,7 @@ class SHD_model:
         self.data_max_length+= len(units)
         self.X_test_orig= []
         for i in range(len(units)):
-            if p["RESCALE_X"] != 1.0 or p["RESCALE_T"] != 1.0:
-                sample= rescale(units[i], times[i]*1000.0, p)
-            else:
-                sample= {"x": units[i], "t": times[i]*1000.0}
+            sample= rescale(units[i], times[i]*1000.0, p)
             self.X_test_orig.append(sample)
         self.X_test_orig= np.array(self.X_test_orig)            
 
@@ -588,7 +702,6 @@ class SHD_model:
         all_input_end= []
         all_input_start= []
         stidx_offset= 0
-        self.max_stim_time= 0.0
         for i in range(N):
             events= X[i]
             spike_event_ids = events["x"]
@@ -596,8 +709,6 @@ class SHD_model:
                                           minlength=self.num_input))+stidx_offset    
             assert len(i_end) == self.num_input
             tx = events["t"][np.lexsort((events["t"], spike_event_ids))].astype(float)
-            if len(tx) > 0:
-                self.max_stim_time= max(self.max_stim_time, np.amax(tx))
             all_sts.append(tx)
             i_start= np.empty(i_end.shape)
             i_start[0]= stidx_offset
@@ -621,8 +732,6 @@ class SHD_model:
         self.hid_to_hid= []
         self.hid_to_hid_reduce= [] 
         self.hid_to_hid_learn= []
-        self.hidden_taum_reduce= []
-        self.hidden_taum_learn= []
         self.trial_steps= int(round(p["TRIAL_MS"]/p["DT_MS"]))
 
         print("starting model definition ...")
@@ -630,10 +739,12 @@ class SHD_model:
         # Model description
         # ----------------------------------------------------------------------------
         kwargs = {}
-        if p["CUDA_VISIBLE_DEVICES"]:
+        if p["CUDA_VISIBLE_DEVICES"] or (self.GPU is not None):
             from pygenn.genn_wrapper.CUDABackend import DeviceSelect_MANUAL
             kwargs["selectGPUByDeviceID"] = True
             kwargs["deviceSelectMethod"] = DeviceSelect_MANUAL
+            if self.GPU is not None:
+                kwargs["manualDeviceID"] = self.GPU
         self.model = genn_model.GeNNModel("float", p["NAME"], generateLineInfo=True, time_precision="double", **kwargs)
         self.model.dT = p["DT_MS"]
         self.model.timing_enabled = p["TIMING"]
@@ -647,7 +758,7 @@ class SHD_model:
         # ----------------------------------------------------------------------------
 
         input_params= {
-            "N_neurons": self.num_input,
+            "N_neurons": self.num_input*(p["N_INPUT_DELAY"]+1),
             "N_max_spike": p["N_MAX_SPIKE"],
         }
         self.input_init_vars= {
@@ -660,11 +771,21 @@ class SHD_model:
             "new_fwd_start": p["N_MAX_SPIKE"]-1,
             "rev_t": 0.0,
         }
-        print("Input neurons: EVP_SSA_MNIST_SHUFFLE")
-        self.input= self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, input_params, self.input_init_vars)
-        self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*p["N_MAX_SPIKE"], dtype=np.float32))
+        if p["N_INPUT_DELAY"] == 0:
+            print("Input neurons: EVP_SSA_MNIST_SHUFFLE")
+            self.input= self.model.add_neuron_population("input", self.num_input, EVP_SSA_MNIST_SHUFFLE, input_params, self.input_init_vars)
+        else:
+            print("Input neurons: EVP_SSA_MNIST_SHUFFLE_DELAY")
+            delay= np.zeros((p["N_INPUT_DELAY"]+1,self.num_input))
+            for i in range(p["N_INPUT_DELAY"]):
+                delay[i+1,:]= np.ones((1,self.num_input))*(i+1)*p["INPUT_DELAY"]
+            delay= delay.flatten()
+            self.input_init_vars["delay"]= delay
+            self.input= self.model.add_neuron_population("input", self.num_input*(p["N_INPUT_DELAY"]+1), EVP_SSA_MNIST_SHUFFLE_DELAY, input_params, self.input_init_vars)
+            
+        self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*(p["N_INPUT_DELAY"]+1)*p["N_MAX_SPIKE"], dtype=np.float32))
         # reserve enough space for any set of input spikes that is likely
-        self.input.set_extra_global_param("spikeTimes", np.zeros(200000000, dtype=np.float32))
+        self.input.set_extra_global_param("spikeTimes", np.zeros(500000000, dtype=np.float32))
 
         input_reset_params= {"N_max_spike": p["N_MAX_SPIKE"]}
         input_reset_var_refs= {
@@ -706,7 +827,6 @@ class SHD_model:
                 "V_reset": p["V_RESET"],
                 "N_neurons": p["NUM_HIDDEN"],
                 "N_max_spike": p["N_MAX_SPIKE"],
-                "tau_syn": p["TAU_SYN"],
             }
             self.hidden_init_vars= {
                 "V": p["V_RESET"],
@@ -718,6 +838,7 @@ class SHD_model:
                 "fwd_start": p["N_MAX_SPIKE"]-1,
                 "new_fwd_start": p["N_MAX_SPIKE"]-1,
                 "back_spike": 0,
+                "tau_syn": p["TAU_SYN"],
             }
             for l in range(p["N_HID_LAYER"]):
                 print(f"Hidden layer {l} neurons: EVP_LIF")
@@ -751,7 +872,6 @@ class SHD_model:
                 "V_reset": p["V_RESET"],
                 "N_neurons": p["NUM_HIDDEN"],
                 "N_max_spike": p["N_MAX_SPIKE"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "lbd_upper": p["LBD_UPPER"],
                 "lbd_lower": p["LBD_LOWER"],
@@ -769,6 +889,7 @@ class SHD_model:
                 "back_spike": 0,
                 "sNSum": 0.0,
                 "new_sNSum": 0.0,
+                "tau_syn": p["TAU_SYN"],
             }
             if p["HIDDEN_NOISE"] > 0.0:
                 hidden_params["tau_m"]= p["TAU_MEM"]
@@ -777,21 +898,46 @@ class SHD_model:
                     self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_noise, hidden_params, self.hidden_init_vars))
                     self.hidden[l].set_extra_global_param("A_noise", p["HIDDEN_NOISE"])
             else:
-                if p["TRAIN_TAUM"]:
+                if p["TRAIN_TAU"]:
                     hidden_params["trial_t"]= p["TRIAL_MS"]
-                    self.hidden_init_vars["ktau_m"]= np.log(p["TAU_MEM"])
-                    self.hidden_init_vars["dktaum"]= 0.0
+                    self.hidden_init_vars["tau_m"]= p["TAU_MEM"]
+                    self.hidden_init_vars["dtaum"]= 0.0
+                    self.hidden_init_vars["dtausyn"]= 0.0
                     self.hidden_init_vars["fImV_roff"]= int(p["TRIAL_MS"]/p["DT_MS"])
                     self.hidden_init_vars["fImV_woff"]= 0
                     for l in range(p["N_HID_LAYER"]):
-                        print(f"Hidden layer {l} neurons: EVP_LIF_reg_taum")
-                        self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_taum, hidden_params, self.hidden_init_vars))
+                        if p["HIDDEN_NEURON_TYPE"] == "hetLIF":
+                            self.hidden_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
+                            self.hidden_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, p["NUM_HIDDEN"])
+                        print(f"Hidden layer {l} neurons: EVP_LIF_reg_tau_learn")
+                        self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_tau_learn, hidden_params, self.hidden_init_vars))
                         self.hidden[l].set_extra_global_param("fImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*int(p["TRIAL_MS"]/p["DT_MS"])*2))
+                        self.hidden[l].set_extra_global_param("fIdot", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*int(p["TRIAL_MS"]/p["DT_MS"])*2))
                 else:
-                    hidden_params["tau_m"]= p["TAU_MEM"]
-                    for l in range(p["N_HID_LAYER"]):
-                        print(f"Hidden layer {l} neurons: EVP_LIF_reg")
-                        self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars))
+                    if p["HIDDEN_NEURON_TYPE"] == "LIF":
+                        hidden_params["tau_m"]= p["TAU_MEM"]
+                        for l in range(p["N_HID_LAYER"]):
+                            print(f"Hidden layer {l} neurons: EVP_LIF_reg")
+                            self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars))
+                    else:
+                        if p["HIDDEN_NEURON_TYPE"] == "hetLIF":
+                            for l in range(p["N_HID_LAYER"]):
+                                self.hidden_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
+                                self.hidden_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, p["NUM_HIDDEN"])
+                                print(f"Hidden layer {l} neurons: EVP_hetLIF_reg")
+                                self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_hetLIF_reg, hidden_params, self.hidden_init_vars))
+
+                        else: 
+                            if p["HIDDEN_NEURON_TYPE"] == "ALIF":
+                                hidden_params["tau_m"]= p["TAU_MEM"]
+                                hidden_params["tau_B"]= p["TAU_B"]
+                                hidden_params["B_incr"]= p["B_INCR"]
+                                self.hidden_init_vars["B"]= p["B_INIT"]
+                                self.hidden_init_vars["lambda_B"]= 0.0
+                                for l in range(p["N_HID_LAYER"]):
+                                    print(f"Hidden layer {l} neurons: EVP_ALIF_reg")
+                                    self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_ALIF_reg, hidden_params, self.hidden_init_vars))
+                        
             for l in range(p["N_HID_LAYER"]):
                 self.hidden[l].set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
                 self.hidden[l].set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
@@ -815,16 +961,27 @@ class SHD_model:
                     "sNSum": genn_model.create_var_ref(self.hidden[l], "sNSum"),
                     "new_sNSum": genn_model.create_var_ref(self.hidden[l], "new_sNSum"),
                 }
-                if p["TRAIN_TAUM"]:
+                if p["TRAIN_TAU"]:
                     hidden_reset_params["trial_t"]= p["TRIAL_MS"]
                     hidden_reset_var_refs["fImV_roff"]= genn_model.create_var_ref(self.hidden[l], "fImV_roff")
                     hidden_reset_var_refs["fImV_woff"]= genn_model.create_var_ref(self.hidden[l], "fImV_woff")
-                    print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_taum")
-                    self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_taum, hidden_reset_params, {}, hidden_reset_var_refs))
+                    hidden_reset_var_refs["dtaum"]= genn_model.create_var_ref(self.hidden[l], "dtaum")
+                    hidden_reset_var_refs["dtausyn"]= genn_model.create_var_ref(self.hidden[l], "dtausyn")
+                    print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_tau_learn")
+                    self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_tau_learn, hidden_reset_params, {}, hidden_reset_var_refs))
                 else:
-                    print(f"Hidden layer {l} reset: EVP_neuron_reset_reg")
-                    self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg, hidden_reset_params, {}, hidden_reset_var_refs))
-
+                    if p["HIDDEN_NEURON_TYPE"] in ["LIF","hetLIF"]:
+                        print(f"Hidden layer {l} reset: EVP_neuron_reset_reg")
+                        self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg, hidden_reset_params, {}, hidden_reset_var_refs))
+                    else:
+                        if p["HIDDEN_NEURON_TYPE"] == "ALIF":
+                            print(f"Hidden layer {l} reset: EVP_neuron_reset_reg_ALIF")
+                            hidden_reset_params["B_init"]= p["B_INIT"]
+                            hidden_reset_var_refs["B"]= genn_model.create_var_ref(self.hidden[l], "B")
+                            hidden_reset_var_refs["lambda_B"]= genn_model.create_var_ref(self.hidden[l], "lambda_B")
+                            self.hidden_reset.append(self.model.add_custom_update("hidden_reset"+str(l), "neuronReset", EVP_neuron_reset_reg_ALIF, hidden_reset_params, {}, hidden_reset_var_refs))
+                        
+                        
             if p["AVG_SNSUM"]:
                 params= {"reduced_sNSum": 0.0}
                 for l in range(p["N_HID_LAYER"]):
@@ -849,7 +1006,6 @@ class SHD_model:
                 "V_reset": p["V_RESET"],
                 "N_neurons": p["NUM_HIDDEN"],
                 "N_max_spike": p["N_MAX_SPIKE"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "lbd_lower": p["LBD_LOWER"],
                 "nu_lower": p["NU_LOWER"],
@@ -871,6 +1027,7 @@ class SHD_model:
                 "back_spike": 0,
                 "sNSum": 0.0,
                 "new_sNSum": 0.0,
+                "tau_syn": p["TAU_SYN"],
             }
             for l in range(p["N_HID_LAYER"]):
                 print(f"Hidden layer {l} neurons: EVP_LIF_reg_Thomas1")
@@ -926,7 +1083,6 @@ class SHD_model:
         if p["LOSS_TYPE"][:-4] == "first_spike":
             output_params= {
                 "tau_m": p["TAU_MEM_OUTPUT"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
                 "V_thresh": p["V_THRESH"],
@@ -950,6 +1106,7 @@ class SHD_model:
                 "new_first_spike_t": -1e5,
                 "exp_st": 0.0,
                 "expsum": 1.0,
+                "tau_syn": p["TAU_SYN"],
             }
             if p["LOSS_TYPE"] == "first_spike":
                 print("Output neurons: EVP_LIF_output_first_spike")
@@ -990,7 +1147,6 @@ class SHD_model:
         if p["LOSS_TYPE"] == "max":
             output_params= {
                 "tau_m": p["TAU_MEM_OUTPUT"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
             }
@@ -1006,6 +1162,7 @@ class SHD_model:
                 "rev_t": 0.0,
                 "expsum": 1.0,
                 "exp_V": 1.0,
+                "tau_syn": p["TAU_SYN"],
             }
             print("Output neurons: EVP_LIF_output_max")
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_max, output_params, self.output_init_vars)
@@ -1036,7 +1193,6 @@ class SHD_model:
                
             output_params= {
                 "tau_m": p["TAU_MEM_OUTPUT"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
             }
@@ -1046,10 +1202,9 @@ class SHD_model:
                 "lambda_I": 0.0,
                 "trial": 0,
                 "sum_V": 0.0,
-                "new_sum_V": 0.0,
+                "SoftmaxVal": 0.0,
                 "rev_t": 0.0,
-                "expsum": 1.0,
-                "exp_V": 1.0,
+                "tau_syn": p["TAU_SYN"],
             }
             if p["LOSS_TYPE"] == "sum":
                 print("Output neurons: EVP_LIF_output_sum")
@@ -1075,6 +1230,30 @@ class SHD_model:
             self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
             if p["LOSS_TYPE"] == "sum_weigh_input":
                 self.output.set_extra_global_param("aIbuf", np.zeros(p["N_BATCH"]*self.num_output*self.trial_steps*2, dtype=np.float32)) # reserve space for avgInput
+
+            # updates to do do softmax
+            softmax_1_init_vars= {
+                "MaxVal": -1e10
+            }
+            softmax_1_var_refs= {
+                "Val": genn_model.create_var_ref(self.output, "sum_V")
+            }
+            softmax_1= self.model.add_custom_update("softmax_1", "Softmax1", softmax_1_model, {}, softmax_1_init_vars, softmax_1_var_refs)
+            softmax_2_init_vars= {
+                "SumExpVal": 0.0
+            }
+            softmax_2_var_refs= {
+                "Val": genn_model.create_var_ref(self.output, "sum_V"),
+                "MaxVal": genn_model.create_var_ref(softmax_1, "MaxVal")
+            }
+            softmax_2= self.model.add_custom_update("softmax_2", "Softmax2", softmax_2_model, {}, softmax_2_init_vars, softmax_2_var_refs)
+            softmax_3_var_refs= {
+                "Val": genn_model.create_var_ref(self.output, "sum_V"),
+                "MaxVal": genn_model.create_var_ref(softmax_1, "MaxVal"),
+                "SumExpVal": genn_model.create_var_ref(softmax_2, "SumExpVal"),
+                "SoftmaxVal":genn_model.create_var_ref(self.output,"SoftmaxVal")
+            }
+            softmax_3= self.model.add_custom_update("softmax_3", "Softmax3", softmax_3_model, {}, {}, softmax_3_var_refs)
             output_reset_params= {
                 "V_reset": p["V_RESET"],
                 "N_class": self.N_class,
@@ -1085,10 +1264,7 @@ class SHD_model:
                 "lambda_I": genn_model.create_var_ref(self.output, "lambda_I"),
                 "trial": genn_model.create_var_ref(self.output, "trial"),
                 "sum_V": genn_model.create_var_ref(self.output, "sum_V"),
-                "new_sum_V": genn_model.create_var_ref(self.output, "new_sum_V"),
                 "rev_t": genn_model.create_var_ref(self.output, "rev_t"),
-                "expsum": genn_model.create_var_ref(self.output, "expsum"),
-                "exp_V": genn_model.create_var_ref(self.output, "exp_V"),
             }
             if p["LOSS_TYPE"] == "sum_weigh_input":
                 output_reset_params["trial_steps"]= self.trial_steps
@@ -1104,7 +1280,6 @@ class SHD_model:
         if p["LOSS_TYPE"] == "avg_xentropy":
             output_params= {
                 "tau_m": p["TAU_MEM_OUTPUT"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
                 "N_neurons": self.num_output,
@@ -1120,6 +1295,7 @@ class SHD_model:
                 "rp_V": 0,
                 "wp_V": 0,
                 "loss": 0,
+                "tau_syn": p["TAU_SYN"],
             }
             print("Output neurons: EVP_LIF_output_SHD_avg_xentropy")
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_SHD_avg_xentropy, output_params, self.output_init_vars)
@@ -1153,13 +1329,23 @@ class SHD_model:
             "beta1": p["ADAM_BETA1"],
             "beta2": p["ADAM_BETA2"],
             "epsilon": p["ADAM_EPS"],
-            "tau_syn": p["TAU_SYN"],
         }
         self.adam_init_vars= {
             "m": 0.0,
             "v": 0.0,
         }
-
+        adam_taum_params= {
+            "beta1": p["ADAM_BETA1"],
+            "beta2": p["ADAM_BETA2"],
+            "epsilon": p["ADAM_EPS"],
+            "min_tau": p["MIN_TAU_M"],
+        }
+        adam_tausyn_params= {
+            "beta1": p["ADAM_BETA1"],
+            "beta2": p["ADAM_BETA2"],
+            "epsilon": p["ADAM_EPS"],
+            "min_tau": p["MIN_TAU_SYN"],
+        }
 
         # ----------------------------------------------------------------------------
         # Synapse initialisation
@@ -1186,25 +1372,25 @@ class SHD_model:
         print("in_to_hid synapses: EVP_input_synapse")
         self.in_to_hid= self.model.add_synapse_population(
             "in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden[0], EVP_input_synapse,
-            {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+            {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, {})
 
         print("hid_to_out synapses: EVP_synapse")
         self.hid_to_out= self.model.add_synapse_population(
             "hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[-1], self.output, EVP_synapse,
-            {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+            {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {}, {})
 
         for l in range(p["N_HID_LAYER"]-1):
             print(f"hid_to_hidfwd synapses {l} to {l+1}: EVP_synapse")
             self.hid_to_hidfwd.append(self.model.add_synapse_population(
                 "hid_to_hidfwd"+str(l), "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[l], self.hidden[l+1], EVP_synapse,
-                {}, self.hid_to_hidfwd_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}))
+                {}, self.hid_to_hidfwd_init_vars, {}, {}, my_Exp_Curr, {}, {}))
         
         if p["RECURRENT"]:
             for l in range(p["N_HID_LAYER"]):
                 print(f"hid_to_hid synapses {l} to {l}: EVP_synapse")
                 self.hid_to_hid.append(self.model.add_synapse_population(
                     "hid_to_hid"+str(l), "DENSE_INDIVIDUALG", NO_DELAY, self.hidden[l], self.hidden[l], EVP_synapse,
-                    {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}))
+                    {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, {}))
 
         self.optimisers= []
         # learning updates for synapses
@@ -1257,19 +1443,31 @@ class SHD_model:
                     "hid_to_hid_learn"+str(l),"EVPLearn", adam_optimizer_model, adam_params, self.adam_init_vars, var_refs))
                 self.hid_to_hid[l].pre_target_var= "revIsyn"
                 self.optimisers.append(self.hid_to_hid_learn[l])
-        # learning updates for taum
-        if p["TRAIN_TAUM"]:
+        # learning updates for taus
+        if p["TRAIN_TAU"]:
             for l in range(p["N_HID_LAYER"]):            
-                var_refs = {"dw": genn_model.create_var_ref(self.hidden[l], "dktaum")}
+                # learning for taum
+                var_refs = {"dw": genn_model.create_var_ref(self.hidden[l], "dtaum")}
                 print(f"Hidden taum {l} reduce: EVP_grad_reduce")
-                self.hidden_taum_reduce.append(self.model.add_custom_update(
-                    "hidden_taum_reduce"+str(l),"EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs))
-                var_refs = {"gradient": genn_model.create_var_ref(self.hidden_taum_reduce[l], "reduced_dw"),
-                            "variable": genn_model.create_var_ref(self.hidden[l], "ktau_m")}
-                print(f"Hidden taum {l} learn: adam_optimizer_model_taum")
-                self.hidden_taum_learn.append(self.model.add_custom_update(
-                    "hidden_taum_learn"+str(l),"EVPLearn", adam_optimizer_model_taum, adam_params, self.adam_init_vars, var_refs))
-                self.optimisers.append(self.hidden_taum_learn[l])
+                hidden_taum_reduce= self.model.add_custom_update(
+                    "hidden_taum_reduce"+str(l),"EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
+                var_refs = {"gradient": genn_model.create_var_ref(hidden_taum_reduce, "reduced_dw"),
+                            "variable": genn_model.create_var_ref(self.hidden[l], "tau_m")}
+                print(f"Hidden taum {l} learn: adam_optimizer_model_tau")
+                hidden_taum_learn= self.model.add_custom_update(
+                    "hidden_taum_learn"+str(l),"EVPLearn", adam_optimizer_model_tau, adam_taum_params, self.adam_init_vars, var_refs)
+                self.optimisers.append(hidden_taum_learn)
+                # learning for tausyn
+                var_refs = {"dw": genn_model.create_var_ref(self.hidden[l], "dtausyn")}
+                print(f"Hidden tausyn {l} reduce: EVP_grad_reduce")
+                hidden_tausyn_reduce= self.model.add_custom_update(
+                    "hidden_tausyn_reduce"+str(l),"EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
+                var_refs = {"gradient": genn_model.create_var_ref(hidden_tausyn_reduce, "reduced_dw"),
+                            "variable": genn_model.create_var_ref(self.hidden[l], "tau_syn")}
+                print(f"Hidden tausyn {l} learn: adam_optimizer_model_tau")
+                hidden_tausyn_learn= self.model.add_custom_update(
+                    "hidden_tausyn_learn"+str(l),"EVPLearn", adam_optimizer_model_tau, adam_tausyn_params, self.adam_init_vars, var_refs)
+                self.optimisers.append(hidden_tausyn_learn)
            
         # DEBUG hidden layer spike numbers
         if p["DEBUG_HIDDEN_N"]:
@@ -1326,18 +1524,26 @@ class SHD_model:
                 self.hid_to_hid[l].push_in_syn_to_device()
 
     def calc_balance(self,Y_t, Z_t, Y_e):
-        speakers= set(Z_t)
-        print("train:")
-        sn= []
-        for s in speakers:
-            sn.append([ np.sum(np.logical_and(Y_t == d, Z_t == s)) for d in range(20) ])
-            print(f"Speaker {s}: {sn[-1]}")
-        sn= np.array(sn)
-        snm= np.sum(sn, axis=0)
-        print(f"Sum across speakers: {snm}")
-        print("eval:")
-        sne= [ np.sum(Y_e == d) for d in range(20) ]
-        print(sne)
+        if Z_t is not None:
+            speakers= list(set(Z_t))
+            print("train:")
+            sn= []
+            for s in speakers:
+                sn.append([ np.sum(np.logical_and(Y_t == d, Z_t == s)) for d in range(self.N_class) ])
+                print(f"Speaker {s}: {sn[-1]}")
+            sn= np.array(sn)
+            snm= np.sum(sn, axis=0)
+            print(f"Sum across speakers: {snm}")
+            print("eval:")
+            sne= [ np.sum(Y_e == d) for d in range(self.N_class) ]
+            print(sne)
+        else:
+            snm= [ np.sum(Y_t == d) for d in range(self.N_class) ]
+            snm= np.asarray(snm)
+            print(f"train: {snm}")
+            sne= [ np.sum(Y_e == d) for d in range(self.N_class) ]
+            sne= np.asarray(sne)
+            print(f"eval: {sne}")
         return (snm, sne)
 
 
@@ -1345,7 +1551,6 @@ class SHD_model:
         N_trial= 0
         if X_train is not None:
             assert(Y_train is not None)
-            assert(Z_train is not None)
             if "blend" in p["AUGMENTATION"]:
                 N_train= p["N_TRAIN"]
             else:
@@ -1381,18 +1586,24 @@ class SHD_model:
                 which= Y == c
                 cX= X[which]
                 cY= Y[which]
-                cZ= Z[which]
+                if Z is not None:
+                    cZ= Z[which]
                 ids= np.arange(len(cX),dtype= int)
                 self.datarng.shuffle(ids)
                 cX= cX[ids]
                 cY= cY[ids]
-                cZ= cZ[ids]
+                if Z is not None:
+                    cZ= cZ[ids]
                 newX.append(cX[:ncl])
                 newY.append(cY[:ncl])
-                newZ.append(cZ[:ncl])
+                if Z is not None:
+                    newZ.append(cZ[:ncl])
             newX= np.hstack(newX)
             newY= np.hstack(newY)
-            newZ= np.hstack(newZ)
+            if Z is not None:
+                newZ= np.hstack(newZ)
+            else:
+                newZ= None
         else:
             newX= X
             newY= Y
@@ -1445,7 +1656,9 @@ class SHD_model:
         
         adam_step= 1
         learning_rate= p["ETA"]
-
+        the_lr= learning_rate/1000.0
+        print(f"initial: the_lr: {the_lr}, learning_rate: {learning_rate}")
+        
         # set up recording if required
         spike_t= {}
         spike_ID= {}
@@ -1472,8 +1685,14 @@ class SHD_model:
         if len(p["AUGMENTATION"]) == 0:
             # build and assign the input spike train and corresponding labels
             # these are padded to multiple of batch size for both train and eval portions
-            X_train, Y_train, Z_train, X_eval, Y_eval= self.balance_classes(X_train, Y_train, Z_train, X_eval, Y_eval, snm, sne, p)
-            X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, X_train, Y_train, X_eval, Y_eval)
+            lX= copy.deepcopy(X_train)
+            lY= copy.deepcopy(Y_train)
+            lZ= copy.deepcopy(Z_train)
+            lX_eval= copy.deepcopy(X_eval)
+            lY_eval= copy.deepcopy(Y_eval)
+            if p["BALANCE_TRAIN_CLASSES"] or p["BALANCE_EVAL_CLASSES"]:
+                lX, lY, lZ, lX_eval, lY_eval= self.balance_classes(lX, lY, lZ, lX_eval, lY_eval, snm, sne, p)
+            X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, lY, lX_eval, lY_eval)
             self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
             self.input.push_extra_global_param_to_device("spikeTimes")
             self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
@@ -1505,34 +1724,61 @@ class SHD_model:
         correctEMA= 0       # exponential moving average of evaluation correct (fast)
         correctEMAslow= 0   # exponential moving average of evaluation correct (slow)
         red_lr_last= 0      # epoch when LR was last reduced
+        #the_time= time.time()
         for epoch in range(number_epochs):
+            #print(f"start epoch ... {time.time()-the_time} s for last epoch mainloop")
+            #the_time= time.time()
             # if we are doing augmentation, the entire spike time array needs to be set up anew.
             lX= copy.deepcopy(X_train)
             lY= copy.deepcopy(Y_train)
             lZ= copy.deepcopy(Z_train)
             lX_eval= copy.deepcopy(X_eval)
             lY_eval= copy.deepcopy(Y_eval)
-            lX, lY, lZ, lX_eval, lY_eval= self.balance_classes(lX, lY, lZ, lX_eval, lY_eval, snm, sne, p)
+            generate_ST= False
+            if p["BALANCE_TRAIN_CLASSES"] or p["BALANCE_EVAL_CLASSES"]:
+                lX, lY, lZ, lX_eval, lY_eval= self.balance_classes(lX, lY, lZ, lX_eval, lY_eval, snm, sne, p)
+                generate_ST= True
+                #print(f"balance_classes done ... {time.time()-the_time} s")
+                #the_time= time.time()
             if ("NORMALISE_SPIKE_NUMBER" in p["AUGMENTATION"]) and (p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]):
                 lX, lX_eval= self.normalise_spike_number(lX, lX_eval)
+                generate_ST= True
+                #print(f"normalise spike number done ... {time.time()-the_time} s")
+                #the_time= time.time()
+                
             if N_trial_train > 0 and len(p["AUGMENTATION"]) > 0:
                 for aug in p["AUGMENTATION"]:
                     if aug == "blend":
                         lX, lY, lZ= blend_dataset(lX,lY,lZ,self.datarng, p["AUGMENTATION"][aug],p)
+                        #print(f"blending done ... {time.time()-the_time} s")
+                        #the_time= time.time()
                     if aug == "random_shift":
                         lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug],p)
+                        #print(f"random_shift done ... {time.time()-the_time} s")
+                        #the_time= time.time()
                     if aug == "random_dilate":
                         lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1],p)
+                        #print(f"random_dilate done ... {time.time()-the_time} s")
+                        #the_time= time.time()
                     if aug == "ID_jitter":
                         lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug],p)
+                        #print(f"ID_jitter done ... {time.time()-the_time} s")
+                        #the_time= time.time()
+
+                generate_ST= True
+            if generate_ST:
                 X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, lY, lX_eval, lY_eval)
+                #print(f"generate input spike times done ... {time.time()-the_time} s")
+                #the_time= time.time()
                 self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
                 self.input.push_extra_global_param_to_device("spikeTimes")
                 self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
                 self.input_set.push_extra_global_param_to_device("allStartSpike")
                 self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
                 self.input_set.push_extra_global_param_to_device("allEndSpike")
-
+                #print(f"spike times copied to device ... {time.time()-the_time} s")
+                #the_time= time.time()
+                
             if N_trial_train > 0 and shuffle:
                 # by virtue of input_id being the right length we do not shuffle
                 # padding inputs
@@ -1543,6 +1789,8 @@ class SHD_model:
                 self.output.push_extra_global_param_to_device("label")
                 self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
                 self.input_set.push_extra_global_param_to_device("allInputID")
+                #print(f"shuffling done ... {time.time()-the_time} s")
+                #the_time= time.time()
 
             if p["REC_PREDICTIONS"]:
                 predict= {
@@ -1571,7 +1819,7 @@ class SHD_model:
             self.input.extra_global_params["pDrop"].view[:]= p["PDROP_INPUT"]
             for l in range(p["N_HID_LAYER"]):
                 for var, val in self.hidden_init_vars.items():
-                    if var != "ktau_m":               # do not reset tau_m at beginning of epoch
+                    if var != "tau_m" and var != "tau_syn":               # do not reset tau_m at beginning of epoch
                         self.hidden[l].vars[var].view[:]= val
                     else:
                         self.hidden[l].pull_var_from_device(var)
@@ -1583,6 +1831,8 @@ class SHD_model:
                 self.output.vars[var].view[:]= val
             self.output.push_state_to_device()
             self.model.custom_update("EVPReduce")  # this zeros dw (so as to ignore eval gradients from last epoch!)
+            #print(f"Resetting variables done ... {time.time()-the_time} s")
+            #the_time= time.time()
 
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= [[] for _ in range(p["N_HID_LAYER"])]
@@ -1686,11 +1936,14 @@ class SHD_model:
 
                 # do not learn after the 0th trial where lambdas are meaningless
                 if (phase == "train") and trial > 0:
-                    update_adam(learning_rate, adam_step, self.optimisers)
+                    update_adam(the_lr, adam_step, self.optimisers)
                     adam_step += 1
                     self.model.custom_update("EVPReduce")
                     #if trial%2 == 1:
                     self.model.custom_update("EVPLearn")
+                if the_lr < learning_rate:
+                    the_lr = np.minimum(the_lr*1.05,learning_rate)
+                    print(f"the_lr: {the_lr}, learning_rate: {learning_rate}")
 
                 self.zero_insyn(p)
                 
@@ -1713,6 +1966,13 @@ class SHD_model:
                     self.output.pull_var_from_device("sum_V")
                     self.output.pull_var_from_device("loss")
 
+                if p["LOSS_TYPE"][:3] == "sum":
+                    # do the custom updates for softmax!
+                    self.model.custom_update("Softmax1")
+                    self.model.custom_update("Softmax2")
+                    self.model.custom_update("Softmax3")
+                    #self.output.pull_var_from_device("sum_V")
+                          
                 self.model.custom_update("neuronReset")
 
                 if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
@@ -1734,15 +1994,21 @@ class SHD_model:
 
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
-                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
+                if p["LOSS_TYPE"] == "max":
                     self.output.pull_var_from_device("exp_V")
                     pred= np.argmax(self.output.vars["exp_V"].view[:N_batch,:self.N_class], axis=-1)
-
+                if p["LOSS_TYPE"][:3] == "sum":
+                    self.output.pull_var_from_device("SoftmaxVal")
+                    #if phase == "eval":
+                    #    for i in range(N_batch):
+                    #        print(f"{np.argmax(self.output.vars['sum_V'].view[i,:self.N_class])},{np.max(self.output.vars['sum_V'].view[i,:self.N_class])}")
+                    #        print(f"{np.argmax(self.output.vars['SoftmaxVal'].view[i,:self.N_class])},{np.max(self.output.vars['SoftmaxVal'].view[i,:self.N_class])}")
+                    pred= np.argmax(self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class], axis=-1)
+                    
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     pred= np.argmax(self.output.vars["sum_V"].view[:N_batch,:self.N_class], axis=-1)
 
                 lbl= Y[(trial*p["N_BATCH"]):(trial*p["N_BATCH"]+N_batch)]
-
                 if ([epoch, trial] in p["REC_SPIKES_EPOCH_TRIAL"]):
                     rec_spk_lbl.append(lbl.copy())
                     rec_spk_pred.append(pred.copy())
@@ -1765,14 +2031,23 @@ class SHD_model:
                     if p["LOSS_TYPE"] == "first_spike_exp":
                         losses= self.loss_func_first_spike_exp(nfst, lbl, trial, self.N_class, N_batch)
 
-                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"][:3] == "sum":
+                if p["LOSS_TYPE"] == "max":
                     self.output.pull_var_from_device("expsum")
-                    losses= self.loss_func_max_sum(lbl, N_batch)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+                    losses= self.loss_func_max(lbl, N_batch)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+
+                if p["LOSS_TYPE"][:3] == "sum":
+                    losses= self.loss_func_sum(lbl, N_batch)   # uses self.output.vars["SoftmaxVal"].view 
 
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     losses= self.loss_func_avg_xentropy(lbl, N_batch)   # uses self.output.vars["loss"].view
 
+                #with open("debug.txt","a") as f:
+                #    for i in range(len(lbl)):
+                #        f.write(f"{lbl[i]}\n")
                 good[phase] += np.sum(pred == lbl)
+                #if phase == "eval":
+                #    print(pred)
+                #    print(lbl)
                 #xx= pred == lbl
                 #print(xx.astype(int))
                 if p["REC_PREDICTIONS"]:
@@ -1800,11 +2075,13 @@ class SHD_model:
                         for l in range(p["N_HID_LAYER"]):
                             self.hid_to_hid[l].pull_var_from_device("w")
                             np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hid_to_hid[l].vars["w"].view.copy())
-                if p["TRAIN_TAUM"]:
-                    if ([epoch,trial] in p["TAUM_OUTPUT_EPOCH_TRIAL"]):
+                if p["TRAIN_TAU"]:
+                    if ([epoch,trial] in p["TAU_OUTPUT_EPOCH_TRIAL"]):
                         for l in range(p["N_HID_LAYER"]):
-                            self.hidden[l].pull_var_from_device("ktau_m")
-                            np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_kaum_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hidden[l].vars["ktau_m"].view.copy())
+                            self.hidden[l].pull_var_from_device("tau_m")
+                            np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_tau_m_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hidden[l].vars["tau_m"].view.copy())
+                            self.hidden[l].pull_var_from_device("tau_syn")
+                            np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_tau_syn_hidden"+str(l)+"_e{}_t{}.npy".format(epoch,trial)), self.hidden[l].vars["tau_syn"].view.copy())
 
             if N_trial_train > 0:
                 correct= good["train"]/len(lX)
@@ -1832,9 +2109,14 @@ class SHD_model:
                     if p["REWIRE_LIFT"] != 0.0:
                         ith_w+= p["REWIRE_LIFT"]
                     else:
-                        ith_w.shape= (self.num_input,p["NUM_HIDDEN"])
-                        n_new= self.num_input*n_silent[l]
-                        ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (self.num_input, n_silent[l]))
+                        if l == 0:
+                            n1= self.num_input*(p["N_INPUT_DELAY"]+1)
+                        else:
+                            n1= p["NUM_HIDDEN"]
+                        n2= p["NUM_HIDDEN"]
+                        ith_w.shape= (n1,n2)
+                        n_new= n1*n_silent[l]
+                        ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (n1, n_silent[l]))
                     pop.push_var_to_device("w")
                         
             if p["DEBUG_HIDDEN_N"]:
@@ -1846,7 +2128,7 @@ class SHD_model:
 
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}, Silent: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]), n_silent))
             print(f"Training examples: {len(lX)}, Evaluation examples: {len(lX_eval)}")
-            
+            print(f"Learning rate: {the_lr}, target learning rate: {learning_rate}")
             
             if resfile is not None:
                 resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
@@ -1862,9 +2144,9 @@ class SHD_model:
             correctEMAslow= p["EMA_ALPHA2"]*correctEMAslow+(1.0-p["EMA_ALPHA2"])*correct_eval
             if (epoch-red_lr_last > p["MIN_EPOCH_ETA_FIXED"]) and (correctEMA <= correctEMAslow):
                 learning_rate*= p["ETA_FAC"]
+                the_lr= learning_rate
                 red_lr_last= epoch
                 print("EMA {}, EMAslow {}, Reduced LR to {}".format(correctEMA, correctEMAslow, learning_rate))
-                print(learning_rate)
             print(f"EMA: {correctEMA}, EMA_slow: {correctEMAslow}")
             if p["REC_PREDICTIONS"]:
                 predict[phase]= np.hstack(predict[phase])
@@ -1980,7 +2262,15 @@ class SHD_model:
             if p["EVALUATION"] == "random":
                 X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
             if p["EVALUATION"] == "speaker":
-                X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["SPEAKER_LEFT"], p)
+                speakers= list(set(self.Z_train_orig))
+                X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, speakers[p["SPEAKER_LEFT"][0]], p)
+            if p["EVALUATION"] == "validation_set":
+                X_train= self.X_train_orig
+                Y_train= self.Y_train_orig
+                Z_train= self.Z_train_orig
+                X_eval= self.X_eval_orig
+                Y_eval= self.Y_eval_orig
+                Z_eval= self.Z_eval_orig
         else:
             X_train= self.X_train_orig
             Y_train= self.Y_train_orig
@@ -1992,19 +2282,20 @@ class SHD_model:
         
     def cross_validate_SHD(self, p):
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
-        speakers= set(self.Z_train_orig)
+        speakers= list(set(self.Z_train_orig))
         all_res= []
         times= []
-        for i in speakers:
+        for i in p["SPEAKER_LEFT"]:
             start_t= perf_counter()
             self.define_model(p, p["SHUFFLE"])
             if p["BUILD"]:
                 self.model.build()
             self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-            X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, i, p)
+            X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, speakers[i], p)
             res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= X_train, Y_train= Y_train, Z_train= Z_train, X_eval= X_eval, Y_eval= Y_eval, resfile= resfile)
             all_res.append([ res[4], res[5] ])
             times.append(perf_counter()-start_t)
+            self.model.unload()
         return all_res, times
     
     def test(self, p):
