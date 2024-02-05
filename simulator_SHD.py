@@ -1699,6 +1699,8 @@ class SHD_model:
             self.input_set.push_extra_global_param_to_device("allStartSpike")
             self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
             self.input_set.push_extra_global_param_to_device("allEndSpike")
+            if p["TEST_ST_INTEGRITY"]:
+                self.test_st_integrity()
         if X_train is not None:
             input_id= np.arange(N_train)
         else:
@@ -1778,13 +1780,15 @@ class SHD_model:
                 self.input_set.push_extra_global_param_to_device("allEndSpike")
                 #print(f"spike times copied to device ... {time.time()-the_time} s")
                 #the_time= time.time()
+                if p["TEST_ST_INTEGRITY"]:
+                    self.test_st_integrity()
                 
             if N_trial_train > 0 and shuffle:
                 # by virtue of input_id being the right length we do not shuffle
                 # padding inputs
                 self.datarng.shuffle(input_id)
                 all_input_id[:len(input_id)]= input_id
-                Y[:len(input_id)]= lY[input_id]
+                Y[:len(input_id)]= Y[input_id]
                 self.output.extra_global_params["label"].view[:len(Y)]= Y
                 self.output.push_extra_global_param_to_device("label")
                 self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
