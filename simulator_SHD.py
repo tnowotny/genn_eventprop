@@ -127,7 +127,7 @@ p["TAU_ACCUMULATOR"]= 20.0
 # Gaussian noise on hidden neurons' membrane potential
 p["HIDDEN_NOISE"]= 0.0
 
-p["SPEAKER_LEFT"]= 0
+p["SPEAKER_LEFT"]= [0]
 
 # rescaling factor for the time, 1.0 means no rescaling
 p["RESCALE_T"]= 1.0
@@ -785,7 +785,7 @@ class SHD_model:
             
         self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*(p["N_INPUT_DELAY"]+1)*p["N_MAX_SPIKE"], dtype=np.float32))
         # reserve enough space for any set of input spikes that is likely
-        self.input.set_extra_global_param("spikeTimes", np.zeros(1500000000, dtype=np.float32))
+        self.input.set_extra_global_param("spikeTimes", np.zeros(500000000, dtype=np.float32))
 
         input_reset_params= {"N_max_spike": p["N_MAX_SPIKE"]}
         input_reset_var_refs= {
@@ -1525,7 +1525,7 @@ class SHD_model:
 
     def calc_balance(self,Y_t, Z_t, Y_e):
         if Z_t is not None:
-            speakers= set(Z_t)
+            speakers= list(set(Z_t))
             print("train:")
             sn= []
             for s in speakers:
@@ -2262,7 +2262,8 @@ class SHD_model:
             if p["EVALUATION"] == "random":
                 X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
             if p["EVALUATION"] == "speaker":
-                X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p["SPEAKER_LEFT"], p)
+                speakers= list(set(self.Z_train_orig))
+                X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, speakers[p["SPEAKER_LEFT"][0]], p)
             if p["EVALUATION"] == "validation_set":
                 X_train= self.X_train_orig
                 Y_train= self.Y_train_orig
@@ -2281,19 +2282,20 @@ class SHD_model:
         
     def cross_validate_SHD(self, p):
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
-        speakers= set(self.Z_train_orig)
+        speakers= list(set(self.Z_train_orig))
         all_res= []
         times= []
-        for i in speakers:
+        for i in p["SPEAKER_LEFT"]:
             start_t= perf_counter()
             self.define_model(p, p["SHUFFLE"])
             if p["BUILD"]:
                 self.model.build()
             self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-            X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, i, p)
+            X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, speakers[i], p)
             res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= X_train, Y_train= Y_train, Z_train= Z_train, X_eval= X_eval, Y_eval= Y_eval, resfile= resfile)
             all_res.append([ res[4], res[5] ])
             times.append(perf_counter()-start_t)
+            self.model.unload()
         return all_res, times
     
     def test(self, p):
