@@ -32,7 +32,7 @@ if len(sys.argv) > 2:
 #p["COLLECT_CONFUSION"]= True
 #p["WRITE_TO_DISK"]= True
 
-p["N_EPOCH"] = 200
+p["N_EPOCH"] = 3
 
 #p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= True
 #p["BALANCE_TRAIN_CLASSES"]= False
@@ -72,14 +72,18 @@ p["N_EPOCH"] = 200
 #p["EMA_ALPHA2"]= 0.95
 #p["EMA_ALPHA1"]= 0.9
 
-p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
-p["TAU_OUTPUT_EPOCH_TRIAL"]= [ [0,0], [49,0], [99,0], [199,0], [299,0] ]
+#p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
+#p["TAU_OUTPUT_EPOCH_TRIAL"]= [ [0,0], [49,0], [99,0], [199,0], [299,0] ]
 
 #p["REC_NEURONS"] = [("hidden0","tau_m"),("hidden0","tau_syn")]
 #p["REC_NEURONS_EPOCH_TRIAL"] = [ [0,0], [0,2], [10,0], [100,0], [200,0], [300,0] ]
 #p["REC_NEURONS_EPOCH_TRIAL"] = [ [10,1], [10,2], [10,3], [10,4], [10,5], [10,6] ]
 #p["REC_SPIKES"]= ["hidden0"]
 #p["REC_SPIKES_EPOCH_TRIAL"] = [ [0,1], [0,2], [0,3], [0,4] ]
+
+p["CHECKPOINT_BEST"] = "validation"
+p["TRAIN_TAU"] = True
+p["TRAIN_TAU_OUTPUT"] = True
 
 print(p)
 fname= p["NAME"]+".json"

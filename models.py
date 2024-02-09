@@ -491,6 +491,33 @@ EVP_neuron_reset_output_SHD_sum= genn_model.create_custom_custom_update_class(
 
 # custom update class for resetting output neurons at trial end for SHD
 # almost like MNIST but annoyingly more classes/ output neurons
+# This version for "sum" loss function" with tau learning (currently only sum_weigh_exp)
+EVP_neuron_reset_output_SHD_sum_tau_learn= genn_model.create_custom_custom_update_class(
+    "EVP_neuron_reset_output_SHD_sum_tau_learn",
+    param_names=["V_reset","N_class","trial_t"],
+    var_refs=[("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("trial","int"),("sum_V","scalar"),("rev_t","scalar"),("fImV_roff","int"),("fImV_woff","int"),("dtaum","scalar"),("dtausyn","scalar")],
+    update_code= """
+    $(V)= $(V_reset);
+    $(lambda_V)= 0.0;
+    $(lambda_I)= 0.0;
+    $(trial)++;
+    $(sum_V)= 0.0;
+    $(rev_t)= $(t);
+    if ($(fImV_woff) == 0) {
+        $(fImV_woff)= ((int) ($(trial_t)/DT));
+        $(fImV_roff)= 0;
+    }
+    else {
+        $(fImV_woff)= 0;
+        $(fImV_roff)= ((int) ($(trial_t)/DT));
+    }
+    $(dtaum)= 0.0;
+    $(dtausyn)= 0.0;
+    """
+)
+
+# custom update class for resetting output neurons at trial end for SHD
+# almost like MNIST but annoyingly more classes/ output neurons
 # This version for "sum" loss function"
 EVP_neuron_reset_output_SHD_sum_weigh_input= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_SHD_sum_weigh_input",
@@ -1250,12 +1277,12 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_first_spike",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","trial_t","tau0","tau1","alpha","N_batch"],
+    param_names=["V_thresh","V_reset","N_neurons","N_max_spike","trial_t","tau0","tau1","alpha","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
                     ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),
                     ("trial","int")],
-    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*"),("tau_syn","scalar")], 
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*"),("tau_m","scalar"),("tau_syn","scalar")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));    
@@ -1327,11 +1354,11 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_first_spike_exp",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","trial_t","tau0","tau1","alpha","N_batch"],
+    param_names=["V_thresh","V_reset","N_neurons","N_max_spike","trial_t","tau0","tau1","alpha","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
                     ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),
-                    ("trial","int"),("tau_syn","scalar")],
+                    ("trial","int"),("tau_m","scalar"),("tau_syn","scalar")],
     extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
@@ -1407,11 +1434,11 @@ EVP_LIF_output_first_spike_exp = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_max = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_max",
-    param_names=["tau_m","trial_t","N_batch"],
+    param_names=["trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("max_V","scalar"),("new_max_V","scalar"),
                     ("max_t","scalar"),("new_max_t","scalar"),("expsum","scalar"),("exp_V","scalar"),
-                    ("trial","int"),("tau_syn","scalar")],
+                    ("trial","int"),("tau_m","scalar"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1458,10 +1485,10 @@ EVP_LIF_output_max = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum",
-    param_names=["tau_m","trial_t","N_batch"],
+    param_names=["trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("sum_V","scalar"),("SoftmaxVal","scalar"),
-                    ("trial","int"),("tau_syn","scalar")],
+                    ("trial","int"),("tau_m","scalar"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1509,10 +1536,10 @@ EVP_LIF_output_sum = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_linear",
-    param_names=["tau_m","trial_t","N_batch"],
+    param_names=["trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("sum_V","scalar"),("SoftmaxVal","scalar"),
-                    ("trial","int"),("tau_syn","scalar")],
+                    ("trial","int"),("tau_m","scalar"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1557,10 +1584,10 @@ EVP_LIF_output_sum_weigh_linear = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_exp",
-    param_names=["tau_m","trial_t","N_batch"],
+    param_names=["trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("sum_V","scalar"),("SoftmaxVal","scalar"),
-                    ("trial","int"),("tau_syn","scalar")],
+                    ("trial","int"),("tau_m","scalar"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1600,16 +1627,72 @@ EVP_LIF_output_sum_weigh_exp = genn_model.create_custom_neuron_class(
     is_auto_refractory_required=False
 )
 
+# LI neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
+# by dlV/dV (this is for a "sum-based loss function)"
+# NOTE TO SELF: why 1/trial_t on the lambda_V equation?
+# NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
+# This version is for trainable tau_mem and tau_syn
+EVP_LIF_output_sum_weigh_exp_tau_learn = genn_model.create_custom_neuron_class(
+    "EVP_LIF_output_sum_weigh_exp_tau_learn",
+    param_names=["trial_t","N_neurons","N_batch"],
+    var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
+                    ("sum_V","scalar"),("SoftmaxVal","scalar"),
+                    ("trial","int"),("tau_m","scalar", VarAccess_READ_ONLY),("dtaum", "scalar"),("fImV_roff","int"), ("fImV_woff","int"),("tau_syn","scalar", VarAccess_READ_ONLY),("dtausyn","scalar")],
+    extra_global_params=[("label","int*"),("fImV","scalar*"),("fIdot","scalar*")], 
+    sim_code="""
+    int buf2_idx= ($(batch)*((int) $(N_neurons))+$(id))*((int) ($(trial_t)/DT));
+    // backward pass
+    const double local_t= ($(t)-$(rev_t))/$(trial_t);
+    scalar alpha= exp(-DT/$(tau_m));
+    scalar beta= exp(-DT/$(tau_syn));
+    scalar gamma= $(tau_m)/($(tau_m)-$(tau_syn));
+    scalar A= 0.0;
+    if ($(trial) > 0) {
+        if ($(id) == $(label)[($(trial)-1)*(int)$(N_batch)+$(batch)]) {
+            A= exp(-(1.0-local_t))*(1.0-$(SoftmaxVal))/$(tau_m)/$(trial_t)/$(N_batch);
+        }
+        else {
+            A= -exp(-(1.0-local_t))*$(SoftmaxVal)/$(tau_m)/$(trial_t)/$(N_batch);
+        }
+    }
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(lambda_I)= A + (DT/$(tau_syn)*($(lambda_V)-A)+($(lambda_I)-A))*beta;
+    }
+    else {
+        $(lambda_I)= A + ($(lambda_I)-A)*beta+gamma*($(lambda_V)-A)*(alpha-beta);
+    }
+    $(lambda_V)= A + ($(lambda_V)-A)*alpha;
+    // calculate gradient component for taum training
+    $(dtaum)+= $(fImV)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_V);
+    $(dtausyn)+= $(fIdot)[buf2_idx+$(fImV_roff)+((int) (($(trial_t)-($(t)-$(rev_t)))/DT))]*$(lambda_I);
+    // forward pass
+    $(fImV)[buf2_idx+$(fImV_woff)+((int) (($(t)-$(rev_t))/DT))]= ($(Isyn)-$(V))/$(tau_m);
+    $(fIdot)[buf2_idx+$(fImV_woff)+((int) (($(t)-$(rev_t))/DT))]= -$(Isyn)/$(tau_syn);
+    // update the summed voltage
+    $(sum_V)+= exp(-local_t)*$(V)/$(trial_t)*DT; // simple Euler
+    //$(V) += ($(Isyn)-$(V))/$(tau_m)*DT;   // simple Euler
+    if (abs($(tau_m)-$(tau_syn)) < 1e-9) {
+        $(V)= (DT/$(tau_m)*$(Isyn)+$(V))*exp(-DT/$(tau_m));
+    }
+    else {
+        $(V)= $(tau_syn)/($(tau_m)-$(tau_syn))*$(Isyn)*(exp(-DT/$(tau_m))-exp(-DT/$(tau_syn)))+$(V)*exp(-DT/$(tau_m));
+    }
+    """,
+    threshold_condition_code="",
+    reset_code="",
+    is_auto_refractory_required=False
+)
+
 # LIF neuron model for output neurons in the MNIST/SHD task - non-spiking and lambda_V driven
 # by dlV/dV (this is for a "sum-based loss function)"
 # NOTE TO SELF: why 1/trial_t on the lambda_V equation?
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_sigmoid",
-    param_names=["tau_m","trial_t","N_batch"],
+    param_names=["trial_t","N_batch"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("sum_V","scalar"),("SoftmaxVal","scalar"),
-                    ("trial","int"),("tau_syn","scalar")],
+                    ("trial","int"),("tau_m","scalar"),("tau_syn","scalar")],
     extra_global_params=[("label","int*")], 
     sim_code="""
     // backward pass
@@ -1657,10 +1740,10 @@ EVP_LIF_output_sum_weigh_sigmoid = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_sum_weigh_input",
-    param_names=["tau_m","N_neurons","trial_t","N_batch","trial_steps"],
+    param_names=["N_neurons","trial_t","N_batch","trial_steps"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("sum_V","scalar"),("SoftmaxVal","scalar"),
-                    ("trial","int"),("rp_V","int"),("wp_V","int"),("avgInback","scalar"),("tau_syn","scalar")],
+                    ("trial","int"),("rp_V","int"),("wp_V","int"),("avgInback","scalar"),("tau_m","scalar"),("tau_syn","scalar")],
     extra_global_params=[("label","int*"),("aIbuf","scalar*")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
@@ -1712,10 +1795,10 @@ EVP_LIF_output_sum_weigh_input = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_MNIST_avg_xentropy",
-    param_names=["tau_m","N_neurons","N_batch","trial_steps","trial_t","N_class"],
+    param_names=["N_neurons","N_batch","trial_steps","trial_t","N_class"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
                     ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
-    extra_global_params=[("label","int*"), ("Vbuf","scalar*"),("tau_syn","scalar")], 
+    extra_global_params=[("label","int*"), ("Vbuf","scalar*"),("tau_m","scalar"),("tau_syn","scalar")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
     // backward pass
@@ -1776,10 +1859,10 @@ EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_SHD_avg_xentropy",
-    param_names=["tau_m","N_neurons","N_batch","trial_steps","trial_t","N_class"],
+    param_names=["N_neurons","N_batch","trial_steps","trial_t","N_class"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
                     ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
-    extra_global_params=[("label","int*"), ("Vbuf","scalar*"),("tau_syn","scalar")], 
+    extra_global_params=[("label","int*"), ("Vbuf","scalar*"),("tau_m","scalar"),("tau_syn","scalar")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
     // backward pass
@@ -1891,6 +1974,8 @@ my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
 )
 """
 
+# Note how this is using the post-synaptic variable $(tau_syn) - so this is compatible with neuron-based tau_syn
+# learning.
 my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
     "my_Exp_Curr",
     decay_code="$(inSyn) *= exp(-DT/$(tau_syn));",
