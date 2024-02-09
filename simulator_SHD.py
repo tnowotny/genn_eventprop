@@ -1843,7 +1843,7 @@ class SHD_model:
         correctEMA= 0       # exponential moving average of evaluation correct (fast)
         correctEMAslow= 0   # exponential moving average of evaluation correct (slow)
         red_lr_last= 0      # epoch when LR was last reduced
-        #the_time= time.time()
+        start_time= time.time()
         correct_eval_best = 0.0
         correct_best = 0.0
         for epoch in range(number_epochs):
@@ -2268,6 +2268,7 @@ class SHD_model:
                     for l in range(p["N_HID_LAYER"]):
                         resfile.write(" {} {} {} {}".format(np.mean(all_hidden_n[l]),np.std(all_hidden_n[l]),np.amin(all_hidden_n[l]),np.amax(all_hidden_n[l])))
                         resfile.write(" {} {} {} {} {}".format(np.mean(all_sNSum[l]),np.std(all_sNSum[l]),np.amin(all_sNSum[l]),np.amax(all_sNSum[l]),n_silent[l]))
+                resfile.write(f"{ time.time()-start_time}")
                 resfile.write("\n")
                 resfile.flush()
 
@@ -2305,6 +2306,7 @@ class SHD_model:
                         for l in range(p["N_HID_LAYER"]):
                             f.write(" {} {} {} {}".format(np.mean(all_hidden_n[l]),np.std(all_hidden_n[l]),np.amin(all_hidden_n[l]),np.amax(all_hidden_n[l])))
                             f.write(" {} {} {} {} {}".format(np.mean(all_sNSum[l]),np.std(all_sNSum[l]),np.amin(all_sNSum[l]),np.amax(all_sNSum[l]),n_silent[l]))
+                    f.write(f"{ time.time()-start_time}")
                     f.write("\n")
                     f.close()
                 self.write_checkpoint("best")    
