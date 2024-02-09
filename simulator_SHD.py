@@ -12,12 +12,11 @@ import gzip, shutil
 from tensorflow.keras.utils import get_file
 import tables
 import copy
-from time import perf_counter
+from time import time
 from dataclasses import dataclass
 from typing import Tuple
 import sys
 from tqdm import tqdm
-import time
 
 # ----------------------------------------------------------------------------
 # Parameters
@@ -1843,12 +1842,12 @@ class SHD_model:
         correctEMA= 0       # exponential moving average of evaluation correct (fast)
         correctEMAslow= 0   # exponential moving average of evaluation correct (slow)
         red_lr_last= 0      # epoch when LR was last reduced
-        start_time= time.time()
         correct_eval_best = 0.0
         correct_best = 0.0
+        start_time= time()
         for epoch in range(number_epochs):
-            #print(f"start epoch ... {time.time()-the_time} s for last epoch mainloop")
-            #the_time= time.time()
+            #print(f"start epoch ... {time()-the_time} s for last epoch mainloop")
+            #the_time= time()
             # if we are doing augmentation, the entire spike time array needs to be set up anew.
             lX= copy.deepcopy(X_train)
             lY= copy.deepcopy(Y_train)
@@ -1859,46 +1858,46 @@ class SHD_model:
             if p["BALANCE_TRAIN_CLASSES"] or p["BALANCE_EVAL_CLASSES"]:
                 lX, lY, lZ, lX_eval, lY_eval= self.balance_classes(lX, lY, lZ, lX_eval, lY_eval, snm, sne, p)
                 generate_ST= True
-                #print(f"balance_classes done ... {time.time()-the_time} s")
-                #the_time= time.time()
+                #print(f"balance_classes done ... {time()-the_time} s")
+                #the_time= time()
             if ("NORMALISE_SPIKE_NUMBER" in p["AUGMENTATION"]) and (p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]):
                 lX, lX_eval= self.normalise_spike_number(lX, lX_eval)
                 generate_ST= True
-                #print(f"normalise spike number done ... {time.time()-the_time} s")
-                #the_time= time.time()
+                #print(f"normalise spike number done ... {time()-the_time} s")
+                #the_time= time()
                 
             if N_trial_train > 0 and len(p["AUGMENTATION"]) > 0:
                 for aug in p["AUGMENTATION"]:
                     if aug == "blend":
                         lX, lY, lZ= blend_dataset(lX,lY,lZ,self.datarng, p["AUGMENTATION"][aug],p)
-                        #print(f"blending done ... {time.time()-the_time} s")
-                        #the_time= time.time()
+                        #print(f"blending done ... {time()-the_time} s")
+                        #the_time= time()
                     if aug == "random_shift":
                         lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug],p)
-                        #print(f"random_shift done ... {time.time()-the_time} s")
-                        #the_time= time.time()
+                        #print(f"random_shift done ... {time()-the_time} s")
+                        #the_time= time()
                     if aug == "random_dilate":
                         lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1],p)
-                        #print(f"random_dilate done ... {time.time()-the_time} s")
-                        #the_time= time.time()
+                        #print(f"random_dilate done ... {time()-the_time} s")
+                        #the_time= time()
                     if aug == "ID_jitter":
                         lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug],p)
-                        #print(f"ID_jitter done ... {time.time()-the_time} s")
-                        #the_time= time.time()
+                        #print(f"ID_jitter done ... {time()-the_time} s")
+                        #the_time= time()
 
                 generate_ST= True
             if generate_ST:
                 X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, lY, lX_eval, lY_eval)
-                #print(f"generate input spike times done ... {time.time()-the_time} s")
-                #the_time= time.time()
+                #print(f"generate input spike times done ... {time()-the_time} s")
+                #the_time= time()
                 self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
                 self.input.push_extra_global_param_to_device("spikeTimes")
                 self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
                 self.input_set.push_extra_global_param_to_device("allStartSpike")
                 self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
                 self.input_set.push_extra_global_param_to_device("allEndSpike")
-                #print(f"spike times copied to device ... {time.time()-the_time} s")
-                #the_time= time.time()
+                #print(f"spike times copied to device ... {time()-the_time} s")
+                #the_time= time()
                 if p["TEST_ST_INTEGRITY"]:
                     self.test_st_integrity(X,Y,input_start,input_end,p)
                 
@@ -1912,8 +1911,8 @@ class SHD_model:
                 self.output.push_extra_global_param_to_device("label")
                 self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
                 self.input_set.push_extra_global_param_to_device("allInputID")
-                #print(f"shuffling done ... {time.time()-the_time} s")
-                #the_time= time.time()
+                #print(f"shuffling done ... {time()-the_time} s")
+                #the_time= time()
 
             if p["REC_PREDICTIONS"]:
                 predict= {
@@ -1957,8 +1956,8 @@ class SHD_model:
                     self.output.pull_var_from_device(var)
             self.output.push_state_to_device()
             self.model.custom_update("EVPReduce")  # this zeros dw (so as to ignore eval gradients from last epoch!)
-            #print(f"Resetting variables done ... {time.time()-the_time} s")
-            #the_time= time.time()
+            #print(f"Resetting variables done ... {time()-the_time} s")
+            #the_time= time()
 
             if p["DEBUG_HIDDEN_N"]:
                 all_hidden_n= [[] for _ in range(p["N_HID_LAYER"])]
@@ -2268,7 +2267,8 @@ class SHD_model:
                     for l in range(p["N_HID_LAYER"]):
                         resfile.write(" {} {} {} {}".format(np.mean(all_hidden_n[l]),np.std(all_hidden_n[l]),np.amin(all_hidden_n[l]),np.amax(all_hidden_n[l])))
                         resfile.write(" {} {} {} {} {}".format(np.mean(all_sNSum[l]),np.std(all_sNSum[l]),np.amin(all_sNSum[l]),np.amax(all_sNSum[l]),n_silent[l]))
-                resfile.write(f"{ time.time()-start_time}")
+                ttt = round(time()-start_time,3)
+                resfile.write(f" {ttt}")
                 resfile.write("\n")
                 resfile.flush()
 
@@ -2297,7 +2297,7 @@ class SHD_model:
                 for ph in ["train","eval"]:
                     confusion[ph].append(conf[ph])
 
-            if (p["CHECKPOINT_BEST"] == "validation" and correct_eval > correct_eval_best) or (p["CHECKPOINT_BEST"] == "validation" and correct > correct_best):
+            if (p["CHECKPOINT_BEST"] == "validation" and correct_eval > correct_eval_best) or (p["CHECKPOINT_BEST"] == "training" and correct > correct_best):
                 correct_eval_best = correct_eval
                 correct_best = correct
                 with open(os.path.join(p["OUT_DIR"], p["NAME"]+"_best.txt"),"w") as f:
@@ -2306,7 +2306,8 @@ class SHD_model:
                         for l in range(p["N_HID_LAYER"]):
                             f.write(" {} {} {} {}".format(np.mean(all_hidden_n[l]),np.std(all_hidden_n[l]),np.amin(all_hidden_n[l]),np.amax(all_hidden_n[l])))
                             f.write(" {} {} {} {} {}".format(np.mean(all_sNSum[l]),np.std(all_sNSum[l]),np.amin(all_sNSum[l]),np.amax(all_sNSum[l]),n_silent[l]))
-                    f.write(f"{ time.time()-start_time}")
+                    ttt = round(time()-start_time,3) 
+                    f.write(f" {ttt}")
                     f.write("\n")
                     f.close()
                 self.write_checkpoint("best")    
@@ -2426,7 +2427,7 @@ class SHD_model:
         all_res= []
         times= []
         for i in p["SPEAKER_LEFT"]:
-            start_t= perf_counter()
+            start_t= time()
             self.define_model(p, p["SHUFFLE"])
             if p["BUILD"]:
                 self.model.build()
@@ -2434,7 +2435,7 @@ class SHD_model:
             X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, speakers[i], p)
             res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= X_train, Y_train= Y_train, Z_train= Z_train, X_eval= X_eval, Y_eval= Y_eval, resfile= resfile)
             all_res.append([ res[4], res[5] ])
-            times.append(perf_counter()-start_t)
+            times.append((time()-start_t))
             self.model.unload()
         return all_res, times
     
