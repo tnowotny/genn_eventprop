@@ -100,6 +100,7 @@ p["REC_SYNAPSES_EPOCH_TRIAL"] = []
 p["REC_SYNAPSES"] = []
 p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
+p["LOAD_BEST"]= False
 
 # possible loss types: "first_spike", "first_spike_exp", "max",
 # "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_sigmoid", "sum_weigh_input",
@@ -813,7 +814,7 @@ class SHD_model:
             
         self.input.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*self.num_input*(p["N_INPUT_DELAY"]+1)*p["N_MAX_SPIKE"], dtype=np.float32))
         # reserve enough space for any set of input spikes that is likely
-        self.input.set_extra_global_param("spikeTimes", np.zeros(400000000, dtype=np.float32))
+        self.input.set_extra_global_param("spikeTimes", np.zeros(750000000, dtype=np.float32))
 
         input_reset_params= {"N_max_spike": p["N_MAX_SPIKE"]}
         input_reset_var_refs= {
@@ -1638,7 +1639,7 @@ class SHD_model:
         if X_train is not None:
             assert(Y_train is not None)
             if "blend" in p["AUGMENTATION"]:
-                N_train= p["N_TRAIN"]
+                N_train = p["N_TRAIN"]
             else:
                 if p["BALANCE_TRAIN_CLASSES"]:
                     N_train= np.min(snm)*self.N_class
@@ -1648,17 +1649,19 @@ class SHD_model:
             N_trial_train= (N_train-1) // p["N_BATCH"] + 1  # large enough to fit potentially incomplete last batch
             N_trial+= N_trial_train
         else:
-            N_trial_train= 0
+            N_train = 0
+            N_trial_train = 0
         if X_eval is not None:
             assert(Y_eval is not None)
             if p["BALANCE_EVAL_CLASSES"]:
-                N_eval= np.min(sne)*self.N_class
+                N_eval = np.min(sne)*self.N_class
             else:
-                N_eval= len(X_eval)
-            N_trial_eval= (N_eval-1) // p["N_BATCH"] + 1  # large enough to fit potentially incomplete last batch
-            N_trial+= N_trial_eval
+                N_eval = len(X_eval)
+            N_trial_eval = (N_eval-1) // p["N_BATCH"] + 1  # large enough to fit potentially incomplete last batch
+            N_trial += N_trial_eval
         else:
-            N_trial_eval= 0
+            N_eval = 0
+            N_trial_eval = 0
         print(f"N_trial_train= {N_trial_train}, N_trial_eval= {N_trial_eval}")
         return (N_train, N_trial_train, N_trial_eval, N_trial)
 
@@ -1718,7 +1721,7 @@ class SHD_model:
         return (newX, newY, newZ, newX_e, newY_e)
 
 
-    def write_checkpoint(self, label):
+    def write_checkpoint(self, label, p):
         self.in_to_hid.pull_var_from_device("w")
         np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_"+label+".npy"), self.in_to_hid.vars["w"].view)
         self.hid_to_out.pull_var_from_device("w")
@@ -1746,6 +1749,32 @@ class SHD_model:
             np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_tausyn_output_"+label+".npy"), self.output.vars["tau_syn"].view)
 
 
+    def load_checkpoint(self, label, p):
+        self.in_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_"+label+".npy"))
+        self.in_to_hid.push_var_to_device("w")
+        self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_"+label+".npy"))
+        self.hid_to_out.push_var_to_device("w")
+        for l in range(p["N_HID_LAYER"]-1):
+            self.hid_to_hidfwd[l].vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden"+str(l)+"_hidden"+str(l+1)+"_"+label+".npy"))
+            self.hid_to_hidfwd[l].push_var_to_device("w")
+        if p["RECURRENT"]:
+            for l in range(p["N_HID_LAYER"]):
+                self.hid_to_hid[l].vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden"+str(l)+"_hidden"+str(l)+"_"+label+".npy"))
+                self.hid_to_hid[l].push_var_to_device("w")
+                
+        if p["HIDDEN_NEURON_TYPE"] == "hetLIF" or p["TRAIN_TAU"]:
+            for l in range(p["N_HID_LAYER"]):
+                self.hidden[l].vars["tau_m"].view[:] = np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_taum_hidden"+str(l)+"_"+label+".npy"))
+                self.hidden[l].vars["tau_syn"].view[:] = np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_tausyn_hidden"+str(l)+"_"+label+".npy"))
+                self.hidden[l].push_var_to_device("tau_m")
+                self.hidden[l].push_var_to_device("tau_syn")
+
+        if p["OUTPUT_NEURON_TYPE"] == "hetLI" or p["TRAIN_TAU_OUTPUT"]:
+            self.output.vars["tau_m"].view[:] = np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_taum_output_"+label+".npy"))
+            self.output.vars["tau_syn"].view[:] = np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_tausyn_output_"+label+".npy"))
+            self.output.push_var_to_device("tau_m")
+            self.output.push_var_to_device("tau_syn")
+
     """
     ----------------------------------------------------------------------------
     Run the model
@@ -1754,18 +1783,10 @@ class SHD_model:
             
     def run_model(self, number_epochs, p, shuffle, X_train= None, Y_train= None, Z_train= None, X_eval= None, Y_eval= None, resfile= None):      
         if p["LOAD_LAST"]:
-            self.in_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_last.npy"))
-            self.in_to_hid.push_var_to_device("w")
-            self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_last.npy"))
-            self.hid_to_out.push_var_to_device("w")
-            for l in range(p["N_HID_LAYER"]-1):
-                self.hid_to_hidfwd[l].vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden"+str(l)+"_hidden"+str(l+1)+"_last.npy"))
-                self.hid_to_hidfwd[l].push_var_to_device("w")
-            if p["RECURRENT"]:
-                for l in range(p["N_HID_LAYER"]):
-                    self.hid_to_hid[l].vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_hidden"+str(l)+"_last.npy"))
-                    self.hid_to_hid[l].push_var_to_device("w")
-
+            self.load_checkpoint("last", p)
+        if p["LOAD_BEST"]:
+            self.load_checkpoint("best", p)
+            
         # set up run
         snm, sne= self.calc_balance(Y_train, Z_train, Y_eval)
         N_train, N_trial_train, N_trial_eval, N_trial= self.trial_setup(X_train, Y_train, Z_train, X_eval, Y_eval, snm, sne, p)
@@ -1900,20 +1921,21 @@ class SHD_model:
                 #the_time= time()
                 if p["TEST_ST_INTEGRITY"]:
                     self.test_st_integrity(X,Y,input_start,input_end,p)
-                
+
+            the_Y = Y.copy()
             if N_trial_train > 0 and shuffle:
                 # by virtue of input_id being the right length we do not shuffle
                 # padding inputs
                 self.datarng.shuffle(input_id)
                 all_input_id[:len(input_id)]= input_id
-                Y[:len(input_id)]= Y[input_id]
-                self.output.extra_global_params["label"].view[:len(Y)]= Y
+                the_Y[:len(input_id)]= Y[input_id]
+                self.output.extra_global_params["label"].view[:len(the_Y)]= the_Y
                 self.output.push_extra_global_param_to_device("label")
                 self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
                 self.input_set.push_extra_global_param_to_device("allInputID")
                 #print(f"shuffling done ... {time()-the_time} s")
                 #the_time= time()
-
+                
             if p["REC_PREDICTIONS"]:
                 predict= {
                     "train": [],
@@ -2133,7 +2155,7 @@ class SHD_model:
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     pred= np.argmax(self.output.vars["sum_V"].view[:N_batch,:self.N_class], axis=-1)
 
-                lbl= Y[(trial*p["N_BATCH"]):(trial*p["N_BATCH"]+N_batch)]
+                lbl= the_Y[(trial*p["N_BATCH"]):(trial*p["N_BATCH"]+N_batch)]
                 if ([epoch, trial] in p["REC_SPIKES_EPOCH_TRIAL"]):
                     rec_spk_lbl.append(lbl.copy())
                     rec_spk_pred.append(pred.copy())
@@ -2258,7 +2280,10 @@ class SHD_model:
                     print("Hidden spikes "+str(l)+" per trial per neuron across batches: {} +/- {}, min {}, max {}".format(np.mean(all_sNSum[l]),np.std(all_sNSum[l]),np.amin(all_sNSum[l]),np.amax(all_sNSum[l])))
 
             print("{} Training Correct: {}, Training Loss: {}, Evaluation Correct: {}, Evaluation Loss: {}, Silent: {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"]), n_silent))
-            print(f"Training examples: {len(lX)}, Evaluation examples: {len(lX_eval)}")
+            if lX is not None:
+                print(f"Training examples: {len(lX)},")
+            if lX_eval is not None:
+                print(f"Evaluation examples: {len(lX_eval)}")
             print(f"Learning rate: {the_lr}, target learning rate: {learning_rate}")
             
             if resfile is not None:
@@ -2310,10 +2335,10 @@ class SHD_model:
                     f.write(f" {ttt}")
                     f.write("\n")
                     f.close()
-                self.write_checkpoint("best")    
+                self.write_checkpoint("best",p)    
 
             if (p["CHECKPOINT"]):
-                self.write_checkpoint("last")
+                self.write_checkpoint("last",p)
                 
         for pop in p["REC_SPIKES"]:
             spike_t[pop]= np.hstack(spike_t[pop])
