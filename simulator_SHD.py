@@ -1819,7 +1819,7 @@ class SHD_model:
         rec_s_lbl= []
         rec_s_pred= []
 
-        if len(p["AUGMENTATION"]) == 0:
+        if N_trial_train == 0 or len(p["AUGMENTATION"]) == 0:
             # build and assign the input spike train and corresponding labels
             # these are padded to multiple of batch size for both train and eval portions
             lX= copy.deepcopy(X_train)
@@ -1843,8 +1843,15 @@ class SHD_model:
         else:
             input_id= []
         all_input_id= np.arange(N_trial*p["N_BATCH"])
+        # NOTE: here we force-shuffle the input once even if "shuffle" is not selected: This is to avoid
+        # problems if the dataset stupidly is ordered in some unhelpful way (like SSC ordered by class)
+        self.datarng.shuffle(input_id)
+        all_input_id[:len(input_id)]= input_id
+        Y[:len(input_id)]= Y[input_id]
         self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
         self.input_set.push_extra_global_param_to_device("allInputID")
+        self.output.extra_global_params["label"].view[:len(Y)]= Y
+        self.output.push_extra_global_param_to_device("label")
 
         if p["COLLECT_CONFUSION"]:
             confusion= {
@@ -1929,12 +1936,13 @@ class SHD_model:
                 self.datarng.shuffle(input_id)
                 all_input_id[:len(input_id)]= input_id
                 the_Y[:len(input_id)]= Y[input_id]
-                self.output.extra_global_params["label"].view[:len(the_Y)]= the_Y
-                self.output.push_extra_global_param_to_device("label")
                 self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
                 self.input_set.push_extra_global_param_to_device("allInputID")
                 #print(f"shuffling done ... {time()-the_time} s")
                 #the_time= time()
+            # if we don't augment or shuffle or don't train, this would not be necessary every epoch
+            self.output.extra_global_params["label"].view[:len(the_Y)]= the_Y
+            self.output.push_extra_global_param_to_device("label")
                 
             if p["REC_PREDICTIONS"]:
                 predict= {
