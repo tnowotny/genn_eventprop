@@ -1843,15 +1843,8 @@ class SHD_model:
         else:
             input_id= []
         all_input_id= np.arange(N_trial*p["N_BATCH"])
-        # NOTE: here we force-shuffle the input once even if "shuffle" is not selected: This is to avoid
-        # problems if the dataset stupidly is ordered in some unhelpful way (like SSC ordered by class)
-        self.datarng.shuffle(input_id)
-        all_input_id[:len(input_id)]= input_id
-        Y[:len(input_id)]= Y[input_id]
         self.input_set.extra_global_params["allInputID"].view[:len(all_input_id)]= all_input_id
         self.input_set.push_extra_global_param_to_device("allInputID")
-        self.output.extra_global_params["label"].view[:len(Y)]= Y
-        self.output.push_extra_global_param_to_device("label")
 
         if p["COLLECT_CONFUSION"]:
             confusion= {
