@@ -413,9 +413,9 @@ class SHD_model:
         SoftmaxVal_correct= np.array([ SoftmaxVal[i,y] for i, y in enumerate(Y) ])
         if (np.sum(SoftmaxVal_correct == 0) > 0):
             print("exp_V flushed to 0 exception!")
-            print(softmaxVal_correct)
-            print(softmaxVal[np.where(softmaxVal_correct == 0),:])
-            softMaxVal_correct[softmaxVal_correct == 0]+= 2e-45 # make sure all exp_V are > 0
+            print(SoftmaxVal_correct)
+            print(SoftmaxVal[np.where(SoftmaxVal_correct == 0),:])
+            SoftmaxVal_correct[SoftmaxVal_correct == 0]+= 2e-45 # make sure all exp_V are > 0
         loss= -np.sum(np.log(SoftmaxVal_correct))/N_batch
         return loss
 
