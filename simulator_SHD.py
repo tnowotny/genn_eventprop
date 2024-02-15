@@ -2327,7 +2327,7 @@ class SHD_model:
                 correct_eval_best = correct_eval
                 correct_best = correct
                 with open(os.path.join(p["OUT_DIR"], p["NAME"]+"_best.txt"),"w") as f:
-                    f.write(f"{epoch} {correct} {np.mean(the_loss['train'])} {correct_eval}, {np.mean(the_loss['eval'])}")
+                    f.write(f"{epoch} {correct} {np.mean(the_loss['train'])} {correct_eval} {np.mean(the_loss['eval'])}")
                     if p["DEBUG_HIDDEN_N"]:
                         for l in range(p["N_HID_LAYER"]):
                             f.write(" {} {} {} {}".format(np.mean(all_hidden_n[l]),np.std(all_hidden_n[l]),np.amin(all_hidden_n[l]),np.amax(all_hidden_n[l])))
