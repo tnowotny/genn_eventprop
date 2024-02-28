@@ -1960,24 +1960,20 @@ class SHD_model:
             self.model.timestep= 0
             for var, val in self.input_init_vars.items():
                 self.input.vars[var].view[:]= val
-            self.input.push_state_to_device()
+                self.input.push_var_to_device(var)
             self.input.extra_global_params["pDrop"].view[:]= p["PDROP_INPUT"]
             for l in range(p["N_HID_LAYER"]):
                 for var, val in self.hidden_init_vars.items():
                     if var != "tau_m" and var != "tau_syn":               # do not reset tau_m at beginning of epoch
                         self.hidden[l].vars[var].view[:]= val
-                    else:
-                        self.hidden[l].pull_var_from_device(var)
-                self.hidden[l].push_state_to_device()
+                        self.hidden[l].push_var_to_device(var)
                 self.hidden[l].extra_global_params["pDrop"].view[:]= p["PDROP_HIDDEN"] 
                 if p["HIDDEN_NOISE"] > 0.0:
                     self.hidden[l].extra_global_params["A_noise"].view[:]= p["HIDDEN_NOISE"]
             for var, val in self.output_init_vars.items():
                 if var != "tau_m" and var != "tau_syn":               # do not reset tau_m at beginning of epoch
                     self.output.vars[var].view[:]= val
-                else:
-                    self.output.pull_var_from_device(var)
-            self.output.push_state_to_device()
+                    self.output.push_var_to_device(var)
             self.model.custom_update("EVPReduce")  # this zeros dw (so as to ignore eval gradients from last epoch!)
             #print(f"Resetting variables done ... {time()-the_time} s")
             #the_time= time()
