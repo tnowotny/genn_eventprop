@@ -26,6 +26,7 @@ for res in x:
 
 ar= np.array(ar)
 
+print(ar)
 # separate mean and std
 totmn= ar[:,::2]
 totstd= ar[:,1::2]
@@ -37,7 +38,7 @@ for a in range(2):
     # add the values from the literature 
     xmn= np.vstack([extra,totmn[8*a:8*(a+1)]])
     xstd= np.vstack([extraS,totstd[8*a:8*(a+1)]])
-   
+
     plt.figure(figsize=[ 10, 5 ])
     plt.grid(visible=True, which= 'major', axis= 'y', color='k', linestyle=':', linewidth= 0.5)
     for m in range(4):
@@ -51,5 +52,5 @@ for a in range(2):
     plt.legend(["training xval", "validation xval", "training", "test"],loc="upper right")
     plt.tight_layout()
     plt.savefig("SHD_all_overview_"+str(a)+".png", dpi=300)
-    plt.show()
+plt.show()
 

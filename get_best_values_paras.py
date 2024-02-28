@@ -1,6 +1,7 @@
 import json
 import numpy as np
 from utils import incr
+import sys
 
 def print_diff(p, p1):
     for x in p:
@@ -48,7 +49,11 @@ def subdict(p : dict, k : set):
     for x in k:
         pnew[x]= p[x]
     return pnew
-            
+
+if len(sys.argv) != 2:
+    print("usage: get_best_values_paras.py <output base name>")
+unique_name= sys.argv[1]
+
 loss_types= ["sum", "sum_weigh_exp", "first_spike_exp", "max"]
 recur_types= ["feedforward", "recurrent"]
 augment_types= ["None", "random_shift"]
@@ -150,7 +155,9 @@ for a in range(2):
                             train.append(np.mean(d[idx,1]))
                             train_std.append(np.std(d[idx,1]))
                             eva.append(np.mean(d[idx,3]))
-                            eva_std.append(np.std(d[idx,3]))     
+                            eva_std.append(np.std(d[idx,3]))
+                            if l == 3 and a == 0:
+                                print(f"max train: {np.mean(d[idx,1])}, val: {np.mean(d[idx,3])}")
                         i.next()
                     # average the two neighbouring results that only differ in the seeds
                     train= np.mean(np.array(train).reshape(len(train)//2,2),axis=1)
@@ -194,7 +201,7 @@ for b in best:
                 except:
                     done= True
                 p1= blank_irrelevant(p1)
-                print_diff(p,p1)
+                #print_diff(p,p1)
                 if p == p1:
                     found= True
                     done= True
@@ -238,10 +245,10 @@ for i in range(len(best)):
     pnew= subdict(p,diffkeys)
     best[i]["unique_p"]= pnew
         
-with open("best_summary.json","w") as f:
+with open(unique_name+"best_summary.json","w") as f:
     json.dump(best,f)
 
-with open("best_unique_p.txt", "w") as f:
+with open(unique_name+"best_unique_p.txt", "w") as f:
     idx= [ 0, 4, 1, 5, 2, 6, 3, 7, 8, 12, 9, 13, 10, 14, 11, 15 ]
     nbest= [ best[i] for i in idx ]
     best= nbest
@@ -257,7 +264,7 @@ with open("best_unique_p.txt", "w") as f:
 with open(best[0]["path"]+str(best[0]["id"])+".json","r") as f:
     p= json.load(f)
 
-with open("best_common_p.txt", "w") as f:
+with open(unique_name+"best_common_p.txt", "w") as f:
     commkeys= p.keys() - diffkeys
     for k in commkeys:
         f.write(f"{k} {p[k]} \n")
