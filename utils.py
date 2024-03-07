@@ -1,5 +1,8 @@
 import numpy as np
 import copy
+from dataclasses import dataclass
+from typing import Tuple
+import json
 
 """
 this is an augmentation for SHD spoken digits
@@ -153,3 +156,141 @@ class incr:
                 return False
         else:
             return True
+
+
+@dataclass
+class EventsToGrid:
+    sensor_size: Tuple[int, int, int]
+    dt: float
+
+    def __call__(self, events):
+        # Tuple of possible axis names
+        axes = ("x", "y", "p")
+
+        # Build bin and sample data structures for histogramdd
+        bins = []
+        sample = []
+        for s, a in zip(self.sensor_size, axes):
+            if a in events.dtype.names:
+                bins.append(np.linspace(0, s, s + 1))
+                sample.append(events[a])
+
+        # Add time bins
+        bins.append(np.arange(0.0, np.amax(events["t"]) + self.dt, self.dt))
+        sample.append(events["t"])
+
+        # Build histogram
+        event_hist,_ = np.histogramdd(tuple(sample), tuple(bins))
+        new_events = np.where(event_hist > 0)
+
+        # Copy x, y, p data into new structured array
+        grid_events = np.empty(len(new_events[0]), dtype=events.dtype)
+        for i, a in enumerate(axes):
+            if a in grid_events.dtype.names:
+                grid_events[a] = new_events[i]
+
+        # Add t, scaling by dt
+        grid_events["t"] = new_events[-1] * self.dt
+        return grid_events
+       
+
+def gridlines(ax, hti, wdi, split):
+    k= 1
+    ymn= 0
+    ymx= np.product(split[:hti])
+    xmn= 0
+    xmx= np.product(split[hti:])
+    for i in range(hti):
+        k*= split[i]
+        d= ymx // k
+        lnsy= [ [j*d-0.5, j*d-0.5] for j in range(1,ymx // d) ]
+        lnsx= [ [xmn-0.5, xmx-0.5] for j in range(1,ymx // d) ]
+        ax.plot(np.array(lnsx).T,np.array(lnsy).T,'w',lw= hti-i)   
+    k=1
+    for j in range(hti, len(split)):
+        k*= split[j]
+        d= xmx // k
+        lnsx= [ [i*d-0.5, i*d-0.5] for i in range(1,xmx // d) ]
+        lnsy= [ [ymn-0.5, ymx-0.5] for i in range(1,xmx // d) ]
+        ax.plot(np.array(lnsx).T,np.array(lnsy).T,'w',lw= len(split)-j)
+
+def remap(d, split, remap):
+    for j in range(d.shape[0]):
+        x= d[j,:].copy()
+        x= np.reshape(x, split)
+        x= x.transpose(remap)
+        d[j,:]= x.flatten()
+    split= np.asarray(split)[remap]
+    return d, split
+
+def average_out(d, s, split, avg, names):
+    avg= -np.sort(-np.asarray(avg)) # sort descending so that the pop()works with consistent indexing
+    d2= []
+    for j in range(d.shape[0]):
+        x= np.reshape(d[j,:].copy(), split)
+        for i in avg:
+            x= np.mean(x,axis= i)
+        d2.append(x.flatten())
+    d2 = np.array(d2) 
+    nsplit= split.copy()
+    nnames= names.copy()
+    for x in avg:
+        nsplit.pop(x)
+        nnames.pop(x)
+        s= s // split[x]
+    return (d2, s, nsplit, nnames)
+
+def optimise(d, lst, opt, split):
+    split= np.asarray(split)
+    d2= d.copy().reshape(split)
+    d2 = np.transpose(d2, lst+opt)
+    ny = np.prod(split[lst])
+    nx = np.prod(split[opt])
+    d2 = d2.reshape((ny,nx))
+    best_idx = np.argmax(d2, axis=1)
+    best = [ i*nx+best_idx[i] for i in range(ny) ]
+    return best
+
+
+def load_train_test(basename,s,N_avg):
+    res_col = 12
+    results = [ [] for i in range(res_col) ] # 11 types of results
+    for i in range(s):
+        fname= basename+"_"+str(i)+".json"
+        results[0].append(i)
+        try:
+            with open(fname,"r") as f:
+                p= json.load(f)
+        except:
+            for j in range(res_col-1):
+                results[j+1].append(0)        
+                print(f"error trying to load {fname}")
+        else:
+            fname= basename+"_"+str(i)+"_results.txt"
+            try:
+                with open(fname, "r") as f:
+                    d= np.loadtxt(f)
+            except:
+                for j in range(1,5):
+                    results[j+1].append(0)        
+                results[11].append(0)
+                print("error trying to load {}".format(fname))
+            else:
+                results[1].append(len(d[:,1]))
+                for j in range(1,5):
+                    results[j+1].append(np.mean(d[-N_avg:,j]))
+                results[11].append(d[-1,-1]/(d[-1,0]+1))
+            fname= basename+"_"+str(i)+"_best.txt"
+            try:
+                with open(fname, "r") as f:
+                    d= np.loadtxt(f)
+            except:
+                for j in range(1,5):
+                    results[j+6].append(0)
+                print("error trying to load {}".format(fname))
+            else:
+                results[6].append(d[0])
+                for j in range(1,5):
+                    results[j+6].append(d[j])
+    results= np.array(results)
+    return results
