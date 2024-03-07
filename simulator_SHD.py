@@ -400,7 +400,7 @@ class SHD_model:
             self.tdatarng= np.random.default_rng(p["TEST_DATA_SEED"])
         else:
             self.tdatarng= np.random.default_rng()        
-        dataset = tonic.datasets.SHD(save_to='./data', train=True, transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SHD.sensor_size, p["DT_MS"] * 1000.0)]))
+        dataset = tonic.datasets.SHD(save_to='./data', train=True, transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=p["TRIAL_MS"] * 1000.0), EventsToGrid(tonic.datasets.SHD.sensor_size, p["DT_MS"] * 1000.0)]))
         sensor_size = dataset.sensor_size
         self.data_max_length= max(len(dataset),p["N_TRAIN"])+2*p["N_BATCH"]
         self.N_class= len(dataset.classes)
@@ -415,11 +415,11 @@ class SHD_model:
             self.X_train_orig.append(sample)
         self.X_train_orig= np.array(self.X_train_orig)
         self.Z_train_orig= dataset.speaker
-        dataset = tonic.datasets.SHD(save_to='./data', train=False, transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SHD.sensor_size, p["DT_MS"] * 1000.0)]))
+        dataset = tonic.datasets.SHD(save_to='./data', train=False, transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=p["TRIAL_MS"] * 1000.0), EventsToGrid(tonic.datasets.SHD.sensor_size, p["DT_MS"] * 1000.0)]))
         self.data_max_length+= len(dataset)
         self.Y_test_orig= np.empty(len(dataset), dtype= int)
         self.X_test_orig= []
-        for i in range(len(dataset)):
+        for i in range(len(dataset)p["TRIAL_MS"]):
             events, label = dataset[i]
             self.Y_test_orig[i]= label
             sample= rescale(events["x"], events["t"]/1000.0, p) # always apply rescale to have at most one spike per timestep
@@ -449,7 +449,7 @@ class SHD_model:
             self.data_max_length= max(len(self.X_train_orig),p["N_TRAIN"])+2*p["N_BATCH"]
             print(f"data loaded from buffered file {fname}, N_class= {self.N_class}")
         else:
-            dataset = tonic.datasets.SSC(save_to='./data', split="train", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+            dataset = tonic.datasets.SSC(save_to='./data', split="train", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=p["TRIAL_MS"] * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
             self.N_class= len(dataset.classes)
             self.data_max_length= max(len(dataset),p["N_TRAIN"])+2*p["N_BATCH"]
             self.Y_train_orig= np.empty(len(dataset), dtype= int)
@@ -474,7 +474,7 @@ class SHD_model:
             self.data_max_length+= len(self.X_eval_orig)
             print(f"data loaded from buffered file {fname}")
         else:
-            dataset = tonic.datasets.SSC(save_to='./data', split="valid", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+            dataset = tonic.datasets.SSC(save_to='./data', split="valid", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=p["TRIAL_MS"] * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
             self.data_max_length+= len(dataset)
             self.Y_eval_orig= np.empty(len(dataset), dtype= int)
             self.X_eval_orig= []
@@ -496,7 +496,7 @@ class SHD_model:
             self.data_max_length+= len(self.X_test_orig)
             print(f"data loaded from buffered file {fname}")
         else:
-            dataset = tonic.datasets.SSC(save_to='./data', split="test", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=1000.0 * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
+            dataset = tonic.datasets.SSC(save_to='./data', split="test", transform=tonic.transforms.Compose([tonic.transforms.CropTime(max=p["TRIAL_MS"] * 1000.0), EventsToGrid(tonic.datasets.SSC.sensor_size, p["DT_MS"] * 1000.0)]))
             self.data_max_length+= len(dataset)
             self.Y_test_orig= np.empty(len(dataset), dtype= int)
             self.X_test_orig= []
