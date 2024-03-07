@@ -452,7 +452,7 @@ class SHD_model:
         self.data_max_length+= len(dataset)
         self.Y_test_orig= np.empty(len(dataset), dtype= int)
         self.X_test_orig= []
-        for i in range(len(dataset)p["TRIAL_MS"]):
+        for i in range(len(dataset)):
             events, label = dataset[i]
             self.Y_test_orig[i]= label
             sample= rescale(events["x"], events["t"]/1000.0, p) # always apply rescale to have at most one spike per timestep
