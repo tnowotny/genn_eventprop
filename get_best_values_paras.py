@@ -1,25 +1,8 @@
 import json
 import numpy as np
-from utils import incr
+from utils import incr, print_diff, diff_keys, subdict
 import sys
 
-def print_diff(p, p1):
-    for x in p:
-        if x not in p1:
-            print(f"{x} not in p1")
-        else:
-            if p[x] != p1[x]:
-                print(f"{x}: {p[x]} - {p1[x]}")
-    for x in p1:
-        if x not in p:
-            print(f"{x} not in p")
-    print("--------------------------------------------------")
-            
-    #i= 0
-    #for x in p:
-    #    if p[x] != p1[x]:
-    #        i+= 1
-    #print(i)
 
 def blank_irrelevant(p):
     p["NAME"]= "None"
@@ -28,27 +11,6 @@ def blank_irrelevant(p):
     p["TEST_DATA_SEED"]= "None"
     p["MODEL_SEED"]= "None"
     return p
-
-def diff_keys(p, p1):
-    # only considering common keys that differ in value
-    # print a warning if a key doen't exist in one of them
-    d= set()
-    for x in p:
-        if x not in p1:
-            print(f"{x} not in p1")
-        else:
-            if p[x] != p1[x]:
-                d.add(x)
-    for x in p1:
-        if x not in p:
-            print(f"{x} not in p")
-    return d
-
-def subdict(p : dict, k : set):
-    pnew= {}
-    for x in k:
-        pnew[x]= p[x]
-    return pnew
 
 if len(sys.argv) != 2:
     print("usage: get_best_values_paras.py <output base name>")

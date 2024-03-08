@@ -296,3 +296,40 @@ def load_train_test(basename,s,N_avg):
         print(len(x))
     results= np.array(results)
     return results
+
+
+# some tools for looking at parameter dictionaries
+
+def print_diff(p, p1):
+    for x in p:
+        if x not in p1:
+            print(f"{x} not in p1")
+        else:
+            if p[x] != p1[x]:
+                print(f"{x}: {p[x]} - {p1[x]}")
+    for x in p1:
+        if x not in p:
+            print(f"{x} not in p")
+    print("--------------------------------------------------")
+            
+
+def diff_keys(p, p1):
+    # only considering common keys that differ in value
+    # print a warning if a key doen't exist in one of them
+    d= set()
+    for x in p:
+        if x not in p1:
+            print(f"{x} not in p1")
+        else:
+            if p[x] != p1[x]:
+                d.add(x)
+    for x in p1:
+        if x not in p:
+            print(f"{x} not in p")
+    return d
+
+def subdict(p : dict, k : set):
+    pnew= {}
+    for x in k:
+        pnew[x]= p[x]
+    return pnew
