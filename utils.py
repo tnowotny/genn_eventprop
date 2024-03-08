@@ -271,7 +271,7 @@ def load_train_test(basename,s,N_avg):
                 with open(fname, "r") as f:
                     d= np.loadtxt(f)
             except:
-                for j in range(1,5):
+                for j in range(0,5):
                     results[j+1].append(0)        
                 results[11].append(0)
                 print("error trying to load {}".format(fname))
@@ -285,12 +285,14 @@ def load_train_test(basename,s,N_avg):
                 with open(fname, "r") as f:
                     d= np.loadtxt(f)
             except:
-                for j in range(1,5):
+                for j in range(0,5):
                     results[j+6].append(0)
                 print("error trying to load {}".format(fname))
             else:
                 results[6].append(d[0])
                 for j in range(1,5):
                     results[j+6].append(d[j])
+    for x in results:
+        print(len(x))
     results= np.array(results)
     return results
