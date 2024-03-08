@@ -252,7 +252,7 @@ def optimise(d, lst, opt, split):
     return best
 
 
-def load_train_test(basename,s,N_avg):
+def load_train_test(basename,s,N_avg,secondary):
     res_col = 12
     results = [ [] for i in range(res_col) ] # 11 types of results
     for i in range(s):
@@ -280,7 +280,7 @@ def load_train_test(basename,s,N_avg):
                 for j in range(1,5):
                     results[j+1].append(np.mean(d[-N_avg:,j]))
                 results[11].append(d[-1,-1]/(d[-1,0]+1))
-            fname= basename+"_"+str(i)+"_best.txt"
+            fname= basename+"_"+str(i)+"_"+secondary+".txt"
             try:
                 with open(fname, "r") as f:
                     d= np.loadtxt(f)

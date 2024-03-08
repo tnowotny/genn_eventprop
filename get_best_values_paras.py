@@ -3,6 +3,21 @@ import numpy as np
 from utils import incr, print_diff, diff_keys, subdict
 import sys
 
+<<<<<<< Updated upstream
+=======
+def print_diff(p, p1):
+    for x in p:
+        if x not in p1:
+            print(f"{x} not in p1")
+        else:
+            if p[x] != p1[x]:
+                print(f"{x}: {p[x]} - {p1[x]}")
+    for x in p1:
+        if x not in p:
+            print(f"{x} not in p")
+    print("--------------------------------------------------")
+            
+>>>>>>> Stashed changes
 
 def blank_irrelevant(p):
     p["NAME"]= "None"

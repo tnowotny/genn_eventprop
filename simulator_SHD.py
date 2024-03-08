@@ -1717,28 +1717,32 @@ class SHD_model:
 
 
     def load_checkpoint(self, label, p):
-        self.in_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_input_hidden_"+label+".npy"))
+        if "CHECKPOINT_NAME" in p:
+            name= p["CHECKPOINT_NAME"]
+        else:
+            name= p["NAME"]
+        self.in_to_hid.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], name+"_w_input_hidden_"+label+".npy"))
         self.in_to_hid.push_var_to_device("w")
-        self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden_output_"+label+".npy"))
+        self.hid_to_out.vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], name+"_w_hidden_output_"+label+".npy"))
         self.hid_to_out.push_var_to_device("w")
         for l in range(p["N_HID_LAYER"]-1):
-            self.hid_to_hidfwd[l].vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden"+str(l)+"_hidden"+str(l+1)+"_"+label+".npy"))
+            self.hid_to_hidfwd[l].vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], name+"_w_hidden"+str(l)+"_hidden"+str(l+1)+"_"+label+".npy"))
             self.hid_to_hidfwd[l].push_var_to_device("w")
         if p["RECURRENT"]:
             for l in range(p["N_HID_LAYER"]):
-                self.hid_to_hid[l].vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_w_hidden"+str(l)+"_hidden"+str(l)+"_"+label+".npy"))
+                self.hid_to_hid[l].vars["w"].view[:]= np.load(os.path.join(p["OUT_DIR"], name+"_w_hidden"+str(l)+"_hidden"+str(l)+"_"+label+".npy"))
                 self.hid_to_hid[l].push_var_to_device("w")
                 
         if p["HIDDEN_NEURON_TYPE"] == "hetLIF" or p["TRAIN_TAU"]:
             for l in range(p["N_HID_LAYER"]):
-                self.hidden[l].vars["tau_m"].view[:] = np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_taum_hidden"+str(l)+"_"+label+".npy"))
-                self.hidden[l].vars["tau_syn"].view[:] = np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_tausyn_hidden"+str(l)+"_"+label+".npy"))
+                self.hidden[l].vars["tau_m"].view[:] = np.load(os.path.join(p["OUT_DIR"], name+"_taum_hidden"+str(l)+"_"+label+".npy"))
+                self.hidden[l].vars["tau_syn"].view[:] = np.load(os.path.join(p["OUT_DIR"], name+"_tausyn_hidden"+str(l)+"_"+label+".npy"))
                 self.hidden[l].push_var_to_device("tau_m")
                 self.hidden[l].push_var_to_device("tau_syn")
 
         if p["OUTPUT_NEURON_TYPE"] == "hetLI" or p["TRAIN_TAU_OUTPUT"]:
-            self.output.vars["tau_m"].view[:] = np.load(os.path.join(p["OUT_DIR"], p["NAME"]+"_taum_output_"+label+".npy"))
-            self.output.vars["tau_syn"].view[:] = np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_tausyn_output_"+label+".npy"))
+            self.output.vars["tau_m"].view[:] = np.load(os.path.join(p["OUT_DIR"], name+"_taum_output_"+label+".npy"))
+            self.output.vars["tau_syn"].view[:] = np.save(os.path.join(p["OUT_DIR"], name+"_tausyn_output_"+label+".npy"))
             self.output.push_var_to_device("tau_m")
             self.output.push_var_to_device("tau_syn")
 
@@ -2433,7 +2437,8 @@ class SHD_model:
         if p["BUILD"]:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-        return self.run_model(1, p, False, X_eval= self.X_test_orig, Y_eval= self.Y_test_orig)
+        resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
+        return self.run_model(1, p, False, X_eval= self.X_test_orig, Y_eval= self.Y_test_orig, resfile=resfile)
 
     def train_test(self, p):
         self.define_model(p, p["SHUFFLE"])
