@@ -25,6 +25,8 @@ if len(sys.argv) > 2:
 #p["TRAIN_TAU"] = False
 #p["N_BATCH"] = 256
 #p["ETA"] = 1e-3
+#p["ETA"] *= 0.1
+p["LR_EASE_IN_FACTOR"] = 1.01
 
 print(p)
 fname= p["NAME"]+".json"
@@ -32,8 +34,8 @@ with open(os.path.join(p["OUT_DIR"], fname),"w") as f:
     json.dump(p, f)
 
 mn= SHD_model(p)
-res= mn.cross_validate_SHD(p)
-#res= mn.train_test(p)
+#res= mn.cross_validate_SHD(p)
+res= mn.train_test(p)
 
 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_res"), res)
 #print(res)

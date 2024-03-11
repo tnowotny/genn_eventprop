@@ -169,6 +169,7 @@ p["TRAIN_W_OUTPUT"]= True
 p["EMA_WHICH"] = "validation"
 p["CHECKPOINT_BEST"] = "neither"
 p["CHECKPOINT"] = True
+p["LR_EASE_IN_FACTOR"] = 1.05
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -2057,7 +2058,7 @@ class SHD_model:
                     #if trial%2 == 1:
                     self.model.custom_update("EVPLearn")
                 if the_lr < learning_rate:
-                    the_lr = np.minimum(the_lr*1.05,learning_rate)
+                    the_lr = np.minimum(the_lr*p["LR_EASE_IN_FACTOR"],learning_rate)
                     print(f"the_lr: {the_lr}, learning_rate: {learning_rate}")
 
                 self.zero_insyn(p)
