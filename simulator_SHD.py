@@ -905,7 +905,11 @@ class SHD_model:
                     for l in range(p["N_HID_LAYER"]):
                         if p["HIDDEN_NEURON_TYPE"] == "hetLIF":
                             self.hidden_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
+                            self.hidden_init_vars["tau_m"] = np.maximum(p["MIN_TAU_M"],self.hidden_init_vars["tau_m"])
+                            self.hidden_init_vars["tau_m"] = np.minimum(p["TAU_MEM"]*3,self.hidden_init_vars["tau_m"])
                             self.hidden_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, p["NUM_HIDDEN"])
+                            self.hidden_init_vars["tau_syn"] = np.maximum(p["MIN_TAU_SYN"],self.hidden_init_vars["tau_syn"])
+                            self.hidden_init_vars["tau_syn"] = np.minimum(p["TAU_SYN"]*3,self.hidden_init_vars["tau_syn"])
                         print(f"Hidden layer {l} neurons: EVP_LIF_reg_tau_learn")
                         self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_LIF_reg_tau_learn, hidden_params, self.hidden_init_vars))
                         self.hidden[l].set_extra_global_param("fImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*int(p["TRIAL_MS"]/p["DT_MS"])*2))
@@ -920,7 +924,11 @@ class SHD_model:
                         if p["HIDDEN_NEURON_TYPE"] == "hetLIF":
                             for l in range(p["N_HID_LAYER"]):
                                 self.hidden_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
+                                self.hidden_init_vars["tau_m"] = np.maximum(p["MIN_TAU_M"],self.hidden_init_vars["tau_m"])
+                                self.hidden_init_vars["tau_m"] = np.minimum(p["TAU_MEM"]*3,self.hidden_init_vars["tau_m"])
                                 self.hidden_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, p["NUM_HIDDEN"])
+                                self.hidden_init_vars["tau_syn"] = np.maximum(p["MIN_TAU_SYN"],self.hidden_init_vars["tau_syn"])
+                                self.hidden_init_vars["tau_syn"] = np.minimum(p["TAU_SYN"]*3,self.hidden_init_vars["tau_syn"])
                                 print(f"Hidden layer {l} neurons: EVP_hetLIF_reg")
                                 self.hidden.append(self.model.add_neuron_population("hidden"+str(l), p["NUM_HIDDEN"], EVP_hetLIF_reg, hidden_params, self.hidden_init_vars))
 
@@ -1106,8 +1114,12 @@ class SHD_model:
                 "tau_syn": p["TAU_SYN"],
             }
             if p["OUTPUT_NEURON_TYPE"] == "hetLI":
-                self.output_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
-                self.output_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, p["NUM_HIDDEN"])
+                self.output_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, self.num_output)
+                self.output_init_vars["tau_m"] = np.maximum(p["MIN_TAU_M"],self.output_init_vars["tau_m"])
+                self.output_init_vars["tau_m"] = np.minimum(p["TAU_MEM"]*3,self.output_init_vars["tau_m"])
+                self.output_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, self.num_output)
+                self.output_init_vars["tau_syn"] = np.maximum(p["MIN_TAU_SYN"],self.output_init_vars["tau_syn"])
+                self.output_init_vars["tau_syn"] = np.minimum(p["TAU_SYN"]*3,self.output_init_vars["tau_syn"])
             if p["LOSS_TYPE"] == "first_spike":
                 print("Output neurons: EVP_LIF_output_first_spike")
                 self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
@@ -1166,8 +1178,12 @@ class SHD_model:
             }
             print("Output neurons: EVP_LIF_output_max")
             if p["OUTPUT_NEURON_TYPE"] == "hetLI":
-                self.output_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
-                self.output_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, p["NUM_HIDDEN"])
+                self.output_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, self.num_output)
+                self.output_init_vars["tau_m"] = np.maximum(p["MIN_TAU_M"],self.output_init_vars["tau_m"])
+                self.output_init_vars["tau_m"] = np.minimum(p["TAU_MEM"]*3,self.output_init_vars["tau_m"])
+                self.output_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, self.num_output)
+                self.output_init_vars["tau_syn"] = np.maximum(p["MIN_TAU_SYN"],self.output_init_vars["tau_syn"])
+                self.output_init_vars["tau_syn"] = np.minimum(p["TAU_SYN"]*3,self.output_init_vars["tau_syn"])
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_max, output_params, self.output_init_vars)
             self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
 
@@ -1238,8 +1254,12 @@ class SHD_model:
                 self.output_init_vars["wp_V"]= 0;
                 self.output_init_vars["avgInback"]= 0.0;
             if p["OUTPUT_NEURON_TYPE"] == "hetLI":
-                self.output_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
-                self.output_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, p["NUM_HIDDEN"])
+                self.output_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, self.num_output)
+                self.output_init_vars["tau_m"] = np.maximum(p["MIN_TAU_M"],self.output_init_vars["tau_m"])
+                self.output_init_vars["tau_m"] = np.minimum(p["TAU_MEM"]*3,self.output_init_vars["tau_m"])
+                self.output_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, self.num_output)
+                self.output_init_vars["tau_syn"] = np.maximum(p["MIN_TAU_SYN"],self.output_init_vars["tau_syn"])
+                self.output_init_vars["tau_syn"] = np.minimum(p["TAU_SYN"]*3,self.output_init_vars["tau_syn"])
             self.output= self.model.add_neuron_population("output", self.num_output, the_output_neuron_type, output_params, self.output_init_vars)
             self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
             if p["TRAIN_TAU_OUTPUT"]:
@@ -1325,8 +1345,12 @@ class SHD_model:
             }
             print("Output neurons: EVP_LIF_output_SHD_avg_xentropy")
             if p["OUTPUT_NEURON_TYPE"] == "hetLI":
-                self.output_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, p["NUM_HIDDEN"])
-                self.output_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, p["NUM_HIDDEN"])
+                self.output_init_vars["tau_m"]= np.random.gamma(3, p["TAU_MEM"]/3, self.num_output)
+                self.output_init_vars["tau_m"] = np.maximum(p["MIN_TAU_M"],self.output_init_vars["tau_m"])
+                self.output_init_vars["tau_m"] = np.minimum(p["TAU_MEM"]*3,self.output_init_vars["tau_m"])
+                self.output_init_vars["tau_syn"]= np.random.gamma(3, p["TAU_SYN"]/3, self.num_output)
+                self.output_init_vars["tau_syn"] = np.maximum(p["MIN_TAU_SYN"],self.output_init_vars["tau_syn"])
+                self.output_init_vars["tau_syn"] = np.minimum(p["TAU_SYN"]*3,self.output_init_vars["tau_syn"])
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_SHD_avg_xentropy, output_params, self.output_init_vars)
             self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
             self.output.set_extra_global_param("Vbuf", np.zeros(p["N_BATCH"]*self.num_output*self.trial_steps*2, dtype=np.float32)) # reserve space for voltage buffer

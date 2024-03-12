@@ -26,7 +26,7 @@ if len(sys.argv) > 2:
 #p["N_BATCH"] = 256
 #p["ETA"] = 1e-3
 #p["ETA"] *= 0.1
-p["LR_EASE_IN_FACTOR"] = 1.01
+p["LR_EASE_IN_FACTOR"] = 1.05
 
 print(p)
 fname= p["NAME"]+".json"

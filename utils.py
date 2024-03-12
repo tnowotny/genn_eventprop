@@ -252,10 +252,11 @@ def optimise(d, lst, opt, split):
     return best
 
 
-def load_train_test(basename,s,N_avg,secondary):
+def load_train_test(basename,s,N_avg,secondary,reserve=None):
     res_col = 12
     results = [ [] for i in range(res_col) ] # 11 types of results
     for i in range(s):
+        d2swap = False
         fname= basename+"_"+str(i)+".json"
         results[0].append(i)
         try:
@@ -276,11 +277,26 @@ def load_train_test(basename,s,N_avg,secondary):
                 results[11].append(0)
                 print("error trying to load {}".format(fname))
             else:
+                if reserve is not None:
+                    fname = reserve+"_"+str(i)+"_results.txt"
+                    try:
+                        with open(fname, "r") as f:
+                            d2= np.loadtxt(f)
+                    except:
+                        print("no reserve")
+                    else:
+                        # if d2 is a better result in terms of final training error
+                        if (d2[-1,1] > d[-1,1]):
+                            d= d2
+                            d2swap = True
                 results[1].append(len(d[:,1]))
                 for j in range(1,5):
                     results[j+1].append(np.mean(d[-N_avg:,j]))
                 results[11].append(d[-1,-1]/(d[-1,0]+1))
-            fname= basename+"_"+str(i)+"_"+secondary+".txt"
+            if d2swap:
+                fname = reserve+"_"+str(i)+"_"+secondary+".txt"
+            else:
+                fname = basename+"_"+str(i)+"_"+secondary+".txt"
             try:
                 with open(fname, "r") as f:
                     d= np.loadtxt(f)
