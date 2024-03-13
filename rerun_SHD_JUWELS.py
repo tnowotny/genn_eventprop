@@ -27,6 +27,7 @@ if len(sys.argv) > 2:
 #p["ETA"] = 1e-3
 #p["ETA"] *= 0.1
 p["LR_EASE_IN_FACTOR"] = 1.05
+#p["N_HID_LAYER"] = 2
 
 print(p)
 fname= p["NAME"]+".json"
@@ -35,7 +36,8 @@ with open(os.path.join(p["OUT_DIR"], fname),"w") as f:
 
 mn= SHD_model(p)
 #res= mn.cross_validate_SHD(p)
-res= mn.train_test(p)
+#res= mn.train_test(p)
+res= mn.train(p)
 
 np.save(os.path.join(p["OUT_DIR"], p["NAME"]+"_res"), res)
 #print(res)
