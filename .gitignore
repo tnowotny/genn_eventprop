@@ -1,8 +1,10 @@
 slurm*.out
 scan_JUWELS*/
+scan_JADE*/
 scan*.tgz
 scan_SSC*/
 test*.json
 *_CODE
 prepscan_*
 runscan_*
+*~
