@@ -43,27 +43,50 @@ All potential parameters used in these dictionaries are detailed in the tables b
 | N_MAX_SPIKE | Size of the bufferfor saved spikes in number of spikes; note the buffer contains saved spikes across two trials | 400 |
 | N_BATCH | Size of mini-batches run in parallel | 32 |
 | N_TRAIN | Number of training examples | 1000 mini-batches |
-| N_EPOCHS | Number of epoch to train |
+| N_EPOCHS | Number of epochs to train | 10 |
 | N_TEST | Number of test examples | 25 mini-batches |
-| N_CLASS | Number of classes in the YinYang problem | 3 |
 
 ### Network structure
 | Name      | Description                                    | Default |
 |-----------|------------------------------------------------|---------|
+| NUM_HIDDEN | Number of hidden neurons                      | 200     |
 
 ### Model parameters
 | Name      | Description                                    | Default |
 |-----------|------------------------------------------------|---------|
+| TAU_SYN   | Synaptic timescale in millisecons              | 5.0     |
+| TAU_MEM   | Membrane times constant in milliseconds        | 20.0    |
+| V_THRESH  | Spiking threshold                              | 1.0     |
+| V_RESET   | Reset potential                                | 0.0     |
+| TAU_0     |
+| TAU_1     |
+| ALPHA     |
+| INPUT_HIDDEN_MEAN | Mean synaptic weight from input to hidden neurons | 1.5 |
+| INPUT_HIDDEN_STD  | Standard deviation of synaptic weights from input to hidden neurons | 0.78 |
+| HIDDEN_OUTPUT_MEAN | Mean synaptic weight from hidden rto output neurons | 0.93 |
+| HIDDEN_OUTPUT_STD | Standard deviation of synaptic weights from hidden to output neurons | 0.1
 
 ### Learning parameters
 | Name      | Description                                    | Default |
 |-----------|------------------------------------------------|---------|
+| ETA       | Learning rate                                  | 5e-3    |
+| ADAM_BETA1 | Adam optimiser parameter                      | 0.9     |
+| ADAM_BETA2 | Adam optimiser parameter                      | 0.999   |
+| ADAM_EPS   | Adam optimiser parameter                      | 1e-8    |
+| ETA_DECAY  | Multiplier for learnign rate decay, applied every epoch | 0.95 |
 
 ### Recording controls
 | Name      | Description                                    | Default |
 |-----------|------------------------------------------------|---------|
-
-
+| SPK_REC_STEPS | Size of the GeNN spike recording buffer in timesteps | TRIAL_MS/DT_MS |
+| REC_SPIKES | List of neuron populations to record spikes from, possible entries "input", "hidden", "output" | [] |
+|REC_NEURONS | List of pairs (neuron population, variable name) to record from, possible entries for population are "input", "hidden", "output" | [] |
+|REC_SYNAPSES | List of pairs (synapse population, synapse variable name) to record from, possible entries for synapse population are "in_to_hid", "hid_to_out" | [] |
+| WRITE_TO_DISK | Whether to write outputs to disk or just return them from the run function | True |
+| TRAINING_PLOT | Whether to display plots during training | False |
+| TRAINING_PLOT_INTERVAL | How often to display a training plot in number of epochs | 10 |
+| FANCY_PLOTS | Whether to display additional plots | False |
+| LOAD_LAST | Whether to load a checkpoint from a previous run | False |
 |W_REPORT_INTERVAL | How often to save weight matrices; interval in number of trials | 100 |
 | W_EPOCH_INTERVAL | How often to save weight matrices; interval in terms of epochs | 10 |
 | NUM_INPUT
