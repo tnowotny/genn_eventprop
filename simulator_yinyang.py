@@ -12,7 +12,6 @@ import os
 # ----------------------------------------------------------------------------
 p= {}
 p["OUT_DIR"]= "."
-p["TRAIN"]= True
 p["DT_MS"] = 0.1
 p["BUILD"] = True
 p["TIMING"] = True
@@ -21,14 +20,12 @@ p["TEST_DATA_SEED"]= 456
 
 # Experiment parameters
 p["TRIAL_MS"]= 30.0
-p["N_MAX_SPIKE"]= 400    # make buffers for maximally 60 spikes (30 in a 30 ms trial) - should be safe
+p["N_MAX_SPIKE"]= 400    # make buffers for maximally 400 spikes (200 in a 30 ms trial), probably over-kill  
 p["N_BATCH"]= 32
 p["N_TRAIN"]= p["N_BATCH"]*1000
 p["N_EPOCH"]= 10
 p["N_TEST"]= p["N_BATCH"]*25
 N_CLASS= 3
-p["W_REPORT_INTERVAL"] = 100
-p["W_EPOCH_INTERVAL"] = 10
 
 # Network structure
 NUM_INPUT = 5
@@ -56,7 +53,7 @@ p["ADAM_EPS"]= 1e-8
 # applied every epoch
 p["ETA_DECAY"]= 0.95
 
-# spike recording
+# recording things
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["REC_SPIKES"] = []
 p["REC_NEURONS"] = []
@@ -66,6 +63,8 @@ p["TRAINING_PLOT"]= False
 p["TRAINING_PLOT_INTERVAL"]= 10
 p["FANCY_PLOTS"]= False
 p["LOAD_LAST"]= False
+p["W_REPORT_INTERVAL"] = 100
+p["W_EPOCH_INTERVAL"] = 10
 
 # ----------------------------------------------------------------------------
 # Helper functions

@@ -26,6 +26,47 @@ The behaviour of the simulator class is fine-tuned by a dictionary `p` of parame
 All potential parameters used in these dictionaries are detailed in the tables below.
 
 ## Yinyang parameters
+### General parameters
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+| OUT_DIR   | Directory where to write results               | "." (current dir) |
+| DT_MS     | Time step od the simulations in millisceonds   | 0.1 |
+| BUILD     | Whether to (re)build the GeNN model, can be set to False if there are repeated runs of the same model | True |
+| TIMING   | Whether to record timing information during a run | True |
+
+### Experiment parameters
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+| TRAIN_DATA_SEED | Seed for the random number generator used for generating training data | 123 |
+| TEST_DATA_SEED | Seed for the random number generator used for generating testing data | 456 |
+| TRIAL_MS | Duration of a trial in milliseconds | 30.0 |
+| N_MAX_SPIKE | Size of the bufferfor saved spikes in number of spikes; note the buffer contains saved spikes across two trials | 400 |
+| N_BATCH | Size of mini-batches run in parallel | 32 |
+| N_TRAIN | Number of training examples | 1000 mini-batches |
+| N_EPOCHS | Number of epoch to train |
+| N_TEST | Number of test examples | 25 mini-batches |
+| N_CLASS | Number of classes in the YinYang problem | 3 |
+
+### Network structure
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+
+### Model parameters
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+
+### Learning parameters
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+
+### Recording controls
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+
+
+|W_REPORT_INTERVAL | How often to save weight matrices; interval in number of trials | 100 |
+| W_EPOCH_INTERVAL | How often to save weight matrices; interval in terms of epochs | 10 |
+| NUM_INPUT
 
 ## MNIST parameters
 

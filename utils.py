@@ -224,7 +224,7 @@ def remap(d, split, remap):
     return d, split
 
 def average_out(d, s, split, avg, names):
-    avg= -np.sort(-np.asarray(avg)) # sort descending so that the pop()works with consistent indexing
+    avg= -np.sort(-np.asarray(avg)) # sort descending so that the pop() works with consistent indexing
     d2= []
     for j in range(d.shape[0]):
         x= np.reshape(d[j,:].copy(), split)
