@@ -99,13 +99,15 @@ Many parameters are the same across the different benchmarks. The following tabl
 |-----------|------------------------------------------------|---------|
 | NAME      | A unique name for an experiment; results will be appended if a result file with this name already exists | "test" |
 | DEBUG_HIDDEN_N | Whether to collect and return information about the activity levels of hidden neurons | False |
-| MODEL_SEED | A separate random number seed for the random number generator that is used during model generation, e.g. for random initial values of synapse weights | None |
+| DT_MS | as above | 1.0 |
 
 
 ### Experiment parameters
 | Name      | Description                                    | Default |
 |-----------|------------------------------------------------|---------|
+| MODEL_SEED | A separate random number seed for the random number generator that is used during model generation, e.g. for random initial values of synapse weights | None |
 | TRIAL_MS  | Duration of trials in milliseconds             | 20.0    |
+| N_MAX_SPIKE | as above | 50 |
 | N_TRAIN   | Number of training examples                    | 55000   |
 | N_VALIDATE | Number of examples in the validation set      | 5000    |
 | SHUFFLE   | Whether to shuffle the inputs in the training set | True |
@@ -114,7 +116,7 @@ Many parameters are the same across the different benchmarks. The following tabl
 ### Network structure
 | Name      | Description                                    | Default |
 |-----------|------------------------------------------------|---------|
-| NUM_HIDDEN | Number of neurons in the hidden layer         | 350     |
+| NUM_HIDDEN | Number of neurons in the hidden layer         | 128     |
 | RECURRENT | Whether to include recurrent connections       | False   |
 | INPUT_HIDDEN_MEAN | As above | 0.078 |
 | INPUT_HIDDEN_STD | As above  | 0.045 |
@@ -129,7 +131,7 @@ Many parameters are the same across the different benchmarks. The following tabl
 | LBD_LOWER | Regularisation strength of per-neuron regularisation for neurons with low activity | 0.001 |
 | NU_UPPER | Target activity level per hidden neuron per trial"]= 2 |
 | RHO_UPPER | Target activity level for the entire hidden layer per trial | 5000.0 |
-| GLB_UPPER | Strength of regularisation based on global number of spikes per trial (type "Thomas1" | 0.00001 |
+| GLB_UPPER | Strength of regularisation based on global number of spikes per trial (type "Thomas1" | 1e-5 |
 
 ### Recording controls
 | Name      | Description                                    | Default |
@@ -139,7 +141,21 @@ W_OUTPUT_EPOCH_TRIAL | List of 2-entry lists [epoch,trial] at wich to save weigh
 | REC_NEURONS_EPOCH_TRIAL | Controls at which [epoch,trial] to record neuron vars | [] |
 | REC_SYNAPSES_EPOCH_TRIAL | Controls at which [epoch,trial] to record synapse vars | [] |
 
+### Loss types and parameters
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+| LOSS_TYPE | The loss function to use, possible values "first_spike", "first_spike_exp", "max", "sum", "avg_xentropy" | "avg_xentropy" |
+| EVALUATION | How to form a validation set | "random" |
+| CUDA_VISIBLE_DEVICES | Internal GeNN switch how CUDA devices are addressed | True |
+| AVG_SNSUM | Whether to average spike counts across a mini-batch for regularisation spike counts | False |
+| REDUCED_CLASSES | A list of classes to train; if None, all classes are trained | None |
+TAU_0 | Parameter of the first_spike loss functions | 0.5 |
+TAU_1 | Parameter of the first_spike loss functions | 6.4 |
+ALPHA | Parameter of the first_spike loss functions | 3e-3 |
 
 ## SHD/SSC parameters
 
 
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+| AUGMENTATION | Dictionary of augmentations to apply to the training data, possible values {"random_shift": x}, {"random_dilate": [y0, y1]}, {"ID_jitter": z} where x is max size of shoft, y0,y1 min/max dilation factors, z range of the jitter across input channels | {} |

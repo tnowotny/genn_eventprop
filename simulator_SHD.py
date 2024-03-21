@@ -1885,19 +1885,19 @@ class SHD_model:
             if N_trial_train > 0 and len(p["AUGMENTATION"]) > 0:
                 for aug in p["AUGMENTATION"]:
                     if aug == "blend":
-                        lX, lY, lZ= blend_dataset(lX,lY,lZ,self.datarng, p["AUGMENTATION"][aug],p)
+                        lX, lY, lZ= blend_dataset(lX,lY,lZ,self.datarng, p["AUGMENTATION"][aug],p["N_TRAIN"],self.num_input,p["TRIAL_MS"])
                         #print(f"blending done ... {time()-the_time} s")
                         #the_time= time()
                     if aug == "random_shift":
-                        lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug],p)
+                        lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug],self.num_input)
                         #print(f"random_shift done ... {time()-the_time} s")
                         #the_time= time()
                     if aug == "random_dilate":
-                        lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1],p)
+                        lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1],p["TRIAL_MS"])
                         #print(f"random_dilate done ... {time()-the_time} s")
                         #the_time= time()
                     if aug == "ID_jitter":
-                        lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug],p)
+                        lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug],self.num_input)
                         #print(f"ID_jitter done ... {time()-the_time} s")
                         #the_time= time()
 
@@ -2100,11 +2100,6 @@ class SHD_model:
                     nfst[nfst < 0.0]= self.model.t + 1.0
                     pred= np.argmin(nfst, axis=-1)
 
-                if p["LOSS_TYPE"] == "avg_xentropy":
-                    # need to copy sum_V and loss from device before neuronReset!
-                    self.output.pull_var_from_device("sum_V")
-                    self.output.pull_var_from_device("loss")
-
                 if p["LOSS_TYPE"][:3] == "sum":
                     # do the custom updates for softmax!
                     self.model.custom_update("Softmax1")
@@ -2112,6 +2107,11 @@ class SHD_model:
                     self.model.custom_update("Softmax3")
                     #self.output.pull_var_from_device("sum_V")
                           
+                if p["LOSS_TYPE"] == "avg_xentropy":
+                    # need to copy sum_V and loss from device before neuronReset!
+                    self.output.pull_var_from_device("sum_V")
+                    self.output.pull_var_from_device("loss")
+
                 self.model.custom_update("neuronReset")
 
                 if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:

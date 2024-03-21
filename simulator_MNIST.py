@@ -23,7 +23,7 @@ p= {}
 p["NAME"]= "test"
 p["DEBUG_HIDDEN_N"]= False
 p["OUT_DIR"]= "."
-p["DT_MS"] = 0.1
+p["DT_MS"] = 1.0
 p["BUILD"] = True
 p["TIMING"] = True
 
@@ -32,16 +32,16 @@ p["TRAIN_DATA_SEED"]= 123
 p["TEST_DATA_SEED"]= 456
 p["MODEL_SEED"]= None
 p["TRIAL_MS"]= 20.0
-p["N_MAX_SPIKE"]= 400    # make buffers for maximally 400 spikes (200 in a 30 ms trial) - should be safe
+p["N_MAX_SPIKE"]= 50    # make buffers for maximally 50 spikes (25 in a 20 ms trial) - overkill at dt= 1ms
 p["N_BATCH"]= 32
 p["N_TRAIN"]= 55000
 p["N_VALIDATE"]= 5000
-p["N_EPOCH"]= 10
+p["N_EPOCH"]= 20
 p["SHUFFLE"]= True
 p["N_TEST"]= 10000
 
 # Network structure
-p["NUM_HIDDEN"] = 350
+p["NUM_HIDDEN"] = 128
 p["RECURRENT"] = False
 
 # Model parameters
@@ -58,14 +58,14 @@ p["HIDDEN_HIDDEN_STD"]= 0.37   # only used when recurrent
 p["PDROP_INPUT"] = 0.2
 p["PDROP_HIDDEN"] = 0.0
 p["REG_TYPE"]= "none"
-p["LBD_UPPER"]= 0.000005
+p["LBD_UPPER"]= 5e-6
 p["LBD_LOWER"]= 0.001
 p["NU_UPPER"]= 2.0
 p["RHO_UPPER"]= 5000.0
-p["GLB_UPPER"]= 0.00001
+p["GLB_UPPER"]= 1e-5
 
 # Learning parameters
-p["ETA"]= 5e-3
+p["ETA"]= 0.01
 p["ADAM_BETA1"]= 0.9      
 p["ADAM_BETA2"]= 0.999    
 p["ADAM_EPS"]= 1e-8       
@@ -83,12 +83,11 @@ p["WRITE_TO_DISK"]= True
 p["LOAD_LAST"]= False
 
 # possible loss types: "first_spike", "first_spike_exp", "max", "sum", "avg_xentropy"
-p["LOSS_TYPE"]= "max"
+p["LOSS_TYPE"]= "avg_xentropy"
 p["EVALUATION"]= "random"
-p["CUDA_VISIBLE_DEVICES"]= False
+p["CUDA_VISIBLE_DEVICES"]= True
 p["AVG_SNSUM"]= False
 p["REDUCED_CLASSES"]= None
-p["AUGMENTATION"]= {}
 
 # "first_spike" loss function variables
 p["TAU_0"]= 0.5
@@ -152,7 +151,7 @@ class mnist_model:
         loss/= N_batch
         return loss
 
-    def loss_func_max_sum(self, Y, N_batch):
+    def loss_func_max(self, Y, N_batch):
         expsum= self.output.vars["expsum"].view[:N_batch,:self.N_class]
         exp_V= self.output.vars["exp_V"].view[:N_batch,:self.N_class]
         exp_V_correct= np.array([ exp_V[i,y] for i, y in enumerate(Y) ])
@@ -162,6 +161,17 @@ class mnist_model:
             print(exp_V[np.where(exp_V_correct == 0),:])
             exp_V_correct[exp_V_correct == 0]+= 2e-45 # make sure all exp_V are > 0
         loss= -np.sum(np.log(exp_V_correct)-np.log(expsum[:,0]))/N_batch
+        return loss
+
+    def loss_func_sum(self, Y, N_batch):
+        SoftmaxVal= self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class]
+        SoftmaxVal_correct= np.array([ SoftmaxVal[i,y] for i, y in enumerate(Y) ])
+        if (np.sum(SoftmaxVal_correct == 0) > 0):
+            print("exp_V flushed to 0 exception!")
+            print(SoftmaxVal_correct)
+            print(SoftmaxVal[np.where(SoftmaxVal_correct == 0),:])
+            SoftmaxVal_correct[SoftmaxVal_correct == 0]+= 2e-45 # make sure all exp_V are > 0
+        loss= -np.sum(np.log(SoftmaxVal_correct))/N_batch
         return loss
 
     def loss_func_avg_xentropy(self, N_batch):
@@ -350,7 +360,6 @@ class mnist_model:
                 "V_reset": p["V_RESET"],
                 "N_neurons": p["NUM_HIDDEN"],
                 "N_max_spike": p["N_MAX_SPIKE"],
-                "tau_syn": p["TAU_SYN"],
             }
             self.hidden_init_vars= {
                 "V": p["V_RESET"],
@@ -362,6 +371,7 @@ class mnist_model:
                 "fwd_start": p["N_MAX_SPIKE"]-1,
                 "new_fwd_start": p["N_MAX_SPIKE"]-1,
                 "back_spike": 0,
+                "tau_syn": p["TAU_SYN"],
             }
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF, hidden_params, self.hidden_init_vars)
             self.hidden.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
@@ -392,7 +402,6 @@ class mnist_model:
                 "V_reset": p["V_RESET"],
                 "N_neurons": p["NUM_HIDDEN"],
                 "N_max_spike": p["N_MAX_SPIKE"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "lbd_upper": p["LBD_UPPER"],
                 "lbd_lower": p["LBD_LOWER"],
@@ -410,7 +419,8 @@ class mnist_model:
                 "back_spike": 0,
                 "sNSum": 0.0,
                 "new_sNSum": 0.0,
-            }
+                "tau_syn": p["TAU_SYN"],
+           }
             self.hidden= self.model.add_neuron_population("hidden", p["NUM_HIDDEN"], EVP_LIF_reg, hidden_params, self.hidden_init_vars)
             self.hidden.set_extra_global_param("t_k", -1e5*np.ones(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
             self.hidden.set_extra_global_param("ImV", np.zeros(p["N_BATCH"]*p["NUM_HIDDEN"]*p["N_MAX_SPIKE"], dtype=np.float32))
@@ -521,10 +531,8 @@ class mnist_model:
         # output neuron initialisation
         # ----------------------------------------------------------------------------
 
-        if p["LOSS_TYPE"][:-4] == "first_spike":
+        if p["LOSS_TYPE"][:11] == "first_spike":
             output_params= {
-                "tau_m": p["TAU_MEM"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
                 "V_thresh": p["V_THRESH"],
@@ -548,6 +556,8 @@ class mnist_model:
                 "new_first_spike_t": -1e5,
                 "exp_st": 0.0,
                 "expsum": 1.0,
+                "tau_m": p["TAU_MEM"],
+                "tau_syn": p["TAU_SYN"],
             }
             if p["LOSS_TYPE"] == "first_spike":
                 self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_first_spike, output_params, self.output_init_vars)
@@ -584,8 +594,6 @@ class mnist_model:
 
         if p["LOSS_TYPE"] == "max":
             output_params= {
-                "tau_m": p["TAU_MEM"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
             }
@@ -601,6 +609,8 @@ class mnist_model:
                 "rev_t": 0.0,
                 "expsum": 1.0,
                 "exp_V": 1.0,
+                "tau_m": p["TAU_MEM"],
+                "tau_syn": p["TAU_SYN"],
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_max, output_params, self.output_init_vars)
             self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
@@ -627,8 +637,6 @@ class mnist_model:
 
         if p["LOSS_TYPE"] == "sum":
             output_params= {
-                "tau_m": p["TAU_MEM"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
             }
@@ -638,36 +646,55 @@ class mnist_model:
                 "lambda_I": 0.0,
                 "trial": 0,
                 "sum_V": 0.0,
-                "new_sum_V": 0.0,
+                "SoftmaxVal": 0.0,
                 "rev_t": 0.0,
-                "expsum": 1.0,
-                "exp_V": 1.0,
+                "tau_m": p["TAU_MEM"],
+                "tau_syn": p["TAU_SYN"],
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_sum, output_params, self.output_init_vars)
             self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
 
+            # updates to do do softmax
+            softmax_1_init_vars= {
+                "MaxVal": -1e10
+            }
+            softmax_1_var_refs= {
+                "Val": genn_model.create_var_ref(self.output, "sum_V")
+            }
+            softmax_1= self.model.add_custom_update("softmax_1", "Softmax1", softmax_1_model, {}, softmax_1_init_vars, softmax_1_var_refs)
+            softmax_2_init_vars= {
+                "SumExpVal": 0.0
+            }
+            softmax_2_var_refs= {
+                "Val": genn_model.create_var_ref(self.output, "sum_V"),
+                "MaxVal": genn_model.create_var_ref(softmax_1, "MaxVal")
+            }
+            softmax_2= self.model.add_custom_update("softmax_2", "Softmax2", softmax_2_model, {}, softmax_2_init_vars, softmax_2_var_refs)
+            softmax_3_var_refs= {
+                "Val": genn_model.create_var_ref(self.output, "sum_V"),
+                "MaxVal": genn_model.create_var_ref(softmax_1, "MaxVal"),
+                "SumExpVal": genn_model.create_var_ref(softmax_2, "SumExpVal"),
+                "SoftmaxVal":genn_model.create_var_ref(self.output,"SoftmaxVal")
+            }
+            softmax_3= self.model.add_custom_update("softmax_3", "Softmax3", softmax_3_model, {}, {}, softmax_3_var_refs)
             output_reset_params= {
                 "V_reset": p["V_RESET"],
                 "N_class": self.N_class,
             }
+
             output_var_refs= {
                 "V": genn_model.create_var_ref(self.output, "V"),
                 "lambda_V": genn_model.create_var_ref(self.output, "lambda_V"),
                 "lambda_I": genn_model.create_var_ref(self.output, "lambda_I"),
                 "trial": genn_model.create_var_ref(self.output, "trial"),
                 "sum_V": genn_model.create_var_ref(self.output, "sum_V"),
-                "new_sum_V": genn_model.create_var_ref(self.output, "new_sum_V"),
                 "rev_t": genn_model.create_var_ref(self.output, "rev_t"),
-                "expsum": genn_model.create_var_ref(self.output, "expsum"),
-                "exp_V": genn_model.create_var_ref(self.output, "exp_V"),
             }
             self.output_reset= self.model.add_custom_update("output_reset", "neuronReset", EVP_neuron_reset_output_MNIST_sum, output_reset_params, {}, output_var_refs)
 
 
         if p["LOSS_TYPE"] == "avg_xentropy":
             output_params= {
-                "tau_m": p["TAU_MEM"],
-                "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
                 "N_neurons": self.num_output,
@@ -683,6 +710,8 @@ class mnist_model:
                 "rp_V": 0,
                 "wp_V": 0,
                 "loss": 0,
+                "tau_m": p["TAU_MEM"],
+                "tau_syn": p["TAU_SYN"],
             }
             self.output= self.model.add_neuron_population("output", self.num_output, EVP_LIF_output_MNIST_avg_xentropy, output_params, self.output_init_vars)
             self.output.set_extra_global_param("label", np.zeros(self.data_max_length, dtype=np.float32)) # reserve space for labels
@@ -714,7 +743,6 @@ class mnist_model:
             "beta1": p["ADAM_BETA1"],
             "beta2": p["ADAM_BETA2"],
             "epsilon": p["ADAM_EPS"],
-            "tau_syn": p["TAU_SYN"],
         }
         self.adam_init_vars= {
             "m": 0.0,
@@ -741,16 +769,16 @@ class mnist_model:
 
         self.in_to_hid= self.model.add_synapse_population(
             "in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
-            {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+            {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, {})
 
         self.hid_to_out= self.model.add_synapse_population(
             "hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden, self.output, EVP_synapse,
-            {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+            {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {}, {})
 
         if p["RECURRENT"]:
             self.hid_to_hid= self.model.add_synapse_population(
                 "hid_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden, self.hidden, EVP_synapse,
-                {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {})
+                {}, self.hid_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, {})
 
         self.optimisers= []
         var_refs = {"dw": genn_model.create_wu_var_ref(self.in_to_hid, "dw")}
@@ -868,24 +896,6 @@ class mnist_model:
         self.input_set.push_extra_global_param_to_device("allInputID")
 
         for epoch in range(number_epochs):
-            # if we are doing augmentation, the entire spike time array needs to be set up anew.
-            if N_trial_train > 0 and len(p["AUGMENTATION"]) > 0:
-                lX= copy.deepcopy(X_train)
-                for aug in p["AUGMENTATION"]:
-                    if aug == "random_shift":
-                        lX= random_shift(lX,self.datarng, p["AUGMENTATION"][aug])
-                    if aug == "random_dilate":
-                        lX= random_dilate(lX,self.datarng, p["AUGMENTATION"][aug][0], p["AUGMENTATION"][aug][1])
-                    if aug == "ID_jitter":
-                        lX= ID_jitter(lX,self.datarng, p["AUGMENTATION"][aug])
-                X, Y, input_start, input_end= self.generate_input_spiketimes_shuffle_fast(p, lX, labels_train, X_eval, labels_eval)
-                self.input.extra_global_params["spikeTimes"].view[:len(X)]= X
-                self.input.push_extra_global_param_to_device("spikeTimes")
-                self.input_set.extra_global_params["allStartSpike"].view[:len(input_start)]= input_start
-                self.input_set.push_extra_global_param_to_device("allStartSpike")
-                self.input_set.extra_global_params["allEndSpike"].view[:len(input_end)]= input_end
-                self.input_set.push_extra_global_param_to_device("allEndSpike")
-
             if N_trial_train > 0 and shuffle:
                 # by virtue of input_id being the right length we do not shuffle
                 # padding inputs
@@ -1032,13 +1042,20 @@ class mnist_model:
                     self.hidden_reset.extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                     self.hidden_reset.push_extra_global_param_to_device("sNSum_all")
 
-                if p["LOSS_TYPE"][:-4]  == "first_spike":
+                if p["LOSS_TYPE"][:11]  == "first_spike":
                     # need to copy new_first_spike_t from device before neuronReset!
                     self.output.pull_var_from_device("new_first_spike_t")
                     nfst= self.output.vars["new_first_spike_t"].view[:N_batch,:self.N_class].copy()
                     # neurons that did not spike set to spike time in the future
                     nfst[nfst < 0.0]= self.model.t + p["TRIAL_MS"]
                     pred= np.argmin(nfst, axis=-1)
+
+                if p["LOSS_TYPE"][:3] == "sum":
+                    # do the custom updates for softmax!
+                    self.model.custom_update("Softmax1")
+                    self.model.custom_update("Softmax2")
+                    self.model.custom_update("Softmax3")
+                    #self.output.pull_var_from_device("sum_V")
 
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     # need to copy sum_V and loss from device before neuronReset!
@@ -1060,13 +1077,17 @@ class mnist_model:
 
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
-                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":
+                if p["LOSS_TYPE"] == "max":
                     self.output.pull_var_from_device("exp_V")
                     pred= np.argmax(self.output.vars["exp_V"].view[:N_batch,:self.N_class], axis=-1)
-
+                    
+                if p["LOSS_TYPE"] == "sum":
+                     self.output.pull_var_from_device("SoftmaxVal")
+                     pred= np.argmax(self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class], axis=-1)
+                     
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     pred= np.argmax(self.output.vars["sum_V"].view[:N_batch,:self.N_class], axis=-1)
-
+                    
                 lbl= Y[(trial*p["N_BATCH"]):(trial*p["N_BATCH"]+N_batch)]
 
                 if ([epoch, trial] in p["REC_SPIKES_EPOCH_TRIAL"]):
@@ -1079,7 +1100,7 @@ class mnist_model:
                     rec_s_lbl.append(lbl.copy())
                     rec_s_pred.append(pred.copy())
 
-                if p["LOSS_TYPE"][:-4] == "first_spike":
+                if p["LOSS_TYPE"][:11] == "first_spike":
                     self.output.pull_var_from_device("expsum")
                     self.output.pull_var_from_device("exp_st")
                     if p["LOSS_TYPE"] == "first_spike":
@@ -1087,10 +1108,13 @@ class mnist_model:
                     if p["LOSS_TYPE"] == "first_spike_exp":
                         losses= self.loss_func_first_spike_exp(nfst, lbl, trial, self.N_class, N_batch)
 
-                if p["LOSS_TYPE"] == "max" or p["LOSS_TYPE"] == "sum":
+                if p["LOSS_TYPE"] == "max":
                     self.output.pull_var_from_device("expsum")
-                    losses= self.loss_func_max_sum(lbl, N_batch)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+                    losses= self.loss_func_max(lbl, N_batch)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
 
+                if p["LOSS_TYPE"] == "sum":
+                    losses= self.loss_func_sum(lbl, N_batch)   # uses self.output.vars["SoftmaxVal"].view 
+                    
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     losses= self.loss_func_avg_xentropy(N_batch)   # uses self.output.vars["loss"].view
 

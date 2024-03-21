@@ -8,12 +8,12 @@ import json
 this is an augmentation for SHD spoken digits
 spiking data is shifted by a random number of neurons along the neuron ID axis
 """
-def random_shift(X,rng,max_shift,p):
+def random_shift(X,rng,max_shift,num_input):
     for i in range(len(X)):
         shift= int(rng.uniform(-max_shift,max_shift))
         X[i]["x"]= X[i]["x"]+shift
         if shift > 0:
-            idx= X[i]["x"] < 700*p["RESCALE_X"]
+            idx= X[i]["x"] < num_input
             X[i]["x"]= X[i]["x"][idx]
             X[i]["t"]= X[i]["t"][idx]
         else:
@@ -26,11 +26,11 @@ def random_shift(X,rng,max_shift,p):
 """
 jitter the ID of neurons that spiked as an augmentation (see SHD paper)
 """
-def ID_jitter(X,rng,sigma,p):
+def ID_jitter(X,rng,sigma,num_input):
     for i in range(len(X)):
         shift= np.round(rng.standard_normal(len(X[i]["x"]))*sigma).astype(int)
         X[i]["x"]= X[i]["x"]+shift
-        idx= np.logical_and(X[i]["x"] < 700*p["RESCALE_X"], X[i]["x"] >= 0)
+        idx= np.logical_and(X[i]["x"] < num_input, X[i]["x"] >= 0)
         X[i]["x"]= X[i]["x"][idx]
         X[i]["t"]= X[i]["t"][idx]
     return X
@@ -39,13 +39,13 @@ def ID_jitter(X,rng,sigma,p):
 """
 dilate or compress time
 """
-def random_dilate(X,rng,min_factor,max_factor,p):
+def random_dilate(X,rng,min_factor,max_factor,trial_ms):
     mn= np.log(min_factor)
     mx= np.log(max_factor)
     for i in range(len(X)):
         fac= np.exp(rng.uniform(mn,mx))
         X[i]["t"]= X[i]["t"]*fac
-        idx= X[i]["t"] < p["TRIAL_MS"]
+        idx= X[i]["t"] < trial_ms
         X[i]["t"]= X[i]["t"][idx]
         X[i]["x"]= X[i]["x"][idx]
     return X
@@ -55,7 +55,7 @@ def random_dilate(X,rng,min_factor,max_factor,p):
 blend spike patterns
 WARNING: This does not ensure one spike per timestep!
 """
-def blend(X,probs,rng,p):
+def blend(X,probs,rng,num_input,trial_ms):
     new_x= []
     new_t= []
     X= copy.deepcopy(X)     # ARGH - need to be extremely careful not to fuck up orig data!
@@ -76,10 +76,10 @@ def blend(X,probs,rng,p):
     idx= np.argsort(new_t)
     new_t= np.array(new_t)[idx]
     new_x= np.array(new_x)[idx]
-    keep= np.logical_and(new_t >= 0, new_t < p["TRIAL_MS"])
+    keep= np.logical_and(new_t >= 0, new_t < trial_ms)
     new_t= new_t[keep]
     new_x= new_x[keep]
-    keep= np.logical_and(new_x >= 0, new_x < 700*p["RESCALE_X"])
+    keep= np.logical_and(new_x >= 0, new_x < num_input)
     new_t= new_t[keep]
     new_x= new_x[keep]
     assert(max(new_x) < 700)
@@ -89,8 +89,8 @@ def blend(X,probs,rng,p):
 extend a dataset with blended spike patterns
 """
 
-def blend_dataset(X, Y, Z, rng, probs, p):
-    nblend= p["N_TRAIN"]-len(X)    # number of blended examples to generate
+def blend_dataset(X, Y, Z, rng, probs, n_train, num_input, trial_ms):
+    nblend= n_train-len(X)    # number of blended examples to generate
     new_X= []
     new_Y= []
     if Z is not None:
@@ -100,7 +100,7 @@ def blend_dataset(X, Y, Z, rng, probs, p):
         #td= X[np.logical_and(Y == Y[idx], Z == Z[idx])]
         td= X[Y == Y[idx]]
         td= td[rng.integers(0,len(td),len(probs))]
-        new_X.append(blend(td,probs,rng,p))
+        new_X.append(blend(td,probs,rng,num_input,trial_ms))
         new_Y.append(Y[idx])
         if Z is not None:
             new_Z.append(Z[idx])

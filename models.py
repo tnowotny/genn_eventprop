@@ -380,27 +380,14 @@ EVP_neuron_reset_output_MNIST_max= genn_model.create_custom_custom_update_class(
 EVP_neuron_reset_output_MNIST_sum= genn_model.create_custom_custom_update_class(
     "EVP_neuron_reset_output_MNIST_sum",
     param_names=["V_reset","N_class"],
-    var_refs=[("sum_V","scalar"),("new_sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("exp_V","scalar"),("expsum","scalar"),("trial","int")],
+    var_refs=[("sum_V","scalar"),("V","scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),("trial","int")],
     update_code= """
-        scalar m= $(new_sum_V);
-        for (int i= 0; i < $(N_class); i++) {
-            m = fmax(m, __shfl_sync(0x3FF, m, i));
-        }
-        m= exp($(new_sum_V) - m);
-        $(exp_V)= m;
-        scalar mexp= 0.0; 
-        for (int i= 0; i < $(N_class); i++) {
-            mexp += __shfl_sync(0x3FF, m, i);
-        }
-        $(expsum)= mexp;
-        //printf(\"%g\\n\",$(expsum));
-        $(rev_t)= $(t);
-        $(lambda_V)= 0.0;
-        $(lambda_I)= 0.0;
-        $(V)= $(V_reset);
-        $(sum_V)= $(new_sum_V);
-        $(new_sum_V)= 0.0;
-        $(trial)++;
+    $(V)= $(V_reset);
+    $(lambda_V)= 0.0;
+    $(lambda_I)= 0.0;
+    $(trial)++;
+    $(sum_V)= 0.0;
+    $(rev_t)= $(t);
     """
 )
 
@@ -1281,8 +1268,8 @@ EVP_LIF_output_first_spike = genn_model.create_custom_neuron_class(
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("back_spike","uint8_t"),
                     ("first_spike_t","scalar"),("new_first_spike_t","scalar"),("exp_st","scalar"),("expsum","scalar"),
-                    ("trial","int")],
-    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*"),("tau_m","scalar"),("tau_syn","scalar")], 
+                    ("trial","int"),("tau_m","scalar"),("tau_syn","scalar")],
+    extra_global_params=[("t_k","scalar*"),("ImV","scalar*"),("label","int*")], 
     additional_input_vars=[("revIsyn", "scalar", 0.0)],
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(N_max_spike))+$(id)*((int) $(N_max_spike));    
@@ -1797,8 +1784,8 @@ EVP_LIF_output_MNIST_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_MNIST_avg_xentropy",
     param_names=["N_neurons","N_batch","trial_steps","trial_t","N_class"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
-                    ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
-    extra_global_params=[("label","int*"), ("Vbuf","scalar*"),("tau_m","scalar"),("tau_syn","scalar")], 
+                    ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar"),("tau_m","scalar"),("tau_syn","scalar")],
+    extra_global_params=[("label","int*"), ("Vbuf","scalar*")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
     // backward pass
@@ -1962,10 +1949,11 @@ EVP_input_synapse= genn_model.create_custom_weight_update_class(
     """,
 )
 
+
 """
 # this was efficient for cases where tau_syn is homogeneous but doesn't work for heterogeneous
 # for now, just take the hit and use the one that works in both cases
-my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
+my_Exp_Curr_1= genn_model.create_custom_postsynaptic_class(
     "my_Exp_Curr",
     param_names=["tau"],
     decay_code="$(inSyn) *= $(expDecay);",
@@ -1981,18 +1969,6 @@ my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
     decay_code="$(inSyn) *= exp(-DT/$(tau_syn));",
     apply_input_code="$(Isyn) += $(inSyn);",
 )
-
-
-"""
-my_Exp_Curr= genn_model.create_custom_postsynaptic_class(
-    "my_Exp_Curr",
-    var_name_types=[("tau_syn","scalar")],
-    decay_code="$(inSyn) *= exp(-DT/$(tau_syn));",
-    apply_input_code="$(Isyn) += $(inSyn);",
-)
-"""
-
-
 
 
 # synapses for giant input accumulator
