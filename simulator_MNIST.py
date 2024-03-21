@@ -26,11 +26,11 @@ p["OUT_DIR"]= "."
 p["DT_MS"] = 0.1
 p["BUILD"] = True
 p["TIMING"] = True
+
+# Experiment parameters
 p["TRAIN_DATA_SEED"]= 123
 p["TEST_DATA_SEED"]= 456
 p["MODEL_SEED"]= None
-
-# Experiment parameters
 p["TRIAL_MS"]= 20.0
 p["N_MAX_SPIKE"]= 400    # make buffers for maximally 400 spikes (200 in a 30 ms trial) - should be safe
 p["N_BATCH"]= 32
@@ -60,8 +60,7 @@ p["PDROP_HIDDEN"] = 0.0
 p["REG_TYPE"]= "none"
 p["LBD_UPPER"]= 0.000005
 p["LBD_LOWER"]= 0.001
-p["NU_UPPER"]= 20*p["N_BATCH"]
-p["NU_LOWER"]= 0.1*p["N_BATCH"]
+p["NU_UPPER"]= 2.0
 p["RHO_UPPER"]= 5000.0
 p["GLB_UPPER"]= 0.00001
 
@@ -460,7 +459,6 @@ class mnist_model:
                 "tau_syn": p["TAU_SYN"],
                 "N_batch": p["N_BATCH"],
                 "lbd_lower": p["LBD_LOWER"],
-                "nu_lower": p["NU_LOWER"],
                 "lbd_upper": p["LBD_UPPER"],
                 "nu_upper": p["NU_UPPER"],
                 "rho_upper": p["RHO_UPPER"],

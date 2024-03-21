@@ -20,16 +20,16 @@ p["TEST_DATA_SEED"]= 456
 
 # Experiment parameters
 p["TRIAL_MS"]= 30.0
-p["N_MAX_SPIKE"]= 400    # make buffers for maximally 400 spikes (200 in a 30 ms trial), probably over-kill  
+p["N_MAX_SPIKE"]= 400   # make buffers for maximally 400 spikes (200 in a 30 ms trial), probably over-kill  
 p["N_BATCH"]= 32
 p["N_TRAIN"]= p["N_BATCH"]*1000
 p["N_EPOCH"]= 10
 p["N_TEST"]= p["N_BATCH"]*25
-N_CLASS= 3
+N_CLASS= 3              # hard-coded as an immutable part of the YinYang benchmark
 
 # Network structure
-NUM_INPUT = 5
-NUM_OUTPUT = N_CLASS
+NUM_INPUT = 5           # hard-coded as an immutable part of the YinYang benchmark
+NUM_OUTPUT = N_CLASS    # hard-coded as an immutable part of the YinYang benchmark
 p["NUM_HIDDEN"] = 200
 
 # Model parameters

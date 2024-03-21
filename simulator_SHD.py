@@ -62,7 +62,6 @@ p["REG_TYPE"]= "none"
 p["LBD_UPPER"]= 2e-9
 p["LBD_LOWER"]= 2e-9
 p["NU_UPPER"]= 14
-p["NU_LOWER"]= 5
 p["RHO_UPPER"]= 10000.0
 p["GLB_UPPER"]= 1e-8
 p["REWIRE_SILENT"]= False
@@ -1014,7 +1013,6 @@ class SHD_model:
                 "N_max_spike": p["N_MAX_SPIKE"],
                 "N_batch": p["N_BATCH"],
                 "lbd_lower": p["LBD_LOWER"],
-                "nu_lower": p["NU_LOWER"],
                 "lbd_upper": p["LBD_UPPER"],
                 "nu_upper": p["NU_UPPER"],
                 "rho_upper": p["RHO_UPPER"],

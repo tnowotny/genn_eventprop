@@ -89,9 +89,56 @@ All potential parameters used in these dictionaries are detailed in the tables b
 | LOAD_LAST | Whether to load a checkpoint from a previous run | False |
 |W_REPORT_INTERVAL | How often to save weight matrices; interval in number of trials | 100 |
 | W_EPOCH_INTERVAL | How often to save weight matrices; interval in terms of epochs | 10 |
-| NUM_INPUT
+
 
 ## MNIST parameters
+Many parameters are the same across the different benchmarks. The following tables lists only the ones that are different for MNIST compared to YinYang.
+
+### General parameters
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+| NAME      | A unique name for an experiment; results will be appended if a result file with this name already exists | "test" |
+| DEBUG_HIDDEN_N | Whether to collect and return information about the activity levels of hidden neurons | False |
+| MODEL_SEED | A separate random number seed for the random number generator that is used during model generation, e.g. for random initial values of synapse weights | None |
+
+
+### Experiment parameters
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+| TRIAL_MS  | Duration of trials in milliseconds             | 20.0    |
+| N_TRAIN   | Number of training examples                    | 55000   |
+| N_VALIDATE | Number of examples in the validation set      | 5000    |
+| SHUFFLE   | Whether to shuffle the inputs in the training set | True |
+| N_TEST    | Number of examples in the test set             | 10000   |
+
+### Network structure
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+| NUM_HIDDEN | Number of neurons in the hidden layer         | 350     |
+| RECURRENT | Whether to include recurrent connections       | False   |
+| INPUT_HIDDEN_MEAN | As above | 0.078 |
+| INPUT_HIDDEN_STD | As above  | 0.045 |
+| HIDDEN_OUTPUT_MEAN | As above  | 0.2 |
+| HIDDEN_OUTPUT_STD | As above | 0.37 |
+| HIDDEN_HIDDEN_MEAN | Mean of initial synaptic weights of hidden to hidden recurrent connections | 0.2 |
+| HIDDEN_HIDDEN_STD | Mean of initial synaptic weights of hidden to hidden recurrent connections | 0.37 | 
+| PDROP_INPUT | Probability of dropping input spikes | 0.2 |
+| PDROP_HIDDEN | Probability of dropping spikes in the hidden layer | 0.0 |
+| REG_TYPE | Type of regularisation to apply to the hidden layer | "none" |
+| LBD_UPPER | Regularisation strength of per-neuron regularisation for hyper-active neurons | 0.000005 |
+| LBD_LOWER | Regularisation strength of per-neuron regularisation for neurons with low activity | 0.001 |
+| NU_UPPER | Target activity level per hidden neuron per trial"]= 2 |
+| RHO_UPPER | Target activity level for the entire hidden layer per trial | 5000.0 |
+| GLB_UPPER | Strength of regularisation based on global number of spikes per trial (type "Thomas1" | 0.00001 |
+
+### Recording controls
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+W_OUTPUT_EPOCH_TRIAL | List of 2-entry lists [epoch,trial] at wich to save weights (replaes the intrvals above) | [] |
+| REC_SPIKES_EPOCH_TRIAL | Controls at which [epoch,trial] to record spikes | [] |
+| REC_NEURONS_EPOCH_TRIAL | Controls at which [epoch,trial] to record neuron vars | [] |
+| REC_SYNAPSES_EPOCH_TRIAL | Controls at which [epoch,trial] to record synapse vars | [] |
+
 
 ## SHD/SSC parameters
 

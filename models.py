@@ -1199,11 +1199,11 @@ EVP_LIF_reg_noise = genn_model.create_custom_neuron_class(
 )
 
 # LIF neuron model for internal neurons for SHD task with regularisation - which introduced dlp/dtk type terms
-# Regularisation almost a la Zenke with exponent L=1 (but individual neuron activity averaged over batch before comparing to lower threshold); parameters rho_upper/ glb_upper, nu_lower/lbd_lower; uses sNSum and sNSum_all
+# Regularisation almost a la Zenke with exponent L=1 (but individual neuron activity averaged over batch before comparing to lower threshold); parameters rho_upper/ glb_upper, lbd_lower; uses sNSum and sNSum_all
 # NOTE: The use of the N_batch parameter is not correct for incomplete batches but this only occurs in the last batch of an epoch, wich is not used for learning
 EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
     "EVP_LIF_reg_Thomas1",
-    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","lbd_lower","nu_lower","lbd_upper","nu_upper","rho_upper","glb_upper"],
+    param_names=["tau_m","V_thresh","V_reset","N_neurons","N_max_spike","N_batch","lbd_lower","lbd_upper","nu_upper","rho_upper","glb_upper"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),("rev_t","scalar"),
                     ("rp_ImV","int"),("wp_ImV","int"),("fwd_start","int"),("new_fwd_start","int"),("back_spike","uint8_t"),("sNSum","scalar"),("new_sNSum","scalar"),("tau_syn","scalar")],
     # TODO: should the sNSum variable be integers? Would it conflict with the atomicAdd? also , will this work for double precision (atomicAdd?)?
@@ -1235,7 +1235,7 @@ EVP_LIF_reg_Thomas1 = genn_model.create_custom_neuron_class(
             $(lambda_V) -= $(lbd_upper)*($(sNSum)-$(nu_upper))/$(N_batch);
         }
         else {
-            $(lambda_V) -= $(lbd_lower)*($(sNSum)-$(nu_lower))/$(N_batch);
+            $(lambda_V) -= $(lbd_lower)*($(sNSum)-$(nu_upper))/$(N_batch);
         }
         $(back_spike)= 0;
     }   
