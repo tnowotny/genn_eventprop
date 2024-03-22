@@ -266,8 +266,8 @@ Many parameters are the same across the different benchmarks but we list them ag
 ### Recording controls
 | Name      | Description                                    | Default |
 |-----------|------------------------------------------------|---------|
-| W_OUTPUT_EPOCH_TRIAL | List of 2-entry lists [epoch,trial] at wich to save weights (replaes the intrvals above) | [] |
-p["TAU_OUTPUT_EPOCH_TRIAL"]= []
+| W_OUTPUT_EPOCH_TRIAL | List of 2-entry lists [epoch,trial] at wich to save weights  | [] |
+| TAU_OUTPUT_EPOCH_TRIAL | List of 2-entry lists [epoch,trial] at wich to save tau values | [] |
 | SPK_REC_STEPS | Size of the GeNN spike recording buffer in timesteps | TRIAL_MS/DT_MS |
 | REC_SPIKES_EPOCH_TRIAL | Controls at which [epoch,trial] to record spikes | [] |
 | REC_SPIKES | List of neuron populations to record spikes from, possible entries "input", "hidden", "output" | [] |
