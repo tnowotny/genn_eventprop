@@ -36,7 +36,7 @@ p["MODEL_SEED"]= None
 
 # Experiment parameters
 p["TRIAL_MS"]= 1400.0
-p["N_MAX_SPIKE"]= 400    # make buffers for maximally 400 spikes (200 in a 30 ms trial) - should be safe
+p["N_MAX_SPIKE"]= 1500    # make buffers for maximally 1500 spikes (750 in a 1400 ms trial) - this should normally be ok; excess spikes are dropped 
 p["N_BATCH"]= 32
 p["N_TRAIN"]= 7644 # together with N_VALIDATE= 512 this is all 8156 samples
 p["N_VALIDATE"]= 512
@@ -47,15 +47,32 @@ p["SHUFFLE"]= True
 # Network structure
 p["NUM_HIDDEN"] = 256
 p["RECURRENT"] = False
+p["N_HID_LAYER"]= 1
+p["N_INPUT_DELAY"]= 0
+p["INPUT_DELAY"]= 50.0 # in ms
 
 # Model parameters
 p["TAU_SYN"] = 5.0
 p["TAU_MEM"] = 20.0
-#p["TAU_MEM_OUTPUT"] = 20.0 # discontinued - all tau_mem are the same
 p["V_THRESH"] = 1.0
 p["V_RESET"] = 0.0
+p["HIDDEN_NEURON_TYPE"]= "LIF"
+p["OUTPUT_NEURON_TYPE"]= "LI"
+p["TAU_B"] = 100.0
+p["B_INCR"]= 0.1
+p["B_INIT"]= 0.0
+p["INPUT_HIDDEN_MEAN"]= 0.02
+p["INPUT_HIDDEN_STD"]= 0.01
+p["HIDDEN_OUTPUT_MEAN"]= 0.0
+p["HIDDEN_OUTPUT_STD"]= 0.3
+p["HIDDEN_HIDDEN_MEAN"]= 0.0   # only used when recurrent
+p["HIDDEN_HIDDEN_STD"]= 0.02   # only used when recurrent
+p["HIDDEN_HIDDENFWD_MEAN"]= 0.02 # only used when > 1 hidden layer
+p["HIDDEN_HIDDENFWD_STD"]= 0.01 # only used when > 1 hidden layer
 p["PDROP_INPUT"] = 0.1
 p["PDROP_HIDDEN"] = 0.0
+p["HIDDEN_NOISE"]= 0.0  # Gaussian noise on hidden neurons' membrane potential
+
 
 # Regularisation related parameters
 p["REG_TYPE"]= "none"
@@ -67,30 +84,29 @@ p["GLB_UPPER"]= 1e-8
 p["REWIRE_SILENT"]= False
 p["REWIRE_LIFT"]= 0.0
 
-# ALIF related parameters
-p["HIDDEN_NEURON_TYPE"]= "LIF"
-p["TAU_B"] = 100.0
-p["B_INCR"]= 0.1
-p["B_INIT"]= 0.0
-
-# synapse related parameters
-p["INPUT_HIDDEN_MEAN"]= 0.02
-p["INPUT_HIDDEN_STD"]= 0.01
-p["HIDDEN_OUTPUT_MEAN"]= 0.0
-p["HIDDEN_OUTPUT_STD"]= 0.3
-p["HIDDEN_HIDDEN_MEAN"]= 0.0   # only used when recurrent
-p["HIDDEN_HIDDEN_STD"]= 0.02   # only used when recurrent
-p["HIDDEN_HIDDENFWD_MEAN"]= 0.02 # only used when > 1 hidden layer
-p["HIDDEN_HIDDENFWD_STD"]= 0.01 # only used when > 1 hidden layer
 
 # Learning parameters
 p["ETA"]= 1e-3
 p["ADAM_BETA1"]= 0.9      
 p["ADAM_BETA2"]= 0.999    
 p["ADAM_EPS"]= 1e-8       
+# learning rate schedule depending on exponential moving average of performance
+p["EMA_ALPHA1"]= 0.8
+p["EMA_ALPHA2"]= 0.95
+p["ETA_FAC"]= 0.5
+p["MIN_EPOCH_ETA_FIXED"]= 300
+# whether to train timescales
+p["TRAIN_TAU"]= False
+p["MIN_TAU_M"]= 3.0
+p["MIN_TAU_SYN"]= 1.0
+p["TRAIN_TAU_OUTPUT"]= False
+p["TRAIN_W"]= True
+p["TRAIN_W_OUTPUT"]= True
+p["LR_EASE_IN_FACTOR"] = 1.05
 
 # recording
 p["W_OUTPUT_EPOCH_TRIAL"] = []
+p["TAU_OUTPUT_EPOCH_TRIAL"]= []
 p["SPK_REC_STEPS"]= int(p["TRIAL_MS"]/p["DT_MS"])
 p["REC_SPIKES_EPOCH_TRIAL"] = []
 p["REC_SPIKES"] = []
@@ -106,69 +122,36 @@ p["LOAD_BEST"]= False
 # "sum", "sum_weigh_linear", "sum_weigh_exp", "sum_weigh_sigmoid", "sum_weigh_input",
 # "avg_xentropy"
 p["LOSS_TYPE"]= "sum_weigh_exp"
+p["TAU_ACCUMULATOR"]= 20.0   # for input-weighted sum losses
 
 # possible evaluation types: "random", "speaker"
 p["EVALUATION"]= "random"
-p["CUDA_VISIBLE_DEVICES"]= False
+p["SPEAKER_LEFT"]= [0]
+p["CUDA_VISIBLE_DEVICES"]= True
 p["AVG_SNSUM"]= False
 p["REDUCED_CLASSES"]= None
-p["AUGMENTATION"]= {}
-p["DOWNLOAD_SHD"]= False
-p["COLLECT_CONFUSION"]= False
-p["REC_PREDICTIONS"]= False
 # "first_spike" loss function variables
 p["TAU_0"]= 0.5
 p["TAU_1"]= 6.4
 p["ALPHA"]= 3e-3
-
-# for input-weighted sum losses
-p["TAU_ACCUMULATOR"]= 20.0
-
-# Gaussian noise on hidden neurons' membrane potential
-p["HIDDEN_NOISE"]= 0.0
-
-p["SPEAKER_LEFT"]= [0]
-
+p["AUGMENTATION"]= {}
+p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= False
+p["COLLECT_CONFUSION"]= False
+p["REC_PREDICTIONS"]= False
 # rescaling factor for the time, 1.0 means no rescaling
 p["RESCALE_T"]= 1.0
 # rescaling factor for the channels, 1.0 means no rescaling
 p["RESCALE_X"]= 1.0
-
-# whether to train timescales
-p["TRAIN_TAU"]= False
-p["MIN_TAU_M"]= 3.0
-p["MIN_TAU_SYN"]= 1.0
-p["N_HID_LAYER"]= 1
-
-# learning rate schedule depending on exponential moving average of performance
-p["EMA_ALPHA1"]= 0.8
-p["EMA_ALPHA2"]= 0.95
-p["ETA_FAC"]= 0.5
-p["MIN_EPOCH_ETA_FIXED"]= 300
-
-p["TAU_OUTPUT_EPOCH_TRIAL"]= []
-p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= False
 p["BALANCE_TRAIN_CLASSES"]= False
 p["BALANCE_EVAL_CLASSES"]= False
-
 p["DATA_SET"]= "SHD"
-
 p["DATA_BUFFER_NAME"]= "./data/SSC/mySSC"
-
-p["N_INPUT_DELAY"]= 0
-p["INPUT_DELAY"]= 50.0 # in ms
-
 p["TEST_ST_INTEGRITY"]= False
 
-p["OUTPUT_NEURON_TYPE"]= "LI"
-p["TRAIN_TAU_OUTPUT"]= False
-p["TRAIN_W"]= True
-p["TRAIN_W_OUTPUT"]= True
 
 p["EMA_WHICH"] = "validation"
 p["CHECKPOINT_BEST"] = "neither"
 p["CHECKPOINT"] = True
-p["LR_EASE_IN_FACTOR"] = 1.05
 
 # ----------------------------------------------------------------------------
 # Helper functions
@@ -509,75 +492,6 @@ class SHD_model:
             np.save(fname, self.X_test_orig, allow_pickle= True)
             np.save(p["DATA_BUFFER_NAME"]+"_Y_test_orig", self.Y_test_orig, allow_pickle= True)
             print(f"data saved to buffer file {fname}")
-
-    def load_data_SHD_Zenke(self, p):
-        cache_dir=os.path.expanduser("~/data")
-        cache_subdir="SHD"
-        print("Using cache dir: %s"%cache_dir)
-        self.num_input= int(700*p["RESCALE_X"])
-        self.num_output= 20
-        self.data_max_length= 2*p["N_BATCH"]
-        if p["DOWNLOAD_SHD"]:
-            # dowload the SHD data from the Zenke website
-            # The remote directory with the data files
-            base_url = "https://zenkelab.org/datasets"
-            # Retrieve MD5 hashes from remote
-            response = urllib.request.urlopen("%s/md5sums.txt"%base_url)
-            data = response.read() 
-            lines = data.decode('utf-8').split("\n")
-            file_hashes = { line.split()[1]:line.split()[0] for line in lines if len(line.split())==2 }
- 
-            def get_and_gunzip(origin, filename, md5hash=None):
-                gz_file_path = get_file(filename, origin, md5_hash=md5hash, cache_dir=cache_dir, cache_subdir=cache_subdir)
-                hdf5_file_path=gz_file_path[:-3]
-                if not os.path.isfile(hdf5_file_path) or os.path.getctime(gz_file_path) > os.path.getctime(hdf5_file_path):
-                    print("Decompressing %s"%gz_file_path)
-                    with gzip.open(gz_file_path, 'r') as f_in, open(hdf5_file_path, 'wb') as f_out:
-                        shutil.copyfileobj(f_in, f_out)
-                return hdf5_file_path
-            # Download the Spiking Heidelberg Digits (SHD) dataset
-            files = [ "shd_train.h5.gz", 
-                      "shd_test.h5.gz",
-            ]
-            hdf5_file_path= []
-            fn= files[0]
-            origin= "%s/%s"%(base_url,fn)
-            hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
-        else:
-            # use data from local cache
-            hdf5_file_path= 'data/SHD/shd_train.h5'
-        fileh= tables.open_file(hdf5_file_path, mode='r')
-        units= fileh.root.spikes.units
-        times= fileh.root.spikes.times
-        self.Y_train_orig= np.array(fileh.root.labels)
-        self.Z_train_orig= np.array(fileh.root.extra.speaker)
-        self.data_max_length+= max(len(units),p["N_TRAIN"])
-        self.N_class= len(set(self.Y_train_orig))
-        self.X_train_orig= []
-        for i in range(len(units)):
-            sample= rescale(units[i], times[i]*1000.0, p)
-            self.X_train_orig.append(sample)
-        self.X_train_orig= np.array(self.X_train_orig)
-        # do the test files
-        if p["DOWNLOAD_SHD"]:
-            # download data from the Zenke website
-            fn= files[1]
-            origin= "%s/%s"%(base_url,fn)
-            hdf5_file_path= get_and_gunzip(origin, fn, md5hash=file_hashes[fn])
-        else:
-            # use data from local cache
-            hdf5_file_path= 'data/SHD/shd_test.h5'
-        fileh= tables.open_file(hdf5_file_path, mode='r')
-        units= fileh.root.spikes.units
-        times= fileh.root.spikes.times
-        self.Y_test_orig= fileh.root.labels
-        self.Z_test_orig= fileh.root.extra.speaker
-        self.data_max_length+= len(units)
-        self.X_test_orig= []
-        for i in range(len(units)):
-            sample= rescale(units[i], times[i]*1000.0, p)
-            self.X_test_orig.append(sample)
-        self.X_test_orig= np.array(self.X_test_orig)            
 
     def normalise_spike_number(self, X, X_eval= None):
         mn= 1.0e5
