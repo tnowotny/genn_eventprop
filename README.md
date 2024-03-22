@@ -58,9 +58,9 @@ All potential parameters used in these dictionaries are detailed in the tables b
 | TAU_MEM   | Membrane times constant in milliseconds        | 20.0    |
 | V_THRESH  | Spiking threshold                              | 1.0     |
 | V_RESET   | Reset potential                                | 0.0     |
-| TAU_0     |
-| TAU_1     |
-| ALPHA     |
+| TAU_0     | Parameter of the first_spike loss function     | 0.5     |
+| TAU_1     | Parameter of the first_spike loss function     | 6.4     |
+| ALPHA     | Parameter of the first_spike loss function     | 3e-3    |
 | INPUT_HIDDEN_MEAN | Mean synaptic weight from input to hidden neurons | 1.5 |
 | INPUT_HIDDEN_STD  | Standard deviation of synaptic weights from input to hidden neurons | 0.78 |
 | HIDDEN_OUTPUT_MEAN | Mean synaptic weight from hidden rto output neurons | 0.93 |
@@ -99,12 +99,17 @@ Many parameters are the same across the different benchmarks. The following tabl
 |-----------|------------------------------------------------|---------|
 | NAME      | A unique name for an experiment; results will be appended if a result file with this name already exists | "test" |
 | DEBUG_HIDDEN_N | Whether to collect and return information about the activity levels of hidden neurons | False |
-| DT_MS | as above | 1.0 |
+| OUT_DIR   | Directory where to write results               | "." (current dir) |
+| DT_MS     | Time step od the simulations in millisceonds   | 1.0 |
+| BUILD     | Whether to (re)build the GeNN model, can be set to False if there are repeated runs of the same model | True |
+| TIMING   | Whether to record timing information during a run | True |
 
 
 ### Experiment parameters
 | Name      | Description                                    | Default |
 |-----------|------------------------------------------------|---------|
+| TRAIN_DATA_SEED | Seed for the random number generator used for generating training data | 123 |
+| TEST_DATA_SEED | Seed for the random number generator used for generating testing data | 456 |
 | MODEL_SEED | A separate random number seed for the random number generator that is used during model generation, e.g. for random initial values of synapse weights | None |
 | TRIAL_MS  | Duration of trials in milliseconds             | 20.0    |
 | N_MAX_SPIKE | as above | 50 |
@@ -118,10 +123,18 @@ Many parameters are the same across the different benchmarks. The following tabl
 |-----------|------------------------------------------------|---------|
 | NUM_HIDDEN | Number of neurons in the hidden layer         | 128     |
 | RECURRENT | Whether to include recurrent connections       | False   |
-| INPUT_HIDDEN_MEAN | As above | 0.078 |
-| INPUT_HIDDEN_STD | As above  | 0.045 |
-| HIDDEN_OUTPUT_MEAN | As above  | 0.2 |
-| HIDDEN_OUTPUT_STD | As above | 0.37 |
+
+### Model parameters
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+| TAU_SYN   | Synaptic timescale in millisecons              | 5.0     |
+| TAU_MEM   | Membrane times constant in milliseconds        | 20.0    |
+| V_THRESH  | Spiking threshold                              | 1.0     |
+| V_RESET   | Reset potential                                | 0.0     |
+| INPUT_HIDDEN_MEAN | Mean synaptic weight from input to hidden neurons | 0.078 |
+| INPUT_HIDDEN_STD | Standard deviation of synaptic weights from input to hidden neurons | 0.045 |
+| HIDDEN_OUTPUT_MEAN | Mean synaptic weight from hidden rto output neurons | 0.2 |
+| HIDDEN_OUTPUT_STD | Standard deviation of synaptic weights from hidden to output neurons | 0.37 |
 | HIDDEN_HIDDEN_MEAN | Mean of initial synaptic weights of hidden to hidden recurrent connections | 0.2 |
 | HIDDEN_HIDDEN_STD | Mean of initial synaptic weights of hidden to hidden recurrent connections | 0.37 | 
 | PDROP_INPUT | Probability of dropping input spikes | 0.2 |
@@ -133,13 +146,27 @@ Many parameters are the same across the different benchmarks. The following tabl
 | RHO_UPPER | Target activity level for the entire hidden layer per trial | 5000.0 |
 | GLB_UPPER | Strength of regularisation based on global number of spikes per trial (type "Thomas1" | 1e-5 |
 
+### Learning parameters
+| Name      | Description                                    | Default |
+|-----------|------------------------------------------------|---------|
+| ETA       | Learning rate                                  | 5e-3    |
+| ADAM_BETA1 | Adam optimiser parameter                      | 0.9     |
+| ADAM_BETA2 | Adam optimiser parameter                      | 0.999   |
+| ADAM_EPS   | Adam optimiser parameter                      | 1e-8    |
+
 ### Recording controls
 | Name      | Description                                    | Default |
 |-----------|------------------------------------------------|---------|
-W_OUTPUT_EPOCH_TRIAL | List of 2-entry lists [epoch,trial] at wich to save weights (replaes the intrvals above) | [] |
+| W_OUTPUT_EPOCH_TRIAL | List of 2-entry lists [epoch,trial] at wich to save weights (replaes the intrvals above) | [] |
+| SPK_REC_STEPS | Size of the GeNN spike recording buffer in timesteps | TRIAL_MS/DT_MS |
 | REC_SPIKES_EPOCH_TRIAL | Controls at which [epoch,trial] to record spikes | [] |
+| REC_SPIKES | List of neuron populations to record spikes from, possible entries "input", "hidden", "output" | [] |
 | REC_NEURONS_EPOCH_TRIAL | Controls at which [epoch,trial] to record neuron vars | [] |
+|REC_NEURONS | List of pairs (neuron population, variable name) to record from, possible entries for population are "input", "hidden", "output" | [] |
 | REC_SYNAPSES_EPOCH_TRIAL | Controls at which [epoch,trial] to record synapse vars | [] |
+|REC_SYNAPSES | List of pairs (synapse population, synapse variable name) to record from, possible entries for synapse population are "in_to_hid", "hid_to_out" | [] |
+| WRITE_TO_DISK | Whether to write outputs to disk or just return them from the run function | True |
+| LOAD_LAST | Whether to load a checkpoint from a previous run | False |
 
 ### Loss types and parameters
 | Name      | Description                                    | Default |
@@ -149,9 +176,9 @@ W_OUTPUT_EPOCH_TRIAL | List of 2-entry lists [epoch,trial] at wich to save weigh
 | CUDA_VISIBLE_DEVICES | Internal GeNN switch how CUDA devices are addressed | True |
 | AVG_SNSUM | Whether to average spike counts across a mini-batch for regularisation spike counts | False |
 | REDUCED_CLASSES | A list of classes to train; if None, all classes are trained | None |
-TAU_0 | Parameter of the first_spike loss functions | 0.5 |
-TAU_1 | Parameter of the first_spike loss functions | 6.4 |
-ALPHA | Parameter of the first_spike loss functions | 3e-3 |
+| TAU_0 | Parameter of the first_spike loss functions | 0.5 |
+| TAU_1 | Parameter of the first_spike loss functions | 6.4 |
+| ALPHA | Parameter of the first_spike loss functions | 3e-3 |
 
 ## SHD/SSC parameters
 
