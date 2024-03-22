@@ -232,8 +232,8 @@ Many parameters are the same across the different benchmarks but we list them ag
 | HIDDEN_OUTPUT_STD | Standard deviation of synaptic weights from hidden to output neurons | 0.37 |
 | HIDDEN_HIDDEN_MEAN | Mean of initial synaptic weights of hidden to hidden recurrent connections | 0.2 |
 | HIDDEN_HIDDEN_STD | Mean of initial synaptic weights of hidden to hidden recurrent connections | 0.37 | 
-p["HIDDEN_HIDDENFWD_MEAN"]= 0.02 # only used when > 1 hidden layer
-p["HIDDEN_HIDDENFWD_STD"]= 0.01 # only used when > 1 hidden layer
+| HIDDEN_HIDDENFWD_MEAN | Mean synaptic weight of forward synapses between multiple hidden layers | 0.02  |
+| HIDDEN_HIDDENFWD_STD | Standard deviation of weights of forward synapses between multiple hidden layers | 0.01 |
 | PDROP_INPUT | Probability of dropping input spikes | 0.2 |
 | PDROP_HIDDEN | Probability of dropping spikes in the hidden layer | 0.0 |
 | REG_TYPE | Type of regularisation to apply to the hidden layer | "none" |
