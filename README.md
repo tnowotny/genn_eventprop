@@ -2,11 +2,11 @@
 Implementation of eventprop learning in GeNN
 
 
-The repository contains research code that was used to make a first implementation of the Eventprop learning rule [CITE] and test it against increasingly difficult benchmarks. The code underlies the publication: Nowotny, T., Turner, J.P. and Knight, J.C., 2022. Loss shaping enhances exact gradient learning with eventprop in spiking neural networks. arXiv preprint arXiv:2212.01232.
+The repository contains research code that was used to make a first implementation of the Eventprop learning rule [(Wunderlich and Pehle 2021)](https://doi.org/10.1038/s41598-021-91786-z) and test it against increasingly difficult benchmarks. The code underlies the publication: Nowotny, T., Turner, J.P. and Knight, J.C., 2022. Loss shaping enhances exact gradient learning with eventprop in spiking neural networks. arXiv preprint [arXiv:2212.01232](https://arxiv.org/abs/2212.01232).
 
 The code is generally organised so that the GeNN model definitions are colected in `models.py` and for the benchmarks there are individual python files `simulator_XXX.py` as follows:
 
-- `simulator_yinyang.py`: Train to classify the Yinyang benchmark dataset [CITE]
+- `simulator_yinyang.py`: Train to classify the Yinyang benchmark dataset [(Kriener et al. 2022)](https://doi.org/10.1145/3517343.3517380)
 - `simulator_MNIST.py`: Train to classify the MNIST dataset [CITE]
 - `simulator_SHD.py`: Train to classify the Spikeing Heidelberg Digits (SHD) [CITE] or Spiking Google Speech Commands (SSC) [CITE] datasets. Which to train is selected with parameter `p["DATASET"]`
 - `simulator_DVS_gesture.py`: *experimental*, train to classify the DVS gesture dataset [CITE]

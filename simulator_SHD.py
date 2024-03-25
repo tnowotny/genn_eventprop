@@ -9,7 +9,7 @@ from models import *
 import os
 import urllib.request
 import gzip, shutil
-from tensorflow.keras.utils import get_file
+#from tensorflow.keras.utils import get_file
 import tables
 import copy
 from time import time
@@ -523,7 +523,7 @@ class SHD_model:
         newZ= Z[idx]
         return (newX, newY, newZ)
     
-    def split_SHD_random(self, X, Y, p, shuffle= True):
+    def split_SHD_random(self, X, Y, Z, p, shuffle= True):
         idx= np.arange(len(X),dtype= int)
         if (shuffle):
             self.datarng.shuffle(idx)
@@ -533,9 +533,15 @@ class SHD_model:
         newX_e= X[eval_idx]
         newY_t= Y[train_idx]
         newY_e= Y[eval_idx]
+        if Z is not None:
+            newZ_t = Z[train_idx]
+            newZ_e = Z[eval_idx]
+        else:
+            newZ_t = None
+            newZ_e = None
         print(len(newX_t))
         print(len(newX_e))
-        return (newX_t, newY_t, newX_e, newY_e)
+        return (newX_t, newY_t, newZ_t, newX_e, newY_e, newZ_e)
 
     # split off one speaker to form evaluation set
     def split_SHD_speaker(self, X, Y, Z, speaker, p, shuffle= True):
@@ -1703,7 +1709,6 @@ class SHD_model:
         adam_step= 1
         learning_rate= p["ETA"]
         the_lr= learning_rate/1000.0
-        print(f"initial: the_lr: {the_lr}, learning_rate: {learning_rate}")
         
         # set up recording if required
         spike_t= {}
@@ -1996,7 +2001,6 @@ class SHD_model:
                     self.model.custom_update("EVPLearn")
                 if the_lr < learning_rate:
                     the_lr = np.minimum(the_lr*p["LR_EASE_IN_FACTOR"],learning_rate)
-                    print(f"the_lr: {the_lr}, learning_rate: {learning_rate}")
 
                 self.zero_insyn(p)
                 
@@ -2041,21 +2045,18 @@ class SHD_model:
                             spike_N_hidden[l]= self.hidden_reset[l].extra_global_params["sNSum_all"].view[:N_batch].copy()
 
                 # collect data for rewiring rule for silent neurons
-                for l in range(p["N_HID_LAYER"]):
-                    self.hidden[l].pull_var_from_device("sNSum")
-                    rewire_sNSum[l].append(np.sum(self.hidden[l].vars["sNSum"].view.copy(),axis= 0))
+                if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1"):
+                    for l in range(p["N_HID_LAYER"]):
+                        self.hidden[l].pull_var_from_device("sNSum")
+                        rewire_sNSum[l].append(np.sum(self.hidden[l].vars["sNSum"].view.copy(),axis= 0))
 
                 # record training loss and error
-                # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss types sum and max
+                # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss type max
                 if p["LOSS_TYPE"] == "max":
                     self.output.pull_var_from_device("exp_V")
                     pred= np.argmax(self.output.vars["exp_V"].view[:N_batch,:self.N_class], axis=-1)
                 if p["LOSS_TYPE"][:3] == "sum":
                     self.output.pull_var_from_device("SoftmaxVal")
-                    #if phase == "eval":
-                    #    for i in range(N_batch):
-                    #        print(f"{np.argmax(self.output.vars['sum_V'].view[i,:self.N_class])},{np.max(self.output.vars['sum_V'].view[i,:self.N_class])}")
-                    #        print(f"{np.argmax(self.output.vars['SoftmaxVal'].view[i,:self.N_class])},{np.max(self.output.vars['SoftmaxVal'].view[i,:self.N_class])}")
                     pred= np.argmax(self.output.vars["SoftmaxVal"].view[:N_batch,:self.N_class], axis=-1)
                     
                 if p["LOSS_TYPE"] == "avg_xentropy":
@@ -2190,7 +2191,6 @@ class SHD_model:
                 print(f"Training examples: {len(lX)},")
             if lX_eval is not None:
                 print(f"Evaluation examples: {len(lX_eval)}")
-            print(f"Learning rate: {the_lr}, target learning rate: {learning_rate}")
             
             if resfile is not None:
                 resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
@@ -2332,7 +2332,7 @@ class SHD_model:
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         if p["N_VALIDATE"] > 0:
             if p["EVALUATION"] == "random":
-                X_train, Y_train, X_eval, Y_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, p)
+                X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_random(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, p)
             if p["EVALUATION"] == "speaker":
                 speakers= list(set(self.Z_train_orig))
                 X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, speakers[p["SPEAKER_LEFT"][0]], p)
