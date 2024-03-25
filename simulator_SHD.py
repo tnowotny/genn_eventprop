@@ -33,6 +33,7 @@ p["TIMING"] = True
 p["TRAIN_DATA_SEED"]= 123
 p["TEST_DATA_SEED"]= 456
 p["MODEL_SEED"]= None
+p["N_HID_LAYER"] = 2
 
 # Experiment parameters
 p["TRIAL_MS"]= 1400.0
@@ -131,9 +132,9 @@ p["CUDA_VISIBLE_DEVICES"]= True
 p["AVG_SNSUM"]= False
 p["REDUCED_CLASSES"]= None
 # "first_spike" loss function variables
-p["TAU_0"]= 0.5
-p["TAU_1"]= 6.4
-p["ALPHA"]= 3e-3
+p["TAU_0"]= 1.0
+p["TAU_1"]= 100.0
+p["ALPHA"]= 5e-5
 p["AUGMENTATION"]= {}
 p["AUGMENTATION"]["NORMALISE_SPIKE_NUMBER"]= False
 p["COLLECT_CONFUSION"]= False
@@ -1004,7 +1005,7 @@ class SHD_model:
         # output neuron initialisation
         # ----------------------------------------------------------------------------
         print("defining output ...")
-        if p["LOSS_TYPE"][:-4] == "first_spike":
+        if p["LOSS_TYPE"][:11] == "first_spike":
             output_params= {
                 "N_batch": p["N_BATCH"],
                 "trial_t": p["TRIAL_MS"],
@@ -2010,7 +2011,7 @@ class SHD_model:
                         self.hidden_reset[l].extra_global_params["sNSum_all"].view[:]= np.zeros(p["N_BATCH"])
                         self.hidden_reset[l].push_extra_global_param_to_device("sNSum_all")
 
-                if p["LOSS_TYPE"][:-4] == "first_spike":
+                if p["LOSS_TYPE"][:11] == "first_spike":
                     # need to copy new_first_spike_t from device before neuronReset!
                     self.output.pull_var_from_device("new_first_spike_t")
                     nfst= self.output.vars["new_first_spike_t"].view[:N_batch,:self.N_class].copy()
@@ -2077,7 +2078,7 @@ class SHD_model:
                     for pr, lb in zip(pred,lbl):
                         conf[phase][pr,lb]+= 1
 
-                if p["LOSS_TYPE"][:-4] == "first_spike":
+                if p["LOSS_TYPE"][:11] == "first_spike":
                     self.output.pull_var_from_device("expsum")
                     self.output.pull_var_from_device("exp_st")
                     if p["LOSS_TYPE"] == "first_spike":

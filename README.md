@@ -7,13 +7,16 @@ The repository contains research code that was used to make a first implementati
 The code is generally organised so that the GeNN model definitions are colected in `models.py` and for the benchmarks there are individual python files `simulator_XXX.py` as follows:
 
 - `simulator_yinyang.py`: Train to classify the Yinyang benchmark dataset [(Kriener et al. 2022)](https://doi.org/10.1145/3517343.3517380)
-- `simulator_MNIST.py`: Train to classify the MNIST dataset [CITE]
-- `simulator_SHD.py`: Train to classify the Spikeing Heidelberg Digits (SHD) [CITE] or Spiking Google Speech Commands (SSC) [CITE] datasets. Which to train is selected with parameter `p["DATASET"]`
-- `simulator_DVS_gesture.py`: *experimental*, train to classify the DVS gesture dataset [CITE]
-- `simulator_SMNIST.py`: *experimental*, train to classify the sequential MNIST dataset [CITE]
+- `simulator_MNIST.py`: Train to classify the MNIST dataset [(Lecun et al. 1998)](https://doi.org/10.1109/5.726791)
+- `simulator_SHD.py`: Train to classify the Spikeing Heidelberg Digits (SHD) [(Cramer et al. 2020)](https://doi.org/10.1109/TNNLS.2020.3044364) or Spiking Google Speech Commands (SSC), a spiking version of Google Speech Commands [(Warden 2018)](https://doi.org/10.48550/arXiv.1804.03209) datasets. Which to train is selected with parameter `p["DATASET"]`
+- `simulator_DVS_gesture.py`: *experimental*, train to classify the DVS gesture dataset [(Amir et al. 2017)](https://openaccess.thecvf.com/content_cvpr_2017/html/Amir_A_Low_Power_CVPR_2017_paper.html)
+- `simulator_SMNIST.py`: *experimental*, train to classify the sequential MNIST dataset [(Quoc et al. 2015)](https://doi.org/10.48550/arXiv.1504.00941), [(Costa et al. 2017)](https://proceedings.neurips.cc/paper/2017/hash/45fbc6d3e05ebd93369ce542e8f2322d-Abstract.html)
 
 The latter two simulators are in an early experimental stage and did not contribute to the publication.
 
+Please note that this is research code and comes with no warranty of fitness for any purpose. Also, the lessons learned with this code are incorporated into the [ml-genn](https://github.com/genn-team/ml_genn) that is better suitable for thirf party use.
+
+## Details
 Each of the `simulator_XXX.py` files contains the definition of a simulator class that can then be used to train, test or run cross-validation on the benchmark datasets in question. An example for a simple script to do so is `train_SHD.py`.
 
 The behaviour of the simulator class is fine-tuned by a dictionary `p` of parameters that is passed to the methods. It is defined in the `simulator_XXX.py` files with standard values and can then be adjusted to the intended values, e.g.
@@ -288,9 +291,9 @@ Many parameters are the same across the different benchmarks but we list them ag
 | CUDA_VISIBLE_DEVICES | Internal GeNN switch how CUDA devices are addressed | True |
 | AVG_SNSUM | Whether to average spike counts across a mini-batch for regularisation spike counts | False |
 | REDUCED_CLASSES | A list of classes to train; if None, all classes are trained | None |
-| TAU_0 | Parameter of the first_spike loss functions | 0.5 |
-| TAU_1 | Parameter of the first_spike loss functions | 6.4 |
-| ALPHA | Parameter of the first_spike loss functions | 3e-3 |
+| TAU_0 | Parameter of the first_spike loss functions | 1.0 |
+| TAU_1 | Parameter of the first_spike loss functions | 100.0 |
+| ALPHA | Parameter of the first_spike loss functions | 5e-5 |
 | AUGMENTATION | Dictionary of augmentations to apply to the training data, possible values {"random_shift": x}, {"random_dilate": [y0, y1]}, {"ID_jitter": z} where x is max size of shoft, y0,y1 min/max dilation factors, z range of the jitter across input channels | {} |
 | COLLECT_CONFUSION | Whether to collect confusion matrices during training / testing | False |
 | REC_PREDICTIONS | Whether to record the individual predictions during training / testing | False |
