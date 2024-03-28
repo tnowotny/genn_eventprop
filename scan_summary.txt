@@ -1,0 +1,668 @@
+SHD:
+---
+
+On JUWELS:
+Scan 10
+n_batch= [ 32, 64, 128 ]
+lbd= [ 2e-13, 5e-13, 1e-12 ]
+shift= [ 0.0, 10.0, 20.0 ]
+dilate= [ 0.0, 0.1, 0.2 ]
+jitter= [ 0.0, 5.0]
+seeds= [[372, 371],[814,813],[135,134]]
+-> loss sum, ETA 0.005
+
+best 0.6987 on 32, 2e-13, 20.0, 0.0, 0.0
+Impressions: dilate and jitter seem to matter little - neither negative nor positive, though if anything negative
+
+---
+
+Scan 11
+n_batch= [ 32, 64, 128 ]
+lbd= [ 5e-10, 1e-9, 2e-9 ]
+shift= [ 0.0, 10.0, 20.0 ]
+dilate= [ 0.0, 0.1, 0.2 ]
+jitter= [ 0.0, 5.0]
+seeds= [[372, 371],[814,813],[135,134]]
+-> loss sum_weigh_linear (hence much larger lambdas!), ETA 0.001 
+
+best ~0.75 on 32, ANY, 20.0, ANY, ANY
+Impressions: Very clear performance landscape - lambda, dilate and jitter matter little/ not at all
+
+---
+
+Scan 12
+n_batch= [ 32, 64, 256 ]
+lbd= [ 2e-13, 5e-13, 1e-12 ]
+shift= [ 0.0, 10.0, 20.0 ]
+dilate= [ 0.0, 0.1, 0.2 ]
+jitter= [ 0.0, 5.0]
+seeds= [[372, 371],[814,813],[135,134]]
+-> loss sum, N_EPOCH 300, HIDDEN_OUTPUT_STD 0.03, batch 256 instead of 128 in Scan 10
+
+best ~0.68 on 32, 2e-13, 20.0, 0 or 0.1, ANY
+Impressions: Fairly clear landscape & more or less same as Scan 10 - reason for repeat bit unclear - HIDDEN_OUTPUT_STD shouldn't matter;
+
+---
+
+Scan 13
+n_batch= [ 32, 64, 128 ]
+lbd= [ 5e-10, 1e-9, 2e-9 ]
+shift= [ 0.0, 10.0, 20.0 ]
+dilate= [ 0.0, 0.1, 0.2 ]
+jitter= [ 0.0, 5.0]
+hid_noise= [ 0.001, 0.002, 0.005 ]
+seeds= [[372, 371],[814,813],[135,134]]
+-> loss sum_weigh_exp, ETA 0.001
+
+best ~0.75 on 32, ANY, 20, ANY, ANY, 0.001/0.002,
+Impressions: landscape clear/smooth; hidden noise not helping
+
+---
+
+Scan 14
+loss= [ "sum_weigh_exp", "sum_weigh_linear", "sum_weigh_sigmoid" ]
+lbd= [ 5e-10, 1e-9, 2e-9 ]
+shift= [ 20.0, 25.0, 30.0 ]
+hid_noise= [ 0.0, 0.001, 0.002]
+seeds= [[372, 371],[814,813],[135,134]]
+-> N_BATCH 32
+
+best ~0.77 linear or exp, ANY, 25 or 30, some failures on high noise ow ANY
+Impressions: Good preformance throughout with slight advantages for above combinations
+
+---
+
+Scan 15
+lbd= [ 2e-10, 5e-10, 1e-9, 2e-9, 5e-9 ]
+tau_0= [ 0.2, 0.5, 1.0, 2.0, 5.0 ]
+tau_1= [ 2.0, 5.0, 10.0, 20.0 ]
+alpha= [ 2e-3, 5e-3, 1e-2, 2e-2, 5e-2 ]
+seeds= [[372, 371],[814,813],[135,134]]
+-> loss first_spike
+
+best ? -- looks like a terrible failure
+
+---
+Scan 16
+lbd= [ 2e-9, 5e-9, 1e-8, 2e-8 ]
+tau_0= [ 1, 2, 5 ]
+tau_1= [ 20.0, 25.0, 30.0 ]
+alpha= [ 5e-4, 1e-3, 2e-3, 5e-3 ]
+seeds= [[372, 371],[814,813],[135,134]]
+-> loss first_spike_exp
+
+best ? -- looks like a terrible failure
+
+---
+Scan 17
+lbd= [ 5e-12, 1e-11, 2e-11, 5e-11 ]
+nbatch= [ 32, 64, 128, 256 ]
+eta= [ 5e-4, 1e-3, 2e-3, 5e-3 ]
+seeds= [[372, 371],[814,813],[135,134]]
+-> loss max
+
+best < 0.5 ...
+
+---
+Scan 18
+lbd= [ 1e-10, 2e-10, 5e-10, 1e-9 ]
+nbatch= [ 32, 64, 128, 256 ]
+eta= [ 5e-4, 1e-3, 2e-3, 5e-3 ]
+seeds= [[372, 371],[814,813],[135,134]]
+-> loss max
+
+best < 0.5 ...
+
+---
+Scan 19
+lbd= [ 2e-9, 5e-9, 1e-8, 2e-8 ]
+nbatch= [ 32, 64, 128, 256 ]
+eta= [ 5e-4, 1e-3, 2e-3, 5e-3 ]
+seeds= [[372, 371],[814,813],[135,134]]
+-> loss max
+
+best < 0.5 ...
+
+---
+Scan 20
+-> each loss type got individual parameters:
+n_batch= [ 256, 32, 32, 256 ]
+hid_out_mean= [ 0.0, 0.0, 1.2, 0.0 ]
+hid_out_std= [ 0.03, 0.03, 0.6, 0.03 ]
+lbd= [ 1e-12, 1e-9, 1e-8, 2e-9 ]
+eta= [ 5e-3, 1e-3, 1e-3, 2e-3 ] 
+loss_type= [ "sum", "sum_weigh_exp", "first_spike_exp", "max"]
+-> scanned:
+rewire= [ False, True ]
+recurrent= [ False, True ]
+pdrop_input= [ 0.0, 0.1 ]
+lbd_fac= [ 0.5, 1.0, 2.0 ]
+hid_noise= [ 0.0, 0.01 ]
+seeds= [[372, 371],[814,813],[135,134]]
+
+best ~0.75 sum_weigh_exp, ANY, recurrent, ANY, ANY, 0.0 noise, 
+
+---
+Scan 21
+-> individual experiments with optimised parameters as determined earlier
+n_batch= [ 256, 32, 32, 256 ]
+hid_out_mean= [ 0.0, 0.0, 1.2, 0.0 ]
+hid_out_std= [ 0.03, 0.03, 0.6, 0.03 ]
+lbd= [ 1e-12, 1e-9, 2e-7, 5e-9 ]
+eta= [ 5e-3, 1e-3, 1e-3, 2e-3 ] 
+loss_type= [ "sum", "sum_weigh_exp", "first_spike_exp", "max"]
+-> sample independently for all of them
+adam_beta1= [ 0.9, 0.99 ]
+adam_beta2= [ 0.999, 0.9999 ]
+rewire= [ False, True ]
+recurrent= [ False, True ]
+pdrop_input= [ 0.0, 0.1 ]
+lbd_fac= [ 0.5, 1.0, 2.0 ]
+hid_noise= [ 0.0, 0.01 ]
+augment= [{}, {"random_shift": 40.0}]
+seeds= [[372, 371],[814,813],[135,134]]
+
+best 0.75 -- sum_weigh_exp, rewire ANY, recurrent, pdrop ANY, lbd ANY, hid_noise 0, adam 0.9/0.999, 40.0
+Impressions: very few good performers but looking systematic
+
+---
+Scan 22
+lbd= [ 5e-8, 1e-7, 2e-7, 5e-7 ]
+tau_0= [ 0.2, 0.5, 1 ]
+tau_1= [ 20.0, 50.0, 100.0 ]
+alpha= [ 5e-5, 1e-4, 2e-4, 5e-4 ]
+seeds= [[372, 371],[814,813],[135,134]]
+loss first_spike_exp
+
+best < 0.5 ...
+
+---
+Scan 23
+# individual experiments with optimised parameters as determined earlier
+n_batch= [ 256, 32, 32, 256 ]
+hid_out_mean= [ 0.0, 0.0, 1.2, 0.0 ]
+hid_out_std= [ 0.03, 0.03, 0.6, 0.03 ]
+lbd= [ 4e-12, 4e-9, 1e-6, 2e-8 ]
+eta= [ 5e-3, 1e-3, 1e-3, 2e-3 ] 
+loss_type= [ "sum", "sum_weigh_exp", "first_spike_exp", "max"]
+
+# sample independently for all of them
+rewire= [ False, True ]
+recurrent= [ False, True ]
+pdrop_input= [ 0.0, 0.1 ]
+lbd_fac= [ 0.5, 1.0 ]
+hid_noise= [ 0.0, 0.01 ]
+augment= [{}, {"random_shift": 40.0}]
+seeds= [[372, 371],[814,813],[135,134]]
+-> exactly as Scan 21 but lbd 4x higher -> no effect
+best 0.75 -- sum_weig_exp, rewire ANY, recurrent, pdrop ANY, lbd ANY, hid_noise 0, 40.0, 
+
+---
+Scan 24
+# individual experiments with optimised parameters as determined earlier
+n_batch= [ 256, 32, 32, 256 ]
+hid_out_mean= [ 0.0, 0.0, 1.2, 0.0 ]
+hid_out_std= [ 0.03, 0.03, 0.6, 0.03 ]
+lbd= [ 1e-12, 1e-9, 2e-7, 5e-9 ]
+eta= [ 5e-3, 1e-3, 1e-3, 2e-3 ] 
+loss_type= [ "sum", "sum_weigh_exp", "first_spike_exp", "max"]
+
+# sample independently for all of them
+rewire= [ False, True ]
+recurrent= [ False, True ]
+lbd_fac= [ 0.5, 1.0 ]
+-> lbd factor 4x smaller than Scan 23, N_BATCH 256
+best ~0.77 -- sum_weig_exp, ANY, recurrent, lbd ANY
+Impressions: Clear results but no advance over previous (seems overlapping with Scan 22)
+
+---
+Scan 25
+# individual experiments with optimised parameters as determined earlier
+tau_syn= [ 0.2, 0.5, 1.0, 2.0 ]
+tau_mem= [ 1.0, 2.0, 4.0, 8.0 ]
+drop_input= [ 0, 0.05, 0.1 ]
+n_batch= [ 32, 256 ]
+lbd= [ 1e-9, 1e-8, 1e-7, 1e-6 ]
+eta= [ 5e-3, 1e-2 ] 
+loss_type = [ "sum", "sum_weigh_exp", "first_spike_exp", "max"]
+p["AUGMENTATION"]= {
+    "random_shift": 4.0,
+}
+rewire= [ False, True ]
+recurrent= [ False, True ]
+lbd_fac= [ 0.5, 1.0 ]
+-> Looks like RESCALE attempted but then NOT actually in the JSON files -> some accidental prepscan overwrite?!?!
+
+best ~0.77 -- sum_weigh_exp, ANY, recurrent, lbd_fac 0.5 (but no strong effect of lbd)
+
+---
+Scan 26
+lbd= [ 2e-10, 5e-10, 1e-9, 2e-9, 5e-9, 1e-8 ]
+eta= [ 1e-3, 2e-3 ] 
+-> loss max: Some sort of rechecking?
+
+best < 0.5
+
+---
+Scan 27
+tausyn= [ 0.2, 0.5, 1.0, 2.0 ]
+taumem= [ 1.0, 2.0, 4.0, 8.0 ]
+drop_input= [ 0, 0.05, 0.1 ]
+n_batch= [ 32, 256 ]
+lbd= [ 1e-9, 1e-8, 1e-7, 1e-6 ]
+eta= [ 5e-3, 1e-2 ] 
+augment= [{}, {
+    "random_shift": 4.0,
+}]
+recurrent= [ False, True ]
+-> loss sum_weigh_exp; RESCALE by 0.1 in x and t
+
+best 0.65 -- tau_syn 0.5, tau_mem 8.0, pdrop ANY, n_batch 256, lbd 1e-7, 1e-2, shift ANY, recurrent
+Impressions: Very few working combinations (rough search?) - performance well below not rescaled version
+
+---
+Scan 28
+eta= [ 5e-3, 1e-2 ] 
+n_batch= [ 32, 256 ]
+drop_input= [ 0, 0.05, 0.1 ]
+lbd= [ 1e-8, 1e-7, 1e-6, 1e-5 ]
+nu= [ 1, 2, 3, 4 ]
+-> mainly as before but cross-check NU
+
+best ~0.73 -- eta 5e-3, N_BATCH 32, ANY, 1e-5, NU 2
+
+---
+Scan 29
+eta= [ 5e-3, 1e-2 ] 
+n_batch= [ 32, 64, 128, 256 ]
+lbd= [ 1e-8, 1e-7, 1e-6, 1e-5 ]
+nu= [ 2, 4, 6, 8 ]
+-> rescale_t only 0.2
+
+best ~0.74 -- eta 5e-3/ANY, 32/mixed, 1e-7/1e-6, NU depends on lbd
+Impressions: Bit complex picture with no clear individual best values for paras
+
+---
+Scan 30
+train_taum= [ False, True ]
+n_hid_layer= [ 1, 2 ]
+num_hidden= [ 256, 1024 ]
+scale_x= [ 0.1, 0.2, 1.0 ]
+scale_t= [ 0.1, 0.2, 1.0 ]
+n_batch= [ 32, 256 ]
+lbd= [ 1e-7, 2e-7, 5e-7 ]
+nu= [ 7, 14 ]
+rec= [False, True]
+-> still rescale t 0.2, x 0.1
+best ~0.7 -- no train_taum, 1 hid layer, n_hid 256, scale_x 0.1, scale_t 1.0, n_batch 32, lbd 5e-7, nu 7, recurrent 
+Impressions: Very isolated success
+*** is this worth digging into as lbd at upper end with clear progression (for this isolated combination) ...?
+
+---
+Scan 31
+scale_t= [ 0.4, 0.6, 0.8, 0.9 ]
+-> Essentially trying to find trends when scaling by scaling the relevant quantities around the expected scaling behaviours ...
+-> based off J21_scan_322
+
+best ~0.76 -- mostly in the 0.9 and 0.8 scale; for 0.9 almost all other scaling is fine.
+However, scale 0.4 not totally terrible ... 0.73.. can be found
+
+---
+Scan 32
+scale_t= [ 0.1, 0.2, 0.5, 1.0 ]
+-> loss sum
+best < 0.5 ...
+
+---
+Scan 33
+dt_ms= [ 1, 2, 5, 10 ]
+tau= [ 0.2, 0.5, 1.0, 2.0 ]
+lbd= [ 0.2, 0.5, 1.0, 2.0 ]
+min_epoch= [ 50, 300 ]
+loss= ["sum_weigh_exp", "sum_weigh_linear"]
+-> try t scaling through DT
+can achieve 0.78 on DT 2ms,
+0.76 on DT 5ms: DT 5, taum 2.0, taus 1.0/2.0, lbd 0.5/1.0/2.0, ANY, ANY
+Impressions: This should be pursued more: DT=5ms is 200 timesteps, similar to others' efforts
+
+-> trends suggest taum factors should be even higher (and Friedemann's approach suggests taum*5 and tausyn*5 for DT to 10)
+
+---
+Scan 34
+dt_ms= [ 1, 2, 5, 10 ]
+tau_m= [ 3.0, 4.0, 5.0, 6.0 ]
+tau_syn= [ 1.0, 2.0, 3.0, 4.0 ]
+lbd= [ 1.0, 2.0, 3.0, 4.0 ]
+min_epoch= [ 50, 300 ]
+loss= ["sum_weigh_exp", "sum_weigh_linear"]
+-> extends Scan 33 to higher taum, tausyn
+
+best ~0.75 for DT 5ms ... taum scale around 3 helpful; more not. tausyn scale around 2 or 3
+(unclear whether 5 and 5 scale would have worked for DT=10)
+
+---
+Scan 35
+dt_ms= [ 1, 2, 5, 10 ]
+taum= [ 3.0, 4.0, 5.0, 6.0 ]
+taus= [ 3.0, 4.0, 5.0, 6.0 ]
+lbd= [ 2.0, 4.0, 8.0, 16.0 ]
+min_epoch= [ 50, 300 ]
+loss= ["sum_weigh_exp", "sum_weigh_linear"]
+-> extends Scan 34 to higher tau_syn and higher lbd
+best 0.746 for DT 10: tau_m 3, tau_s 4/5, lbd 8, min_epoch 300, ANY
+Impressions: The parameter area where it works with DT 10 is narrower than for smaller DT but ok values *can* be found
+
+---
+Scan 37
+# shift augmentation settings
+shift= [ 0.0, 10.0, 20.0, 30.0, 40.0, 50.0 ]
+# blend augmentation settings
+blend= [ [], [0.5, 0.5], [0.8, 0.2], [0.33, 0.33, 0.33] ]
+n_epoch= [ 300, 100, 100, 100 ]
+n_train= [ p0["N_TRAIN"], 3*p0["N_TRAIN"], 3*p0["N_TRAIN"], 3*p0["N_TRAIN"] ]
+# dilation augmentation settings
+dilate_min= [ 0.5, 0.8, 0.9, 1.0 ]
+dilate_max= [ 2.0, 1.25, 1.1, 1.0 ]
+# ID jitter
+jitter= [ 0, 5, 10, 20 ]
+# train tau_m
+train_tau_m= [False, True]
+# trial_ms
+trial_ms= [ 1000.0, 800.0, 600.0 ]
+-> finally introduces blend augmentation
+best ~0.80 -- shift 40.0, {0.5,0.5] blend, dilate 1/2/3 (incl 3 = no dilate), ID_jitter ANY?, train_taum ANY?, trial_ms 1000 or 800
+Impressions: Quite a few good performers; the assessment is a bit lopsided because many runs did not finish due to 24h runtime limit.
+
+---
+Scan 38
+blend = [ [], [0.5, 0.5] ]
+n_epoch = [ 200, 100 ]
+n_train = [ p0["N_TRAIN"], 2*p0["N_TRAIN"] ]
+dt_ms= [ 1, 2, 5, 10 ]
+taum= [ 1.0, 2.0, 4.0, 8.0 ]
+taus= [ 1.0, 2.0, 4.0, 8.0 ]
+lbd= [ 2.0, 4.0, 8.0, 16.0 ]
+train_tau_m = [False, True]
+hid_neuron = ["LIF", "hetLIF"]
+-> trying DT scaling and blend augmentation together. Basing of J21_scan_322.json rather than J31_scan_769.json as they are almost identical except for a strangely scaled NU. Also trying hetLIF for the first time on SHD (developed on SSC)
+-> no delay line used here
+
+NOTE: There was a confusion with the flag for learning tau's: TRAIN_TAUM was set but is deprecated, it
+ should have been TRAIN_TAU. This means that everything was run without training tau's
+There also ws an issue of runs with tau_m == tau_syn having undefined lambda and V timestep updates. After fixing the issue, those were rerun "in place" using fixscan_SHD_JUWELS_38.py ...
+
+---
+Scan 38b
+->fixing the wrong "TRAIN_TAUM" labeling by rerunning all "TRAIN_TAU" instances. Should get full picture from combining Scan 38 and Scan 38b
+
+
+
+---
+Scan 39
+blend = [ [], [0.5, 0.5] ]
+n_epoch = [ 100, 50 ]
+n_train = [ p0["N_TRAIN"], 2*p0["N_TRAIN"] ]
+dt_ms= [ 1, 2, 5 ]
+taum= [ 1.0, 2.0 ]
+taus= [ 2.0, 4.0 ]
+train_tau = [False, True]
+hid_neuron = ["LIF", "hetLIF"]
+num_hidden= [ 256, 1024 ]
+lbd_fac= [ 0.1, 0.5, 1.0, 5.0, 10.0 ]
+
+
+Had to be rerun due to memory leak issue when recreating models in the same run; this was overflowing CUDA
+memory with the input spike EGP. Rerun with 39b and fix_scan_JUWELS_39b
+
+best: there are several combinations leading to almost the same value around 84%
+impressions: This was to "throw everything at it" in terms of delay line input, blend augmentation, etc.
+subsequent rerun on the data got about 93% - almost SOTA
+
+
+---
+Scan 39b
+(repeat of 39 because something went wrong)
+
+---
+scan 40
+intended to be the final train_test scan for SHD
+
+---
+scan 41
+Tried to run a repeat of the old across-loss-functions scan (scan_JUWELS_21 equivalent) but oticed that the original sum loss was performing very poorly here
+
+scan 41b, 41c, 41d, 41f: attempts to fix up the sum loss problem (unstable learning after some 150-200 epochs and failure)
+Through painstaking manual testing across versions (scan_JUWELS_41f/J41f_scan_20rerun and rerun2) it appears that a) the exact solution per timestep in the lambda dynamic equations leads to much snaller gradients and slower learning in the hidden layer (because Lambda_I-lambda_V converges more properly to 0?). Additionally, the introduced lift_silent mechanism in combination with the exact integration led to the annoying learning failure (!!!). It did not have this effect for other loss functions.
+& Additionally, sum loss appears to struggle with clipped 1000 ms trials. Learning is (more?) unstable.  
+
+Plan: Switch off LR schedule and lift_silent and rerun basic comparison of loss functions without augmentations. Allow LR ease-in though. Hope to find that all loss functions can get very low training errors. Also, why not run this basic scan with 1400 ms trial length throughout?
+
+---
+scan 42
+Was meant to be the train_test runs for the basic loss function runs in 41 but failed because of the sum loss issues.
+
+---
+scan 43
+New attempt of basic loss function cross-validation with insights from manual debugging incorporated.
+
+---
+scan 44, 44b:
+run train_test on selected best solutions from scan_JUWELS_43 (This is for the "basic SHD comparison"). In 44 we used the wrong ids due to re-ordering in the summary plot (plot_scan_results_xval ..) - so 44b was neeeded.
+
+---
+scan 45 is repeating scan 43 because the latter accidentally was run with events clipped at 1000.0 ms.
+
+---
+scan 46 is repeating what 44b did but base on 45 instead of 43.
+
+---
+scan 40b:
+like scan40 (final investigation of SHD with all the Jazz) but everything with tau learning switched on (!)
+
+---
+
+scan47:
+final run for paper x-validation; scan47b fills in different huidden layer sizes for some combinations of parameters.
+
+---
+scan48:
+train_test SHD runs based on picking the best LBD values from scan47 and scan47b
+
+
+---
+Summary conclusions:
+* Augmentations:
+- don't use dilations
+- don't use ID jitter
+- random shift at 40.0 is useful
+- pdrop mostly no change - don't use
+- hid_noise negative - don't use
+- 0.5,0.5 blend augmentation is useful
+
+* Recurrence:
+- recurrent always better than ffwd
+
+* Batch size:
+- 32 seems always best among those tested ... with exceptions; maybe this is something to always test
+
+* Loss function
+- sum_weigh_exp (though sum_weigh_linear equivalent afaik)
+
+
+* Rescaling:
+- generally not rescaling works better but rescaling isn't actually hopeless, see Scan 29
+
+
+
+NOTES
+-> Friedemann's RawHD approach takes tau_m, tau_syn times 5 as he is doing 100 timesteps with dt 2ms on what should be 1000 ms inputs.
+
+
+
+-----
+
+SSC
+---
+
+Scan 1
+lbd= [ 0.2, 0.5, 1.0, 2.0 ]
+best 0.608 at LBD_* == 2.0*p0
+Impressions: proof of concept run
+
+---
+Scan 2
+lbd_fac= [ 0.1, 0.3, 1.0, 3.0 ]
+eta_fac= [ 0.1, 0.3, 1.0, 3.0 ]
+n_batch= [ 32, 64, 128, 256 ]
+augmentation= [ {}, {"random_shift": 20.0}, {"random_shift": 40.0} ]
+train_taum= [ False, True ]
+loss= [ "sum_weigh_exp", "sum_weigh_linear" ]
+best 0.6552: lbd almost any, largest slightly better; eta_fac 0.3 or 1.0, latter best; 32 best but no large difference: 64 and 128 also ok; shift 20.0 best; train_TAUM: no; sum_weigh_exp slightly better;
+Impressions: clear pref for not training taum and some LRs; all else noticable but subtle trends
+
+---
+Scan 3
+lbd_fac= [ 1.0, 2.0, 5.0, 10.0, 20.0, 50.0 ]
+n_batch= [ 32, 64 ]
+nu_upper= [ 10, 14 ]
+augmentation= [{}, {"random_shift": 5.0}, {"random_shift": 10.0}, {"random_shift": 15.0}, {"random_shift": 20.0}, {"random_shift": 25.0} ]
+loss= [ "sum_weigh_exp", "sum_weigh_linear" ]
+best 0.66x, many successful combinations; sum_weigh_exp slightly ahead; N_BATCH 32 slightly better(?)
+Impressions: very spread out good performance; nothing stands out
+
+---
+Scan 4
+lbd_fac= [ 0.01, 0.02, 0.05, 0.1, 0.2, 0.5 ]
+n_batch= [ 32, 64 ]
+nu_upper= [ 10, 14 ]
+augmentation= [{}, {"random_shift": 5.0}, {"random_shift": 10.0}, {"random_shift": 15.0}, {"random_shift": 20.0}, {"random_shift": 25.0} ]
+loss= [ "sum_weigh_exp", "sum_weigh_linear" ]
+best 0.64x, slightly less good combinations and less good performance than scan 3
+Impressions: Extends Scan 3 to smaller lbd values
+
+---
+Scan 5
+lbd_fac= [ 1.0, 2.0, 5.0, 10.0, 20.0, 50.0 ]
+recurrent= [ False, True ]
+n_hid_layer= [ 1, 2, 3 ]
+augmentation= [{"random_shift": 10.0}, {"random_shift": 15.0}, {"random_shift": 20.0}]
+hiddenfwd_mean= [ 0.06, 0.09 ]
+hiddenfwd_std= [ 0.02, 0.03 ]
+num_hidden= [ 128, 256, 512 ]
+best 0.68x : lbd_fac 10 (but almost doesn't matter), recurrent!, most good sln for 1 layer, augmentation all fine, fwd_mean any, fwd_std any, 512 very slightly ahead (?)
+Impressions: mostly anything fine, just needs recurrency and 1 hidden lay is best
+
+---
+Scan 6
+eta_fac= [ 1.0, 5.0, 10.0 ] 
+lbd_fac= [ 1.0, 5.0, 20.0, 100.0 ]
+nu_upper= [ 10.0, 15.0, 20.0 ]
+recurrent= [ False, True ]
+n_hid_layer= [ 1, 2, 3 ]
+hiddenfwd_mean= [ 0.06, 0.09 ]
+hiddenfwd_std= [ 0.02, 0.03 ]
+best: 0.60x : eta_fac 1.0, lbd_fac 5 or 20, NU 10 or 15, recurrent (!), 1 or 2 hidden layers, fwd_mean any, fwd_std 0.02 slightly better (?)
+Impressions: NUM_HIDDEN was not scanned! Overall, not a great result. We already know we can do better (is it missing augmentation?)
+
+---
+Scan 7
+eta_fac= [ 0.1, 0.2, 0.5 ] 
+lbd_fac= [ 1.0, 5.0, 20.0, 100.0 ]
+nu_upper= [ 10.0, 15.0, 20.0 ]
+recurrent= [ False, True ]
+n_hid_layer= [ 1, 2, 3 ]
+hiddenfwd_mean= [ 0.06, 0.09 ]
+hiddenfwd_std= [ 0.02, 0.03 ]
+best: 0.63 ... but not amazingly better
+Impressions: Extends Scan 6 to smaller ETA. Not a great improvement.
+
+---
+Scan 8
+num_hidden= [ 128, 256 ]
+lbd_fac= [ 0.1, 0.5, 1.0, 5.0 ]
+recurrent= [ False, True ]
+n_input_delay= [ 10, 20 ]
+input_delay= [ 10.0, 20.0, 30.0, 40.0 ]
+best 0.55x ...
+Impressions: Input delay! But not amazing
+
+---
+Scan 9
+num_hidden= [ 128, 256 ]
+lbd_fac= [ 0.01, 0.05, 0.1, 0.5 ]
+recurrent= [ False, True ]
+n_input_delay= [ 10, 20 ]
+input_delay= [ 10.0, 20.0, 30.0, 40.0 ]
+best 0.61x ... bit better than scan 8 but not as good as scan 5
+Impressions: extends Scan 8 to smaller lbd values
+
+---
+Scan 10
+num_hidden= [ 128, 256 ]
+lbd_fac= [ 0.01, 0.05, 0.1, 0.5 ]
+recurrent= [ False, True ]
+n_input_delay= [ 10, 20 ]
+input_delay= [ 10.0, 20.0, 30.0, 40.0 ]
+augment= [ {}, {'random_shift': 10.0}]
+best: 0.70x : 256 slightly better; lbd any; recurrent slightly better; 10 delays a bit better; delay 30 or 40; shift 10 !!
+Impressions: Bringing back augmentation to the input delay network; makes a big difference
+
+---
+Scan 11
+num_hidden= [ 128, 256 ]
+lbd_fac= [ 0.01, 0.05, 0.1, 0.5 ]
+recurrent= [ False, True ]
+n_input_delay= [ 10, 20 ]
+input_delay= [ 10.0, 20.0, 30.0, 40.0 ]
+augment= [ {}, {'random_shift': 1.0}]
+best 0.61x
+Impressions: Trying with RESCALE_X= 0.1 and a prop. smaller random shift; that doesn't do it!
+
+---
+Scan 12
+num_hidden= [ 128, 256 ]
+lbd_fac= [ 0.01, 0.05, 0.1, 0.5 ]
+recurrent= [ False, True ]
+n_input_delay= [ 10, 20 ]
+input_delay= [ 10.0, 20.0, 30.0, 40.0 ]
+augment= [ {}, {'random_shift': 1.0}]
+best 0.62x (tiny improvement?)
+Impressions: As Scan 11 but with pdrop_input!
+
+---
+Scan 13
+num_hidden= [ 128, 256 ]
+lbd_fac= [ 0.01, 0.05, 0.1, 0.5 ]
+recurrent= [ False, True ]
+pdrop= [ 0.0, 0.1 ]
+n_hid_layer= [ 1, 2 ]
+augment= [ {}, {'random_shift': 5.0}]
+rescale_x= [ 1.0, 0.1 ]
+best 0.63x : 256 a bit better; lbd any; recurrent; pdrop doesn really matter; 1 hid layer; shift 5; rescale almost doesn't matter?
+Impressions: No delay line here! but 0.63x not super
+
+---
+Scan 14
+lbd_fac= [ 0.1, 0.5, 1.0, 5.0, 10.0 ]
+eta_fac= [ 0.1, 0.5, 1.0, 5.0, 10.0 ]
+recurrent= [ False, True ]
+augmentation= [{}, {"random_shift": 5.0}, {"random_shift": 10.0}, {"random_shift": 20.0}]
+num_hidden= [ 128, 256, 512, 1024 ]
+best 0.68x : lbd 0.1 (but 0.5, 1.0 also ok); eta 0.5 (1.0 okish); recurrent; shift 20 (5, 10 also ok); largest hidden layer best;
+
+---
+Scan 15
+lbd_fac= [ 0.1, 0.5, 1.0, 5.0, 10.0 ]
+eta_fac= [ 0.1, 0.5, 1.0, 5.0, 10.0 ]
+recurrent= [ False, True ]
+num_hidden= [ 128, 256, 512, 1024 ]
+augmentation= [{}, {"random_shift": 5.0}, {"random_shift": 10.0}, {"random_shift": 20.0}]
+best 0.68 : very isolated;
+Impressions: This is like Scan 14 but with train_tau (However NOTE: train_tau not correctly implemented when this was run!!); that said, train_tau was under-actuated (applied to only parts of the batch) and yet it seems to be doing harm?
+
+---
+
+
+scan 18:
+full crossvalidation for paper similar to SHD scan 47, 47b.
+

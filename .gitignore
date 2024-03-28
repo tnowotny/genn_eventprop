@@ -8,3 +8,6 @@ test*.json
 prepscan_*
 runscan_*
 *~
+__pycache__/
+data/
+test_MNIST_all/
