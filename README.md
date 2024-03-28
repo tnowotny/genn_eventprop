@@ -14,7 +14,7 @@ The code is generally organised so that the GeNN model definitions are colected 
 
 The latter two simulators are in an early experimental stage and did not contribute to the publication.
 
-Please note that this is research code and comes with no warranty of fitness for any purpose. Also, the lessons learned with this code are incorporated into the [ml-genn](https://github.com/genn-team/ml_genn) that is better suitable for thirf party use.
+Please note that this is research code and comes with no warranty of fitness for any purpose. Also, the lessons learned with this code are incorporated into the [ml-genn](https://github.com/genn-team/ml_genn) that is better suitable for third party use.
 
 ## Details
 Each of the `simulator_XXX.py` files contains the definition of a simulator class that can then be used to train, test or run cross-validation on the benchmark datasets in question. An example for a simple script to do so is `train_SHD.py`.

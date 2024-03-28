@@ -33,7 +33,6 @@ p["TIMING"] = True
 p["TRAIN_DATA_SEED"]= 123
 p["TEST_DATA_SEED"]= 456
 p["MODEL_SEED"]= None
-p["N_HID_LAYER"] = 2
 
 # Experiment parameters
 p["TRIAL_MS"]= 1400.0
