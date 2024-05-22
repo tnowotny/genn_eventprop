@@ -1848,8 +1848,8 @@ EVP_LIF_output_SHD_avg_xentropy = genn_model.create_custom_neuron_class(
     "EVP_LIF_output_SHD_avg_xentropy",
     param_names=["N_neurons","N_batch","trial_steps","trial_t","N_class"],
     var_name_types=[("V", "scalar"),("lambda_V","scalar"),("lambda_I","scalar"),
-                    ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar")],
-    extra_global_params=[("label","int*"), ("Vbuf","scalar*"),("tau_m","scalar"),("tau_syn","scalar")], 
+                    ("trial","int"),("rp_V","int"),("wp_V","int"),("loss","scalar"),("sum_V","scalar"),("tau_m","scalar"),("tau_syn","scalar")],
+    extra_global_params=[("label","int*"), ("Vbuf","scalar*")], 
     sim_code="""
     int buf_idx= $(batch)*((int) $(N_neurons))*((int) $(trial_steps)*2)+$(id)*((int) $(trial_steps)*2);
     // backward pass

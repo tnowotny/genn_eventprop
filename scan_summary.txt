@@ -462,11 +462,14 @@ like scan40 (final investigation of SHD with all the Jazz) but everything with t
 ---
 
 scan47:
-final run for paper x-validation; scan47b fills in different huidden layer sizes for some combinations of parameters.
+final run for paper x-validation; scan47b fills in different hidden layer sizes for some combinations of parameters.
+scan47c fills in the rest of the hidden layer sizes (both b and c only for timesteps 1ms and 2ms)
 
 ---
 scan48:
-train_test SHD runs based on picking the best LBD values from scan47 and scan47b
+train_test SHD runs based on picking the best LBD values from scan47, scan47b
+scan48c doing what's not yet included in scan48
+NOTE scan48b is a distraction and eventually not used - the labels "" "b" and "c" do not exactly map onto scan47 labels
 
 
 ---
@@ -661,8 +664,31 @@ best 0.68 : very isolated;
 Impressions: This is like Scan 14 but with train_tau (However NOTE: train_tau not correctly implemented when this was run!!); that said, train_tau was under-actuated (applied to only parts of the batch) and yet it seems to be doing harm?
 
 ---
+Scan 16?
+
+---
+Scan 17? 
+Looks pretty complete (only not train_tau). Forgot to make a note of the issue with this.
+
+---
+Scan 18: USED IN PAPER
+full train/eavluate + test for paper similar to SHD scan 47, 47b.
+
+Scan 19: USED IN PAPER
+6x reruns for teh best lambdas of scan 18
 
 
-scan 18:
-full crossvalidation for paper similar to SHD scan 47, 47b.
+---
 
+scan_SHD_base_xval was copied from scan_JUWELS_45
+scan_SHD_base_traintest was copied from scan_JUWELS_46
+
+scan_SHD_final_xval was assembled from scan_JUWELS_47, 47b, 47c
+scan_SHD_final_traintest was assembled from scan_JUWELS_48, 48c
+
+scan_SSC_final was assembled from scan_SSC_JUWELS_18, 18b, 18c
+scan_SSC_final_repeats was assembled from scan_SSC_JUWELS_19, 19c
+
+see: tools/recombine*.py
+
+---

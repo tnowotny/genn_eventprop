@@ -4,9 +4,9 @@ import sys
 import json
 from utils import gridlines, remap, average_out, optimise
 
-title = True
-axis_labels = True
-mark_opt = True
+title = False
+axis_labels = False
+mark_opt = False
 show_rank = True
 N_rank = 10
 
@@ -27,14 +27,17 @@ N_spk= 10
 s= np.product(para["split"])
 
 results = [ [] for i in range(11) ] # 11 types of results
-res_names = [ "id", "total number epochs", "final train correct", "final train loss", "final valid correct", "final valid loss", "epoch of best valid", "train correct at best valid", "train loss at best valid", "best valid correct", "valid loss at best valid" ]
+res_names = [ "id", "total number epochs", "final train correct", "final train loss", "final valid correct", "final valid loss", "epoch of best train", "best train correct", "train loss at best train", "valid correct at best train", "valid loss at best train" ]
 res_col = 11 # includes one column for id
 opt_col = 9 # that is best validation performance
 
 results = np.zeros((11,s))
 for i in range(s):
     fail = False
-    fname= basename+"_"+str(i)+".json"
+    id = str(i)
+    if "pad_ID" in para:
+        id = id.zfill(4)
+    fname= basename+"_"+id+".json"
     try:
         with open(fname,"r") as f:
             p= json.load(f)
@@ -42,9 +45,10 @@ for i in range(s):
         print(f"error trying to load {fname}")
     else:
         N_E= p["N_EPOCH"] # total number of epochs for each speaker
-        idx= np.outer(np.arange(N_S-N_avg,N_spk*N_E,N_E),np.ones(N_avg))+np.outer(np.ones(N_spk),np.arange(N_avg))
+        tN_S= min(p["N_EPOCH"], N_S)
+        idx= np.outer(np.arange(tN_S-N_avg,N_spk*N_E,N_E),np.ones(N_avg))+np.outer(np.ones(N_spk),np.arange(N_avg))
         idx= np.array(idx.flatten(), dtype= int)
-        fname= basename+"_"+str(i)+"_results.txt"
+        fname= basename+"_"+id+"_results.txt"
         results[0,i]= i
         try:
             with open(fname, "r") as f:
@@ -70,6 +74,14 @@ for i in range(s):
 
 results= np.array(results)
 print(results.shape)
+
+if "avg" in para:
+    results, s, split, names = average_out(results, s, para["split"], para["avg"], para["names"]) 
+else:
+    split = para["split"]
+    names = para["names"]
+    
+    
 mx= np.max(results[7])
 p75 = np.percentile(results[7],50)
 nmax = list(np.where(results[7] == mx)[0])
@@ -79,13 +91,6 @@ nmax_e = list(np.where(results[opt_col] == mx_e)[0])
 print(f"{nmax}: train {mx}")
 print(f"{nmax_e}: eval {mx_e}")
 
-if "avg" in para:
-    results, s, split, names = average_out(results, s, para["split"], para["avg"], para["names"]) 
-else:
-    split = para["split"]
-    names = para["names"]
-    
-    
 if "remap" in para:
     results, split = remap(results, split, para["remap"])
 else:
@@ -120,12 +125,19 @@ if len(names) == len(split):
         xlbl= xlbl+names[para["remap"][hti+i]]+","
 
 for i in range(0,results.shape[0]):
-    plt.figure(figsize=(20,4.5))
-    plt.imshow(results[i,:].reshape((ht,wd)),vmin= np.median(results[i,:]),interpolation='none',cmap='jet')
+    plt.figure(figsize=(20,5.2))
+    plt.imshow(results[i,:].reshape((ht,wd)),vmin= 0.5,#vmin= np.median(results[i,:]),
+               interpolation='none',cmap='jet')
+    print(f"i: {i}, {res_names[i]}, max: {np.amax(results[i,:])}")
     plt.colorbar()
     plt.xticks([])
     plt.yticks([])
-    gridlines(plt.gca(),hti, wdi, split)
+    if "explicit_lines" in para:
+        extra_lines= para["explicit_lines"]
+    else:
+        extra_Lines = None
+    gridlines(plt.gca(),hti, wdi, split, extra_lines=extra_lines)
+
     if title:
         plt.title(res_names[i])
     if axis_labels:
@@ -135,7 +147,7 @@ for i in range(0,results.shape[0]):
         plt.scatter( np.mod(opt,wd), np.asarray(opt,dtype=int) // wd, marker='x', color= 'w')
     if show_rank:
         for j in range(N_rank):
-            plt.text(np.mod(rnk[j],wd)-0.2, (rnk[j] // wd)+0.25, str(j),color="w")
+            plt.text(np.mod(rnk[j],wd)-0.2, (rnk[j] // wd)+0.25, str(j),color="w",fontsize= 8)
     print(f"{res_names[i]} top values: {results[i,rnk[:8]]}, mean= {np.mean(results[i,rnk[:8]])}, std= {np.std(results[i,rnk[:8]])}")
     plt.tight_layout()
     plt.savefig(basename+"_"+res_names[i].replace(" ","_")+".pdf")

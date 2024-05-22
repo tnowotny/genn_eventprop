@@ -4,6 +4,10 @@ import numpy as np
 import json
 import sys
 
+if len(sys.argv) != 2:
+    print(f"usage {sys.argv[0]} <digit>")
+    exit(1)
+
 p["DATASET"]= "SHD"
 p["RESCALE_X"]= 1.0
 p["RESCALE_T"]= 1.0

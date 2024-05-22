@@ -25,21 +25,16 @@ with open(sys.argv[2],"r") as f:
 N_avg= 5
 s= np.product(para["split"])
 
-res_names = [ "id", "total number epochs", "final train correct", "final train loss", "final valid correct", "final valid loss", "epoch of best valid", "train correct at best valid", "train loss at best valid", "best valid correct", "valid loss at best valid", "time per epoch (s)" ]
+res_names = [ "id", "total number epochs", "final train correct", "final train loss", "final valid correct", "final valid loss", "epoch of best valid", "train correct at best valid", "train loss at best valid", "best valid correct", "valid loss at best valid", "time per epoch secs" ]
 opt_col = 9 # that is best validation performance
-
-results= load_train_test(basename,s,N_avg,"best",reserve=RESERVE)
+if "pad_ID" in para:
+    pad_ID = para["pad_ID"]
+else:
+    pad_ID = None
+results= load_train_test(basename,s,N_avg,"best",reserve=RESERVE,pad_ID=pad_ID)
 
 print(results.shape)
    
-mx= np.max(results[7])
-p75 = np.percentile(results[7],50)
-nmax = list(np.where(results[7] == mx)[0])
-mx_e = np.max(results[9])
-p75_e = np.percentile(results[9],50)
-nmax_e = list(np.where(results[9] == mx_e)[0])
-print(f"{nmax}: train {mx}")
-print(f"{nmax_e}: eval {mx_e}")
 
 if "avg" in para:
     results, s, split, names = average_out(results, s, para["split"], para["avg"], para["names"]) 
@@ -47,14 +42,22 @@ else:
     split = para["split"]
     names = para["names"]
     
-    
+mx= np.max(results[7])
+p75 = np.percentile(results[7],50)
+nmax = list(np.where(results[7] == mx)[0])
+mx_e = np.max(results[opt_col])
+p75_e = np.percentile(results[opt_col],50)
+nmax_e = list(np.where(results[opt_col] == mx_e)[0])
+print(f"{nmax}: train {mx}")
+print(f"{nmax_e}: eval {mx_e}")
+
 if "remap" in para:
     results, split = remap(results, split, para["remap"])
 else:
     para["remap"]= list(range(len(split)))
 
 if "list" in para and "optimise" in para:
-    opt = optimise(results[9], para["list"], para["optimise"], split)
+    opt = optimise(results[opt_col], para["list"], para["optimise"], split)
     print(f"Original IDs of best (averaged if average is on!): {list(results[0,opt].astype(int))}")
 
 
@@ -84,31 +87,32 @@ if len(names) == len(split):
         xlbl= xlbl+names[para["remap"][hti+i]]+","
 
 for i in range(0,results.shape[0]):
-    plt.figure(figsize=(15,7))
-    plt.imshow(results[i,:].reshape((ht,wd)),vmin= np.median(results[i,:]), interpolation='none',cmap='jet')
+    plt.figure(figsize=(20,5.2))
+    plt.imshow(results[i,:].reshape((ht,wd)),vmin=0.4, #vmin= np.median(results[i,:]),
+               interpolation='none',cmap='jet')
     plt.colorbar()
     plt.xticks([])
     plt.yticks([])
-    gridlines(plt.gca(),hti, wdi, split)
+    if "explicit_lines" in para:
+        extra_lines= para["explicit_lines"]
+    else:
+        extra_lines = None
+    gridlines(plt.gca(),hti, wdi, split, extra_lines=extra_lines)
+
+    
     if title:
         plt.title(res_names[i])
     if axis_labels:
         plt.ylabel(ylbl)
         plt.xlabel(xlbl)
+
+    if show_rank:
+        for j in range(N_rank):
+            plt.text(np.mod(rnk[j],wd)-0.2, (rnk[j] // wd)+0.25, str(j),color="w",fontsize=8)
     if mark_opt:
-        plt.scatter( np.mod(opt,wd), np.arange(len(opt)), marker='x', color= 'w')
-    if show_rank:
-        for j in range(N_rank):
-            plt.text(np.mod(rnk[j],wd)-0.2, (rnk[j] // wd)+0.25, str(j),color="w")
-    if show_rank:
-        for j in range(N_rank):
-            plt.text(np.mod(rnk[j],wd)-0.2, (rnk[j] // wd)+0.25, str(j),color="w")
+        plt.scatter( np.mod(opt,wd), np.asarray(opt,dtype=int) // wd, marker='x', color= 'w')
+
     plt.tight_layout()
     plt.savefig(basename+"_"+res_names[i].replace(" ","_")+".pdf")
-
-print(np.mean(results[9,280:300]))
-print(np.mean(results[9,300:320]))
-print(np.mean(results[9,600:620]))
-print(np.mean(results[9,620:640]))
       
 plt.show()

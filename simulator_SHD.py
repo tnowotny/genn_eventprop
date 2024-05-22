@@ -2093,7 +2093,7 @@ class SHD_model:
                     losses= self.loss_func_sum(lbl, N_batch)   # uses self.output.vars["SoftmaxVal"].view 
 
                 if p["LOSS_TYPE"] == "avg_xentropy":
-                    losses= self.loss_func_avg_xentropy(lbl, N_batch)   # uses self.output.vars["loss"].view
+                    losses= self.loss_func_avg_xentropy(N_batch)   # uses self.output.vars["loss"].view
 
                 #with open("debug.txt","a") as f:
                 #    for i in range(len(lbl)):

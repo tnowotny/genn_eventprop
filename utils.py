@@ -194,7 +194,7 @@ class EventsToGrid:
         return grid_events
        
 
-def gridlines(ax, hti, wdi, split):
+def gridlines(ax, hti, wdi, split, extra_lines = None):
     k= 1
     ymn= 0
     ymx= np.product(split[:hti])
@@ -214,10 +214,28 @@ def gridlines(ax, hti, wdi, split):
         lnsy= [ [ymn-0.5, ymx-0.5] for i in range(1,xmx // d) ]
         ax.plot(np.array(lnsx).T,np.array(lnsy).T,'w',lw= len(split)-j)
 
+    if extra_lines is not None:
+        lnsy= []
+        lnsx = []
+        if "x" in extra_lines:
+            for j in extra_lines["x"]["j"]:
+                lnsx.append([j*d-0.5, j*d-0.5])
+                lnsy.append([ymn-0.5, ymx-0.5])
+            ax.plot(np.array(lnsx).T,np.array(lnsy).T,'w',lw= extra_lines["x"]["w"])   
+        lnsy= []
+        lnsx = []
+        if "y" in extra_lines:
+            for j in extra_lines["y"]["j"]:
+                lnsy.append([j*d-0.5, j*d-0.5])
+                lnsx.append([xmn-0.5, xmx-0.5])
+            ax.plot(np.array(lnsx).T,np.array(lnsy).T,'w',lw= extra_lines["y"]["w"])   
+
+
 def remap(d, split, remap):
     for j in range(d.shape[0]):
         x= d[j,:].copy()
         x= np.reshape(x, split)
+        print(x.shape)
         x= x.transpose(remap)
         d[j,:]= x.flatten()
     split= np.asarray(split)[remap]
@@ -252,12 +270,16 @@ def optimise(d, lst, opt, split):
     return best
 
 
-def load_train_test(basename,s,N_avg,secondary,reserve=None):
+def load_train_test(basename,s,N_avg,secondary,reserve=None,pad_ID=None):
+    print(f"pad_ID: {pad_ID}")
     res_col = 12
-    results = [ [] for i in range(res_col) ] # 11 types of results
+    results = [ [] for i in range(res_col) ] # 12 types of results
     for i in range(s):
         d2swap = False
-        fname= basename+"_"+str(i)+".json"
+        id = str(i)
+        if pad_ID is not None:
+            id = id.zfill(4)
+        fname= basename+"_"+id+".json"
         results[0].append(i)
         try:
             with open(fname,"r") as f:
@@ -267,7 +289,7 @@ def load_train_test(basename,s,N_avg,secondary,reserve=None):
                 results[j+1].append(0)        
                 print(f"error trying to load {fname}")
         else:
-            fname= basename+"_"+str(i)+"_results.txt"
+            fname= basename+"_"+id+"_results.txt"
             try:
                 with open(fname, "r") as f:
                     d= np.loadtxt(f)
@@ -278,7 +300,7 @@ def load_train_test(basename,s,N_avg,secondary,reserve=None):
                 print("error trying to load {}".format(fname))
             else:
                 if reserve is not None:
-                    fname = reserve+"_"+str(i)+"_results.txt"
+                    fname = reserve+"_"+id+"_results.txt"
                     try:
                         with open(fname, "r") as f:
                             d2= np.loadtxt(f)
@@ -294,9 +316,9 @@ def load_train_test(basename,s,N_avg,secondary,reserve=None):
                     results[j+1].append(np.mean(d[-N_avg:,j]))
                 results[11].append(d[-1,-1]/(d[-1,0]+1))
             if d2swap:
-                fname = reserve+"_"+str(i)+"_"+secondary+".txt"
+                fname = reserve+"_"+id+"_"+secondary+".txt"
             else:
-                fname = basename+"_"+str(i)+"_"+secondary+".txt"
+                fname = basename+"_"+id+"_"+secondary+".txt"
             try:
                 with open(fname, "r") as f:
                     d= np.loadtxt(f)

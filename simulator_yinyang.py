@@ -6,12 +6,14 @@ from pygenn.genn_wrapper import NO_DELAY
 from Dataset import YinYangDataset
 from models import *
 import os
+from time import time
 
 # ----------------------------------------------------------------------------
 # Parameters
 # ----------------------------------------------------------------------------
 p= {}
 p["OUT_DIR"]= "."
+p["NAME"] = "test"
 p["DT_MS"] = 0.1
 p["BUILD"] = True
 p["TIMING"] = True
@@ -30,7 +32,7 @@ N_CLASS= 3              # hard-coded as an immutable part of the YinYang benchma
 # Network structure
 NUM_INPUT = 5           # hard-coded as an immutable part of the YinYang benchmark
 NUM_OUTPUT = N_CLASS    # hard-coded as an immutable part of the YinYang benchmark
-p["NUM_HIDDEN"] = 200
+p["NUM_HIDDEN"] = 100
 
 # Model parameters
 p["TAU_SYN"] = 5.0
@@ -157,7 +159,6 @@ class yinyang:
                         "V_reset": p["V_RESET"],
                         "N_neurons": p["NUM_HIDDEN"],
                         "N_max_spike": p["N_MAX_SPIKE"],
-                        "tau_syn": p["TAU_SYN"],
         }
         self.hidden_init_vars= {"V": p["V_RESET"],
                                 "lambda_V": 0.0,
@@ -168,13 +169,12 @@ class yinyang:
                                 "fwd_start": p["N_MAX_SPIKE"]-1,
                                 "new_fwd_start": p["N_MAX_SPIKE"]-1,
                                 "back_spike": 0,
+                                "tau_syn": p["TAU_SYN"],
         }
-        output_params= {"tau_m": p["TAU_MEM"],
-                        "V_thresh": p["V_THRESH"],
+        output_params= {"V_thresh": p["V_THRESH"],
                         "V_reset": p["V_RESET"],
                         "N_neurons": NUM_OUTPUT,
                         "N_max_spike": p["N_MAX_SPIKE"],
-                        "tau_syn": p["TAU_SYN"],
                         "trial_t": p["TRIAL_MS"],
                         "tau0": p["TAU_0"],
                         "tau1": p["TAU_1"],
@@ -193,6 +193,8 @@ class yinyang:
                                 "exp_st": 0.0,
                                 "expsum": 1.0,
                                 "trial": 0,
+                                "tau_m": p["TAU_MEM"],
+                                "tau_syn": p["TAU_SYN"],
         }
 
         # ----------------------------------------------------------------------------
@@ -207,7 +209,7 @@ class yinyang:
         # ----------------------------------------------------------------------------
         # Optimiser initialisation
         # ----------------------------------------------------------------------------
-        adam_params = {"beta1": p["ADAM_BETA1"], "beta2": p["ADAM_BETA2"], "epsilon": p["ADAM_EPS"], "tau_syn": p["TAU_SYN"],}
+        adam_params = {"beta1": p["ADAM_BETA1"], "beta2": p["ADAM_BETA2"], "epsilon": p["ADAM_EPS"],}
         self.adam_init_vars = {"m": 0.0, "v": 0.0}
 
         # ----------------------------------------------------------------------------
@@ -280,10 +282,10 @@ class yinyang:
 
         # synapse populations
         self.in_to_hid= self.model.add_synapse_population("in_to_hid", "DENSE_INDIVIDUALG", NO_DELAY, self.input, self.hidden, EVP_input_synapse,
-                                                {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}
+                                                {}, self.in_to_hid_init_vars, {}, {}, my_Exp_Curr, {}, {}
         )
         self.hid_to_out= self.model.add_synapse_population("hid_to_out", "DENSE_INDIVIDUALG", NO_DELAY, self.hidden, self.output, EVP_synapse,
-                                                 {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {"tau": p["TAU_SYN"]}, {}
+                                                 {}, self.hid_to_out_init_vars, {}, {}, my_Exp_Curr, {}, {}
         )
         var_refs = {"dw": genn_model.create_wu_var_ref(self.in_to_hid, "dw")}
         self.in_to_hid_reduce= self.model.add_custom_update("in_to_hid_reduce","EVPReduce", EVP_grad_reduce, {}, {"reduced_dw": 0.0}, var_refs)
@@ -335,6 +337,7 @@ class yinyang:
         for pop, var in p["REC_SYNAPSES"]:
             rec_vars_s[var+pop]= []
 
+        start_time= time()
         for epoch in range(number_epochs):
 
             if learning:
@@ -429,6 +432,10 @@ class yinyang:
                     np.save(os.path.join(p["OUT_DIR"], "w_hidden_output_e{}_t{}.npy".format(epoch,trial)), self.hid_to_out.vars["w"].view.copy())
 
             print("{} Correct: {}, Loss: {}".format(epoch, good/(N_trial*p["N_BATCH"]),np.mean(the_loss)))
+            with open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"),"a") as f:
+                f.write(f"{epoch} {good/(N_trial*p['N_BATCH'])} {np.mean(the_loss)} {time()-start_time}\n")
+                start_time = time()
+                f.close()
             predict= np.hstack(predict)
             if p["TRAINING_PLOT"] and epoch%p["TRAINING_PLOT_INTERVAL"] == 0:
                 plt.figure()
