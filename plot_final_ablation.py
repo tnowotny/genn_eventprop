@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import json
-from load_specific_scans import load_SSC_test_19
 from load_traintest_SHD_final import load_traintest_SHD_final
 from load_traintest_SSC_final import load_traintest_SSC_final
 from matplotlib.lines import Line2D
