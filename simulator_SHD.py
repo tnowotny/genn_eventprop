@@ -2027,9 +2027,10 @@ class SHD_model:
                           
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     # need to copy sum_V and loss from device before neuronReset!
-                    self.output.pull_var_from_device("sum_V")
-                    self.output.pull_var_from_device("loss")
-
+                    pass
+                    #self.output.pull_var_from_device("sum_V")
+                    #self.output.pull_var_from_device("loss")
+                
                 self.model.custom_update("neuronReset")
 
                 if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and p["AVG_SNSUM"]:
@@ -2046,12 +2047,14 @@ class SHD_model:
 
                 # collect data for rewiring rule for silent neurons
                 if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1"):
-                    for l in range(p["N_HID_LAYER"]):
-                        self.hidden[l].pull_var_from_device("sNSum")
-                        rewire_sNSum[l].append(np.sum(self.hidden[l].vars["sNSum"].view.copy(),axis= 0))
+                    pass
+                    #for l in range(p["N_HID_LAYER"]):
+                    #    self.hidden[l].pull_var_from_device("sNSum")
+                    #    rewire_sNSum[l].append(np.sum(self.hidden[l].vars["sNSum"].view.copy(),axis= 0))
 
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss type max
+
                 if p["LOSS_TYPE"] == "max":
                     self.output.pull_var_from_device("exp_V")
                     pred= np.argmax(self.output.vars["exp_V"].view[:N_batch,:self.N_class], axis=-1)
@@ -2076,7 +2079,7 @@ class SHD_model:
                 if p["COLLECT_CONFUSION"]:
                     for pr, lb in zip(pred,lbl):
                         conf[phase][pr,lb]+= 1
-
+                """
                 if p["LOSS_TYPE"][:11] == "first_spike":
                     self.output.pull_var_from_device("expsum")
                     self.output.pull_var_from_device("exp_st")
@@ -2094,7 +2097,7 @@ class SHD_model:
 
                 if p["LOSS_TYPE"] == "avg_xentropy":
                     losses= self.loss_func_avg_xentropy(N_batch)   # uses self.output.vars["loss"].view
-
+                """
                 #with open("debug.txt","a") as f:
                 #    for i in range(len(lbl)):
                 #        f.write(f"{lbl[i]}\n")
@@ -2108,7 +2111,7 @@ class SHD_model:
                     predict[phase].append(pred)
                     label[phase].append(lbl)
                     
-                the_loss[phase].append(losses)
+                #the_loss[phase].append(losses)
 
                 if p["DEBUG_HIDDEN_N"]:
                     for l in range(p["N_HID_LAYER"]):
@@ -2154,9 +2157,9 @@ class SHD_model:
 
             n_silent= []
             for l in range(p["N_HID_LAYER"]):
-                rewire_sNSum[l]= np.sum(np.array(rewire_sNSum[l]),axis= 0)
-                silent= rewire_sNSum[l] == 0
-                n_silent.append(np.sum(silent))
+                #rewire_sNSum[l]= np.sum(np.array(rewire_sNSum[l]),axis= 0)
+                #silent= rewire_sNSum[l] == 0
+                #n_silent.append(np.sum(silent))
                 if p["REWIRE_SILENT"]:
                     # rewire input to hidden or hidden to hidden fwd
                     if l == 0:
@@ -2193,7 +2196,8 @@ class SHD_model:
                 print(f"Evaluation examples: {len(lX_eval)}")
             
             if resfile is not None:
-                resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
+                #resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
+                resfile.write("{} {} {} {} {}".format(epoch, correct, 0.0, correct_eval, 0.0))
                 if p["DEBUG_HIDDEN_N"]:
                     for l in range(p["N_HID_LAYER"]):
                         resfile.write(" {} {} {} {}".format(np.mean(all_hidden_n[l]),np.std(all_hidden_n[l]),np.amin(all_hidden_n[l]),np.amax(all_hidden_n[l])))
