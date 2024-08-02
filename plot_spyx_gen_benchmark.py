@@ -8,6 +8,9 @@ from pandas import read_csv
 
 data = read_csv("spyx_genn.csv", delimiter=",")
 
+
+data = data.sort_values(by="Timestep [ms]", ascending=False)
+
 data_1024_hidden = data[data["Num hidden"] == 1024]
 data_256_hidden = data[data["Num hidden"] == 256]
 
