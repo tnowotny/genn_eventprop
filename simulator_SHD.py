@@ -2101,6 +2101,8 @@ class SHD_model:
                     if p["LOSS_TYPE"] == "avg_xentropy":
                         losses= self.loss_func_avg_xentropy(N_batch)   # uses self.output.vars["loss"].view
 
+                    the_loss[phase].append(losses)
+
                 #with open("debug.txt","a") as f:
                 #    for i in range(len(lbl)):
                 #        f.write(f"{lbl[i]}\n")
@@ -2113,8 +2115,6 @@ class SHD_model:
                 if p["REC_PREDICTIONS"]:
                     predict[phase].append(pred)
                     label[phase].append(lbl)
-                    
-                #the_loss[phase].append(losses)
 
                 if p["DEBUG_HIDDEN_N"]:
                     for l in range(p["N_HID_LAYER"]):
@@ -2200,8 +2200,11 @@ class SHD_model:
                 print(f"Evaluation examples: {len(lX_eval)}")
             
             if resfile is not None:
-                #resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
-                resfile.write("{} {} {} {} {}".format(epoch, correct, 0.0, correct_eval, 0.0))
+                if p["PROFILE"]:
+                    resfile.write("{} {} {} {} {}".format(epoch, correct, 0.0, correct_eval, 0.0))
+                else:
+                    resfile.write("{} {} {} {} {}".format(epoch, correct, np.mean(the_loss["train"]), correct_eval, np.mean(the_loss["eval"])))
+
                 if p["DEBUG_HIDDEN_N"]:
                     for l in range(p["N_HID_LAYER"]):
                         resfile.write(" {} {} {} {}".format(np.mean(all_hidden_n[l]),np.std(all_hidden_n[l]),np.amin(all_hidden_n[l]),np.amax(all_hidden_n[l])))
