@@ -16,6 +16,7 @@ from time import time
 #from dataclasses import dataclass
 #from typing import Tuple
 import sys
+import nvsmi
 from tqdm import tqdm
 from utils import EventsToGrid
 
@@ -731,8 +732,10 @@ class SHD_model:
         self.input_set.set_extra_global_param("allEndSpike", np.zeros(self.data_max_length*self.num_input, dtype=int))
         self.input_set.set_extra_global_param("allInputID", np.zeros(self.data_max_length, dtype=int))
         self.input_set.set_extra_global_param("trial", 0)
-
-
+        
+        in_bytes = sum(0 if e.is_scalar else e.values.nbytes for e in self.input.extra_global_params.values())
+        in_bytes += sum(0 if e.is_scalar else e.values.nbytes for e in self.input_set.extra_global_params.values())
+        print(f"{in_bytes / (1024 * 1024)} mbytes input data")
         # ----------------------------------------------------------------------------
         # hidden neuron initialisation
         # ----------------------------------------------------------------------------
@@ -2327,12 +2330,21 @@ class SHD_model:
             print("inputUpdate: %f" % self.model.get_custom_update_time("inputUpdate"))
 
         return (spike_t, spike_ID, rec_vars_n, rec_vars_s, correct, correct_eval)
+    
+    def get_gpu_mem(self):
+        gpu_processes = [p for p in nvsmi.get_gpu_processes()
+                         if p.pid == os.getpid()]
+        assert len(gpu_processes) == 1
+        return gpu_processes[0].used_memory
 
     def train(self, p):
         self.define_model(p, p["SHUFFLE"])
+        build_load_start_time = time()
         if p["BUILD"]:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
+        print(f"Build load takes {time() - build_load_start_time}s")
+        print(f"GPU memory {self.get_gpu_mem()} MiB")
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         if p["N_VALIDATE"] > 0:
             if p["EVALUATION"] == "random":
@@ -2364,9 +2376,12 @@ class SHD_model:
         for i in p["SPEAKER_LEFT"]:
             start_t= time()
             self.define_model(p, p["SHUFFLE"])
+            build_load_start_time= time()
             if p["BUILD"]:
                 self.model.build()
             self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
+            print(f"Build load takes {time() - build_load_start_time}s")
+            print(f"GPU memory {self.get_gpu_mem()} MiB")
             X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, speakers[i], p)
             res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= X_train, Y_train= Y_train, Z_train= Z_train, X_eval= X_eval, Y_eval= Y_eval, resfile= resfile)
             all_res.append([ res[4], res[5] ])
@@ -2376,20 +2391,26 @@ class SHD_model:
     
     def test(self, p):
         self.define_model(p, False)
+        build_load_start_time = time()
         if p["BUILD"]:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
+        print(f"Build load takes {time() - build_load_start_time}s")
+        print(f"GPU memory {self.get_gpu_mem()} MiB")
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         return self.run_model(1, p, False, X_eval= self.X_test_orig, Y_eval= self.Y_test_orig, resfile=resfile)
 
     def train_test(self, p):
         self.define_model(p, p["SHUFFLE"])
+        build_load_start_time = time()
         if p["BUILD"]:
             print("building model ...")
             self.model.build()
             print("build complete ...")
         print("loading model ...")
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
+        print(f"Build load takes {time() - build_load_start_time}s")
+        print(f"GPU memory {self.get_gpu_mem()} MiB")
         print("loading complete ...")
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= self.X_train_orig, Y_train= self.Y_train_orig, Z_train= self.Z_train_orig, X_eval= self.X_test_orig, Y_eval= self.Y_test_orig, resfile= resfile)
