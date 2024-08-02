@@ -16,7 +16,6 @@ from time import time
 #from dataclasses import dataclass
 #from typing import Tuple
 import sys
-import nvsmi
 from tqdm import tqdm
 from utils import EventsToGrid
 
@@ -25,6 +24,7 @@ from utils import EventsToGrid
 # ----------------------------------------------------------------------------
 
 p= {}
+p["PROFILE"] = False
 p["NAME"]= "test"
 p["DEBUG_HIDDEN_N"]= False
 p["OUT_DIR"]= "."
@@ -733,9 +733,11 @@ class SHD_model:
         self.input_set.set_extra_global_param("allInputID", np.zeros(self.data_max_length, dtype=int))
         self.input_set.set_extra_global_param("trial", 0)
         
-        in_bytes = sum(0 if e.is_scalar else e.values.nbytes for e in self.input.extra_global_params.values())
-        in_bytes += sum(0 if e.is_scalar else e.values.nbytes for e in self.input_set.extra_global_params.values())
-        print(f"{in_bytes / (1024 * 1024)} mbytes input data")
+        if p["PROFILE"]:
+            in_bytes = sum(0 if e.is_scalar else e.values.nbytes for e in self.input.extra_global_params.values())
+            in_bytes += sum(0 if e.is_scalar else e.values.nbytes for e in self.input_set.extra_global_params.values())
+            print(f"{in_bytes / (1024 * 1024)} mbytes input data")
+
         # ----------------------------------------------------------------------------
         # hidden neuron initialisation
         # ----------------------------------------------------------------------------
@@ -2028,11 +2030,10 @@ class SHD_model:
                     self.model.custom_update("Softmax3")
                     #self.output.pull_var_from_device("sum_V")
                           
-                if p["LOSS_TYPE"] == "avg_xentropy":
+                if p["LOSS_TYPE"] == "avg_xentropy" and not p["PROFILE"]:
                     # need to copy sum_V and loss from device before neuronReset!
-                    pass
-                    #self.output.pull_var_from_device("sum_V")
-                    #self.output.pull_var_from_device("loss")
+                    self.output.pull_var_from_device("sum_V")
+                    self.output.pull_var_from_device("loss")
                 
                 self.model.custom_update("neuronReset")
 
@@ -2049,11 +2050,10 @@ class SHD_model:
                             spike_N_hidden[l]= self.hidden_reset[l].extra_global_params["sNSum_all"].view[:N_batch].copy()
 
                 # collect data for rewiring rule for silent neurons
-                if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1"):
-                    pass
-                    #for l in range(p["N_HID_LAYER"]):
-                    #    self.hidden[l].pull_var_from_device("sNSum")
-                    #    rewire_sNSum[l].append(np.sum(self.hidden[l].vars["sNSum"].view.copy(),axis= 0))
+                if (p["REG_TYPE"] == "simple" or p["REG_TYPE"] == "Thomas1") and not p["PROFILE"]:
+                    for l in range(p["N_HID_LAYER"]):
+                        self.hidden[l].pull_var_from_device("sNSum")
+                        rewire_sNSum[l].append(np.sum(self.hidden[l].vars["sNSum"].view.copy(),axis= 0))
 
                 # record training loss and error
                 # NOTE: the neuronReset does the calculation of expsum and updates exp_V for loss type max
@@ -2082,25 +2082,25 @@ class SHD_model:
                 if p["COLLECT_CONFUSION"]:
                     for pr, lb in zip(pred,lbl):
                         conf[phase][pr,lb]+= 1
-                """
-                if p["LOSS_TYPE"][:11] == "first_spike":
-                    self.output.pull_var_from_device("expsum")
-                    self.output.pull_var_from_device("exp_st")
-                    if p["LOSS_TYPE"] == "first_spike":
-                        losses= self.loss_func_first_spike(nfst, lbl, trial, self.N_class, N_batch)
-                    if p["LOSS_TYPE"] == "first_spike_exp":
-                        losses= self.loss_func_first_spike_exp(nfst, lbl, trial, self.N_class, N_batch)
+                if not p["PROFILE"]:
+                    if p["LOSS_TYPE"][:11] == "first_spike":
+                        self.output.pull_var_from_device("expsum")
+                        self.output.pull_var_from_device("exp_st")
+                        if p["LOSS_TYPE"] == "first_spike":
+                            losses= self.loss_func_first_spike(nfst, lbl, trial, self.N_class, N_batch)
+                        if p["LOSS_TYPE"] == "first_spike_exp":
+                            losses= self.loss_func_first_spike_exp(nfst, lbl, trial, self.N_class, N_batch)
 
-                if p["LOSS_TYPE"] == "max":
-                    self.output.pull_var_from_device("expsum")
-                    losses= self.loss_func_max(lbl, N_batch)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
+                    if p["LOSS_TYPE"] == "max":
+                        self.output.pull_var_from_device("expsum")
+                        losses= self.loss_func_max(lbl, N_batch)   # uses self.output.vars["exp_V"].view and self.output.vars["expsum"].view
 
-                if p["LOSS_TYPE"][:3] == "sum":
-                    losses= self.loss_func_sum(lbl, N_batch)   # uses self.output.vars["SoftmaxVal"].view 
+                    if p["LOSS_TYPE"][:3] == "sum":
+                        losses= self.loss_func_sum(lbl, N_batch)   # uses self.output.vars["SoftmaxVal"].view 
 
-                if p["LOSS_TYPE"] == "avg_xentropy":
-                    losses= self.loss_func_avg_xentropy(N_batch)   # uses self.output.vars["loss"].view
-                """
+                    if p["LOSS_TYPE"] == "avg_xentropy":
+                        losses= self.loss_func_avg_xentropy(N_batch)   # uses self.output.vars["loss"].view
+
                 #with open("debug.txt","a") as f:
                 #    for i in range(len(lbl)):
                 #        f.write(f"{lbl[i]}\n")
@@ -2159,31 +2159,32 @@ class SHD_model:
                 correct_eval= 0
 
             n_silent= []
-            for l in range(p["N_HID_LAYER"]):
-                #rewire_sNSum[l]= np.sum(np.array(rewire_sNSum[l]),axis= 0)
-                #silent= rewire_sNSum[l] == 0
-                #n_silent.append(np.sum(silent))
-                if p["REWIRE_SILENT"]:
-                    # rewire input to hidden or hidden to hidden fwd
-                    if l == 0:
-                        pop= self.in_to_hid
-                    else:
-                        pop= self.hid_to_hidfwd[l-1]
-                        
-                    pop.pull_var_from_device("w")
-                    ith_w= pop.vars["w"].view[:]
-                    if p["REWIRE_LIFT"] != 0.0:
-                        ith_w+= p["REWIRE_LIFT"]
-                    else:
+            if not p["PROFILE"]:
+                for l in range(p["N_HID_LAYER"]):
+                    rewire_sNSum[l]= np.sum(np.array(rewire_sNSum[l]),axis= 0)
+                    silent= rewire_sNSum[l] == 0
+                    n_silent.append(np.sum(silent))
+                    if p["REWIRE_SILENT"]:
+                        # rewire input to hidden or hidden to hidden fwd
                         if l == 0:
-                            n1= self.num_input*(p["N_INPUT_DELAY"]+1)
+                            pop= self.in_to_hid
                         else:
-                            n1= p["NUM_HIDDEN"]
-                        n2= p["NUM_HIDDEN"]
-                        ith_w.shape= (n1,n2)
-                        n_new= n1*n_silent[l]
-                        ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (n1, n_silent[l]))
-                    pop.push_var_to_device("w")
+                            pop= self.hid_to_hidfwd[l-1]
+                            
+                        pop.pull_var_from_device("w")
+                        ith_w= pop.vars["w"].view[:]
+                        if p["REWIRE_LIFT"] != 0.0:
+                            ith_w+= p["REWIRE_LIFT"]
+                        else:
+                            if l == 0:
+                                n1= self.num_input*(p["N_INPUT_DELAY"]+1)
+                            else:
+                                n1= p["NUM_HIDDEN"]
+                            n2= p["NUM_HIDDEN"]
+                            ith_w.shape= (n1,n2)
+                            n_new= n1*n_silent[l]
+                            ith_w[:,silent]= np.reshape(rng.standard_normal(n_new)*p["INPUT_HIDDEN_STD"]+p["INPUT_HIDDEN_MEAN"], (n1, n_silent[l]))
+                        pop.push_var_to_device("w")
                         
             if p["DEBUG_HIDDEN_N"]:
                 for l in range(p["N_HID_LAYER"]):
@@ -2332,7 +2333,8 @@ class SHD_model:
         return (spike_t, spike_ID, rec_vars_n, rec_vars_s, correct, correct_eval)
     
     def get_gpu_mem(self):
-        gpu_processes = [p for p in nvsmi.get_gpu_processes()
+    	from nvsmi import get_gpu_processes
+        gpu_processes = [p for p in get_gpu_processes()
                          if p.pid == os.getpid()]
         assert len(gpu_processes) == 1
         return gpu_processes[0].used_memory
@@ -2343,8 +2345,9 @@ class SHD_model:
         if p["BUILD"]:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-        print(f"Build load takes {time() - build_load_start_time}s")
-        print(f"GPU memory {self.get_gpu_mem()} MiB")
+        if p["PROFILE"]:
+            print(f"Build load takes {time() - build_load_start_time}s")
+            print(f"GPU memory {self.get_gpu_mem()} MiB")
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         if p["N_VALIDATE"] > 0:
             if p["EVALUATION"] == "random":
@@ -2380,8 +2383,9 @@ class SHD_model:
             if p["BUILD"]:
                 self.model.build()
             self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-            print(f"Build load takes {time() - build_load_start_time}s")
-            print(f"GPU memory {self.get_gpu_mem()} MiB")
+            if p["PROFILE"]:
+                print(f"Build load takes {time() - build_load_start_time}s")
+                print(f"GPU memory {self.get_gpu_mem()} MiB")
             X_train, Y_train, Z_train, X_eval, Y_eval, Z_eval= self.split_SHD_speaker(self.X_train_orig, self.Y_train_orig, self.Z_train_orig, speakers[i], p)
             res= self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= X_train, Y_train= Y_train, Z_train= Z_train, X_eval= X_eval, Y_eval= Y_eval, resfile= resfile)
             all_res.append([ res[4], res[5] ])
@@ -2395,8 +2399,9 @@ class SHD_model:
         if p["BUILD"]:
             self.model.build()
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-        print(f"Build load takes {time() - build_load_start_time}s")
-        print(f"GPU memory {self.get_gpu_mem()} MiB")
+        if p["PROFILE"]:
+            print(f"Build load takes {time() - build_load_start_time}s")
+            print(f"GPU memory {self.get_gpu_mem()} MiB")
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         return self.run_model(1, p, False, X_eval= self.X_test_orig, Y_eval= self.Y_test_orig, resfile=resfile)
 
@@ -2409,8 +2414,9 @@ class SHD_model:
             print("build complete ...")
         print("loading model ...")
         self.model.load(num_recording_timesteps= p["SPK_REC_STEPS"])
-        print(f"Build load takes {time() - build_load_start_time}s")
-        print(f"GPU memory {self.get_gpu_mem()} MiB")
+        if p["PROFILE"]:
+            print(f"Build load takes {time() - build_load_start_time}s")
+            print(f"GPU memory {self.get_gpu_mem()} MiB")
         print("loading complete ...")
         resfile= open(os.path.join(p["OUT_DIR"], p["NAME"]+"_results.txt"), "a")
         return self.run_model(p["N_EPOCH"], p, p["SHUFFLE"], X_train= self.X_train_orig, Y_train= self.Y_train_orig, Z_train= self.Z_train_orig, X_eval= self.X_test_orig, Y_eval= self.Y_test_orig, resfile= resfile)
