@@ -2333,7 +2333,7 @@ class SHD_model:
         return (spike_t, spike_ID, rec_vars_n, rec_vars_s, correct, correct_eval)
     
     def get_gpu_mem(self):
-    	from nvsmi import get_gpu_processes
+        from nvsmi import get_gpu_processes
         gpu_processes = [p for p in get_gpu_processes()
                          if p.pid == os.getpid()]
         assert len(gpu_processes) == 1
