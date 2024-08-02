@@ -4,7 +4,6 @@ import numpy as np
 
 import jax
 import jax.numpy as jnp
-import nvsmi
 import spyx
 import haiku as hk
 import optax
@@ -12,11 +11,11 @@ from jax_tqdm import scan_tqdm
 
 
 import tonic
+from argparse import ArgumentParser
 from tonic import datasets, transforms
 from torch.utils.data import DataLoader, Subset
 from collections import namedtuple
 
-from multiprocessing import Process
 
 #jax.config.update("jax_default_matmul_precision", "float32")
 
@@ -42,11 +41,21 @@ class _SHD2Raster():
         tensor = np.packbits(tensor, axis=0)
         return tensor
 
-sample_T = 200
+parser = ArgumentParser(description="JAX RSNN")
+# compilation options
+parser.add_argument("--sample-t", type=int, default=200)
+parser.add_argument("--dt", type=float, default=5.0)
+parser.add_argument("--batch-size", type=int, default=32)
+parser.add_argument("--num-hidden", type=int, default=256)
+parser.add_argument("--num-trials", type=int, default=1)
+parser.add_argument("--num-epochs", type=int, default=100)
+
+args = parser.parse_args()
+
 shd_timestep = 1e-6
 shd_channels = 700
 net_channels = 700
-net_dt = 5.0e-3    # MS
+net_dt = args.dt * 1e-3
 
 obs_shape = tuple([net_channels,])
 act_shape = tuple([20,])
@@ -56,7 +65,7 @@ transform = transforms.Compose([
         time_factor=shd_timestep / net_dt,
         spatial_factor=net_channels / shd_channels
     ),
-    _SHD2Raster(net_channels, sample_T=sample_T)
+    _SHD2Raster(net_channels, sample_T=args.sample_t)
 ])
 
 train_dataset = datasets.SHD("./data", train=True, transform=transform)
@@ -140,7 +149,7 @@ def benchmark(SNN, params, dataset, epochs, batch_size):
         grad_params, opt_state = state
         events, targets = data
         # events = jnp.swapaxes(events, 0, 1)
-        events = jnp.unpackbits(events, axis=1, count=sample_T) # decompress temporal axis
+        events = jnp.unpackbits(events, axis=1, count=args.sample_t) # decompress temporal axis
         # compute loss and gradient                    # need better augment rng
         loss, grads = surrogate_grad(grad_params, events, targets)
         # generate updates based on the gradients and optimizer
@@ -182,25 +191,12 @@ def benchmark(SNN, params, dataset, epochs, batch_size):
     # return our final, optimized network.       
     return final_params, metrics
 
-from time import sleep, time
+from time import time
 
-def calc_peak_gpu_memory():
-    peak = 0
-    while True:
-        
-        gpu_mem = sum(p.used_memory for p in nvsmi.get_gpu_processes()
-                    if p.pid == os.getppid())
-        if gpu_mem > peak:
-            peak = gpu_mem
-            print(f"Peak GPU memory {peak} MiB")
-        sleep(1)
 
 def run_bench(trials, num_epochs, net_width, batch_size):
     print(f"{net_width} hidden neurons, {batch_size} batch size")
     SNN, params = build_snn(net_width, batch_size)
-    
-    p = Process(target=calc_peak_gpu_memory)
-    p.start()
     
     times = []
     for t in range(trials+1):
@@ -212,12 +208,5 @@ def run_bench(trials, num_epochs, net_width, batch_size):
     
     print("\tMean:", np.mean(times[1:]), "Std. Dev.:", np.std(times[1:]))
 
-num_trials = 1
-run_bench(num_trials, 100, 256, 32)
-#run_bench(num_trials, 100, 512, 32)
-#run_bench(num_trials, 100, 1024, 32)
-#run_bench(num_trials, 100, 256, 256)
-#run_bench(num_trials, 100, 512, 256)
-#run_bench(num_trials, 100, 1024, 256)
-
+run_bench(args.num_trials, args.num_epochs, args.num_hidden, args.batch_size)
 
