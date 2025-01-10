@@ -3,8 +3,10 @@ Implementation of eventprop learning in GeNN
 
 
 The repository contains research code that was used to make a first implementation of the Eventprop learning rule [(Wunderlich and Pehle 2021)](https://doi.org/10.1038/s41598-021-91786-z) and test it against increasingly difficult benchmarks. The code underlies the publication: Nowotny, T., Turner, J.P. and Knight, J.C., 2022. Loss shaping enhances exact gradient learning with eventprop in spiking neural networks. arXiv preprint [arXiv:2212.01232](https://arxiv.org/abs/2212.01232).
+It has subsequently been published as:  Nowotny, T., Turner, J.P. and Knight, J.C., 2025. Loss shaping enhances exact gradient learning with eventprop in spiking neural networks. Journal of Neuromorphic Computing and Engineering. DOI: [10.1088/2634-4386/ada852](https://doi.org/10.1088/2634-4386/ada852)
 
-The code is generally organised so that the GeNN model definitions are colected in `models.py` and for the benchmarks there are individual python files `simulator_XXX.py` as follows:
+The work in this repository is based on [GeNN 4.9](https://github.com/genn-team/genn/tree/refs/tags/4.9.0). 
+The code is generally organised so that the GeNN model definitions are collected in `models.py` and for the benchmarks, there are individual python files `simulator_XXX.py` as follows:
 
 - `simulator_yinyang.py`: Train to classify the Yinyang benchmark dataset [(Kriener et al. 2022)](https://doi.org/10.1145/3517343.3517380)
 - `simulator_MNIST.py`: Train to classify the MNIST dataset [(Lecun et al. 1998)](https://doi.org/10.1109/5.726791)
